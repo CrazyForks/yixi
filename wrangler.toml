@@ -1,0 +1,21 @@
+name = "yixi"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# Nightly sessions trim (04:00 UTC = noon Shanghai). Only prunes the sessions
+# breadcrumb table; events are kept forever, they are the whole product.
+[triggers]
+crons = ["0 4 * * *"]
+
+[observability]
+enabled = true
+
+# Secrets (wrangler secret put ...):
+#   COOKIE_SECRET — HMAC key for the /review session cookie
+# User tokens live in the D1 `users` table as SHA-256 hashes; there is no
+# global access token.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yixi"
+database_id = "64215db6-0a05-4ae9-a583-19c8790bef06"
