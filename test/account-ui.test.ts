@@ -392,12 +392,20 @@ describe('/setup after accounts', () => {
 
   it('prints the real token for a signed-in holder who asks, with no ?k= needed', async () => {
     const { user, token } = await signUp()
+    await env.DB.prepare(
+      `INSERT INTO user_apps (user_id, app, label, scheme, wait_seconds, grace_seconds, enabled)
+       VALUES (?1, 'xhs', '小红书', 'xhsdiscover://', 10, 90, 1)`,
+    )
+      .bind(user.id)
+      .run()
     const html = await (await renderSetup(get('/setup?show=1'), env, user)).text()
 
     // This is the whole point of sealing a copy: the ordinary way to reach this
     // page used to be the way it could not finish the job.
     expect(html).toContain(token)
-    expect(html).toContain(`${BASE}/gate?app=[快捷指令输入]&amp;k=${token}`)
+    // The sealed copy is what makes the paste-ready line possible at all: before
+    // accounts, reaching this page the ordinary way could not finish the job.
+    expect(html).toContain(`&amp;k=${token}&amp;fmt=text`)
   })
 
   it('still refuses to invent one for a row with no sealed copy', async () => {

@@ -317,6 +317,68 @@ describe('POST /resolve', () => {
   // write an event the winner had already settled. The contradicting-decision
   // test above only catches this when the suite happens to run fast enough to
   // collide, so pin it here with an explicitly shared `ts`.
+  describe('fmt=text — the shape the Shortcuts app can actually consume', () => {
+    async function gateText(app: string, token: string): Promise<{ status: number; body: string }> {
+      const res = await handleGate(
+        new Request(`https://yixi.test/gate?app=${app}&k=${token}&fmt=text`),
+        env,
+      )
+      return { status: res.status, body: (await res.text()).trim() }
+    }
+
+    it('answers a block with the bare URL and nothing else', async () => {
+      const userId = await seedUser(TOKEN)
+      await seedApp(userId, 'xhs')
+
+      const r = await gateText('xhs', TOKEN)
+      expect(r.status).toBe(200)
+      // The Shortcut hands this straight to 「打开 URL」, so anything wrapped
+      // around it — quotes, JSON, a trailing newline — breaks the open.
+      expect(r.body).toMatch(/^https:\/\/yixi\.test\/b\?s=[0-9a-f]{32}$/)
+    })
+
+    it('answers a pass with a word that cannot be mistaken for a URL', async () => {
+      const userId = await seedUser(TOKEN)
+      await seedApp(userId, 'xhs', { enabled: 0 })
+
+      const r = await gateText('xhs', TOKEN)
+      expect(r.body).toBe('pass')
+    })
+
+    it('fails open: every non-block answer lacks the string the If tests for', async () => {
+      const userId = await seedUser(TOKEN)
+      await seedApp(userId, 'xhs', { enabled: 0 })
+
+      // The Shortcut's whole condition is 「包含 https」. If any of these ever
+      // contained it, a misconfigured or broken service would start opening the
+      // breathing page on every launch — locking the user out of their phone,
+      // the one failure this design refuses to allow.
+      const answers = [
+        (await gateText('xhs', TOKEN)).body, // disabled app
+        (await gateText('unconfigured', TOKEN)).body, // app not set up
+        (await gateText('xhs', 'wrong-token')).body, // bad credential
+        (await gateText('', TOKEN)).body, // malformed call
+      ]
+      for (const body of answers) expect(body).not.toContain('https')
+    })
+
+    it('still blocks after grace lapses, and passes inside it', async () => {
+      const userId = await seedUser(TOKEN)
+      await seedApp(userId, 'xhs')
+      const sid = sidOf((await gate('xhs', TOKEN)).body)
+      await resolve({ sid, action: 'proceed' })
+
+      expect((await gateText('xhs', TOKEN)).body).toBe('pass')
+    })
+
+    it('leaves the JSON form untouched for anyone already on it', async () => {
+      const userId = await seedUser(TOKEN)
+      await seedApp(userId, 'xhs')
+      const res = await gate('xhs', TOKEN)
+      expect(res.body).toHaveProperty('action', 'block')
+    })
+  })
+
   it('rejects a second decision that shares the winner\'s millisecond', async () => {
     const userId = await seedUser(TOKEN)
     await seedApp(userId, 'xhs')

@@ -38,12 +38,26 @@ describe('/setup', () => {
 
   it('prints a ready-to-paste gate URL when the token is still in the address bar', async () => {
     const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
     const html = await render(user, '?k=deadbeef00112233')
 
     // The whole point of this page over the repo manual: no placeholder for the
-    // reader to substitute, because substituting is where people go wrong.
-    expect(html).toContain(`${BASE}/gate?app=[快捷指令输入]&amp;k=deadbeef00112233`)
-    expect(html).not.toContain('&lt;你的token&gt;')
+    // reader to substitute, because substituting is where people go wrong. The
+    // app key is one of theirs, not a stand-in.
+    expect(html).toContain(`${BASE}/gate?app=xhs&amp;k=deadbeef00112233&amp;fmt=text`)
+  })
+
+  it('always asks for fmt=text — the JSON form is unusable from Shortcuts', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // Without it the gate answers JSON, which needs a 「获取词典值」 action and
+    // an If comparing a dictionary value — the exact step that turned out not
+    // to be reliably offered by the Shortcuts editor.
+    expect(html).toContain('fmt=text')
+    expect(html).toContain('包含')
+    expect(html).toContain('https')
   })
 
   it('refuses to invent a token it cannot know, once asked', async () => {
@@ -92,7 +106,8 @@ describe('/setup', () => {
   it('guides a user with no apps to /settings instead of showing an empty table', async () => {
     const user = await seedUser()
     const html = await render(user)
-    expect(html).toContain('还没有配置任何 App')
+    expect(html).toContain('还没有配置 App')
+    expect(html).toContain('/settings')
   })
 
   it('escapes app labels rather than letting them reach the markup', async () => {

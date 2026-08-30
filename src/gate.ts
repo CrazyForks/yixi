@@ -25,6 +25,28 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
+/**
+ * Plain-text replies for `?fmt=text`, which exists because the JSON shape asked
+ * too much of the Shortcuts app.
+ *
+ * Parsing JSON there means a 「获取词典值」 action, then an 「如果」 comparing a
+ * dictionary value, then a second 「获取词典值」 — six actions and three magic
+ * variables, and the If editor does not reliably offer a dictionary value as
+ * something to compare. Every one of those steps is a place to get stuck.
+ *
+ * In text mode the body is either the URL to open or the word `pass`, so the
+ * whole Shortcut is: fetch, `如果 包含 https`, open. Three actions, no variable
+ * picking, and it fails open by construction — `pass`, an empty body, an error
+ * page and a dead network all fail to contain `https`, so nothing opens and the
+ * app the user actually wanted starts normally.
+ */
+function text(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  })
+}
+
 /** 128-bit, per the design: unguessable, single-use, already bound to a user+app. */
 function newSid(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
@@ -59,21 +81,26 @@ export async function handleGate(request: Request, env: Env): Promise<Response> 
   const url = new URL(request.url)
   const app = url.searchParams.get('app')
   const token = url.searchParams.get('k')
+  const asText = url.searchParams.get('fmt') === 'text'
 
-  if (!app) return json({ error: 'missing app' }, 400)
-  if (!token) return json({ error: 'unauthorized' }, 401)
+  const passing = () => (asText ? text('pass') : json(pass()))
+  const refuse = (msg: string, status: number) =>
+    asText ? text(msg, status) : json({ error: msg }, status)
+
+  if (!app) return refuse('missing app', 400)
+  if (!token) return refuse('unauthorized', 401)
 
   const user = await userFromToken(env, token)
-  if (!user) return json({ error: 'unauthorized' }, 401)
+  if (!user) return refuse('unauthorized', 401)
 
   const config = await getUserApp(env.DB, user.id, app)
-  if (!config || !config.enabled) return json(pass())
+  if (!config || !config.enabled) return passing()
 
   const now = Date.now()
   const graceUntil = await getGraceUntil(env.DB, user.id, app)
   if (graceUntil !== null && graceUntil > now) {
     await insertEvent(env.DB, { userId: user.id, sid: NO_SESSION, app, kind: 'grace_pass', ts: now })
-    return json(pass())
+    return passing()
   }
 
   const sid = newSid()
@@ -83,7 +110,8 @@ export async function handleGate(request: Request, env: Env): Promise<Response> 
   // sid only — never the token. This URL is about to be handed to Safari, where
   // it lands in history and can be shared by accident; the sid is single-use and
   // expires, the token is the user's whole identity.
-  return json(block(new URL(`/b?s=${sid}`, url).toString()))
+  const target = new URL(`/b?s=${sid}`, url).toString()
+  return asText ? text(target) : json(block(target))
 }
 
 function pass(): GateDecision {

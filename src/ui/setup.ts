@@ -39,15 +39,39 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   const token = reveal ? (fromQuery ?? (await revealToken(env, user))) : null
   const apps = await listUserApps(env.DB, user.id)
 
-  // `&amp;` rather than a bare `&`: the browser renders both as `&` so the copied
-  // string is right either way, but only one of them is correct markup.
-  const gateUrl = token
-    ? `${origin}/gate?app=[快捷指令输入]&amp;k=${escapeHtml(token)}`
-    : `${origin}/gate?app=[快捷指令输入]&amp;k=&lt;上面那串&gt;`
+  // The literal line to paste, with this person's own token already in it. A
+  // manual can only print a template and hope the reader substitutes correctly,
+  // and mis-substitution is the most common way this setup fails.
+  const firstApp = apps.find((a) => a.enabled) ?? apps[0]
+  const exampleApp = firstApp?.app ?? 'xhs'
 
-  // Three states, and they are not the same thing. Collapsing "you have not
-  // asked yet" into "we cannot show you this" would tell a perfectly normal
-  // user their account is broken.
+  const rawLineFor = (appKey: string): string =>
+    `${origin}/gate?app=${appKey}&k=${token ?? ''}&fmt=text`
+
+  const lineFor = (appKey: string): string =>
+    `${origin}/gate?app=${appKey}&amp;k=${token ?? '&lt;先点上面的「显示」&gt;'}&amp;fmt=text`
+
+  // One finished line per configured app. Step two is then literally "paste
+  // this", which is the only part that repeats per app and the only part iOS
+  // will not let anyone automate away.
+  const pasteRows = apps.length
+    ? apps
+        .map(
+          (a) => `<tr>
+  <td>${escapeHtml(a.label)}${a.enabled ? '' : '<span class="off"> · 已停用</span>'}</td>
+  <td>
+    <pre class="copy tight">${lineFor(escapeHtml(a.app))}</pre>
+    ${
+      token
+        ? `<a class="linky try" href="${escapeHtml(rawLineFor(a.app))}">在 Safari 里试一下这条</a>`
+        : ''
+    }
+  </td>
+</tr>`,
+        )
+        .join('\n')
+    : `<tr><td colspan="2" class="none">还没有配置 App。先去<a href="/settings">设置</a>加一个，这里就会出现可以直接粘的整行。</td></tr>`
+
   const tokenLine = token
     ? `<pre class="copy">${escapeHtml(token)}</pre>`
     : reveal
@@ -56,18 +80,6 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
          或者现在带上 <code>?k=你的token</code> 重新打开这一页。</p>`
       : `<p class="masked">············ <a class="linky" href="/setup?show=1">显示</a>
          <span class="hint">它是你所有记录的钥匙，别在别人能看见屏幕的时候点。</span></p>`
-
-  const appRows = apps.length
-    ? apps
-        .map(
-          (a) => `<tr>
-  <td>${escapeHtml(a.label)}</td>
-  <td><code>${escapeHtml(a.app)}</code></td>
-  <td>${a.enabled ? '启用' : '<span class="off">已停用</span>'}</td>
-</tr>`,
-        )
-        .join('\n')
-    : `<tr><td colspan="3" class="none">还没有配置任何 App。先去<a href="/settings">设置</a>加一个。</td></tr>`
 
   return page({
     title: '一息 · 怎么配',
@@ -87,76 +99,86 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
 后面每个 App 的自动化都只是调用它，不重复填。将来换 token 只改那一处。</p>
 </div>
 
-<h2>第一步 · 建一个快捷指令，叫「一息」</h2>
-
-<p>打开「快捷指令」App → 右上角 <b>+</b> → 重命名为 <b>一息</b>。然后按顺序加六个动作：</p>
-
-<h3>① 文本</h3>
-<p>内容就是你的 token：</p>
+<h2>你的 token</h2>
+<p>下面第一步那串网址里已经带上它了，正常配置不用单独复制。放在这里是为了你换设备、
+或者想核对时能拿到：</p>
 ${tokenLine}
 
-<h3>② 获取 URL 的内容</h3>
-<p>URL 填下面这一串。<b>方括号里的是变量，不是字面文字</b>——光标放在那个位置，点键盘上方的变量栏选「快捷指令输入」：</p>
-<pre class="copy">${gateUrl}</pre>
-<p>展开「显示更多」，方法选 <code>GET</code>，请求头和请求体留空。</p>
-<p class="warn"><b>最容易错的地方：</b><code>app=</code> 后面必须是变量「快捷指令输入」，
-不是手打的 <code>xhs</code>。app 键由每条自动化各自传进来——这正是一个快捷指令能服务所有 App 的原因。
-<code>k=</code> 后面则要接①那个「文本」变量。</p>
+<h2>第一步 · 建一个快捷指令，只建这一次</h2>
 
-<h3>③ 获取词典值</h3>
-<p>键填 <code>action</code>，输入是「URL 的内容」（通常会自动填好）。</p>
+<p>它跟你的 token 无关、跟具体哪个 App 也无关，所以<b>一辈子只用建一次</b>，
+以后加多少个 App 都用它。三个动作。</p>
 
-<h3>④ 如果</h3>
-<p>条件：<b>「词典值」 等于 <code>block</code></b>。</p>
-<p class="warn"><b>必须写「等于 block」，不能写「不等于 pass」。</b>
-这一条决定服务挂掉时你还能不能打开自己的 App，理由见本页最后一节。</p>
+<h3>① 「获取 URL 的内容」</h3>
+<p>动作搜索框里搜 <code>URL</code>，选「获取 URL 的内容」。
+URL 那一栏<b>不要手打网址</b>——点一下它，在键盘上方的变量里选<b>「快捷指令输入」</b>。</p>
+<p>展开「显示更多」，确认方法是 <code>GET</code>。</p>
 
-<h3>⑤ 获取词典值（放在「如果」里面）</h3>
-<p>键填 <code>url</code>，输入<b>手动改成「URL 的内容」</b>。</p>
-<p class="warn"><b>第二个大坑：</b>这一步的输入默认指向「如果」的输入，不是②的结果。
-不改的话取不到 url，点开 App 时什么都不会发生，<b>而且不报错</b>。</p>
+<h3>② 「如果」</h3>
+<pre class="shape">如果   「URL 的内容」   包含   https</pre>
+<p>中间选<b>「包含」</b>，右边手打 <code>https</code>。左边那栏一般会自动填好「URL 的内容」；
+要是空的，点开选上一个动作的结果。</p>
 
-<h3>⑥ 打开 URL（放在「如果」里面）</h3>
-<p>URL 用上一步的「词典值」。</p>
+<h3>③ 「打开 URL」，放在「如果」里面</h3>
+<p>URL 那一栏同样选「URL 的内容」。</p>
 
-<h3>配完应该长这样</h3>
-<pre class="shape">文本                    你的 token
-获取 URL 的内容          .../gate?app=[快捷指令输入]&amp;k=[文本]   GET
-获取词典值   键 action   输入 = URL 的内容
-如果  词典值  等于  block
-    获取词典值   键 url   输入 = URL 的内容   ← 要手动改
-    打开 URL     词典值
+<h3>建完是这样，一共三行</h3>
+<pre class="shape">获取 URL 的内容    「快捷指令输入」        GET
+如果   「URL 的内容」   包含   https
+    打开 URL   「URL 的内容」
 结束如果</pre>
 
-<h2>第二步 · 给每个 App 建一条自动化</h2>
-
-<p>「快捷指令」App → 底部 <b>自动化</b> 标签 → 右上角 <b>+</b>：</p>
-
-<ol>
-<li>触发条件选 <b>App</b></li>
-<li>点进「App」一行，勾选<b>要拦的那一个</b></li>
-<li>选 <b>已打开</b>（不是「已关闭」），下一步</li>
-<li>加动作 <b>文本</b>，内容填这个 App 的 app 键（见下表）</li>
-<li>加动作 <b>运行快捷指令</b>，选「一息」，展开「显示更多」把<b>输入</b>设为上一步的「文本」</li>
-<li><b>关掉「运行前询问」</b>，系统会再确认一次，选「不询问」</li>
-<li>顺手把「运行时通知我」也关掉，否则每次开 App 顶上都弹横幅</li>
-</ol>
-
-<h3>你现在配好的 app 键</h3>
-<p>第 4 步那行文本要一字不差地填下面的键，<b>大小写敏感</b>：</p>
-<table class="apps">
-<thead><tr><th>App</th><th>app 键</th><th>状态</th></tr></thead>
-<tbody>
-${appRows}
-</tbody>
-</table>
+<p>起名叫 <b>一息</b>，存好。<b>之后再也不用动它。</b></p>
 
 <div class="box">
-<h3>每个 App 都要重来一遍，这是 iOS 的限制</h3>
-<p>「打开 App 时」的自动化<b>必须一个 App 建一条</b>，没法批量，也没法一条里选多个 App。
-拦 5 个 App 就得建 5 条。One Sec 和所有同类工具都是这么装的，iOS 没给别的口子。</p>
-<p>好在重复的部分很少：每条只有两个动作，唯一要改的就是那行 app 键。</p>
+<h3>建好之后可以送给别人</h3>
+<p>这个快捷指令里没有你的 token、没有你拦哪些 App，纯粹是个空壳。
+所以在快捷指令列表里长按它 → 共享 → <b>拷贝 iCloud 链接</b>，
+把链接发给谁，对方点一下就装好了，一个动作都不用拼。</p>
 </div>
+
+<h2>第二步 · 每个 App 一条自动化</h2>
+
+<p>「快捷指令」App → 底部 <b>自动化</b> → 右上角 <b>+</b>：</p>
+
+<ol>
+<li>触发条件选 <b>App</b>，点进去勾选<b>要拦的那一个</b>（一次一个）</li>
+<li>选 <b>已打开</b>，下一步</li>
+<li>加动作 <b>「文本」</b>，把下面表里对应那一整行粘进去</li>
+<li>加动作 <b>「运行快捷指令」</b>，选 <b>一息</b>，展开「显示更多」，<b>输入</b>选上一步的「文本」</li>
+<li><b>关掉「运行前询问」</b>，弹出确认时选「不询问」</li>
+<li>把「运行时通知我」也关掉，不然每次开 App 都弹横幅</li>
+</ol>
+
+<h3>粘贴用的整行（已经是你的真实值）</h3>
+<table class="apps paste">
+<tbody>
+${pasteRows}
+</tbody>
+</table>
+<p class="warn">整行复制，不要只复制一半，末尾的 <code>&amp;fmt=text</code> 少了就不工作。</p>
+<p class="warn"><b>粘完先点一下「在 Safari 里试一下这条」。</b>
+看到 <code>pass</code> 或者一条 <code>https://…</code> 网址，说明这条地址是通的；
+如果 Safari 报错打不开，那就是地址本身有问题（多半是复制时缺了一截，或者混进了省略号之类的字符），
+这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，看不出原因。</p>
+
+<div class="box">
+<h3>每个 App 都要来一遍，这是 iOS 的限制</h3>
+<p>「打开 App 时」的自动化<b>必须一个 App 建一条</b>，不能批量、不能一条选多个。
+拦 5 个 App 就是 5 条。One Sec 和所有同类工具都这样，iOS 没给别的口子。</p>
+<p>好在每条只有两个动作，其中一个是粘贴。</p>
+</div>
+
+<div class="box">
+<h3>为什么条件是「包含 https」这么怪的写法</h3>
+<p>服务器只回两种东西：该拦你时回一条 <code>https://…</code> 开头的网址，不该拦时回 <code>pass</code> 这个词。</p>
+<p>所以这一条同时干了两件事：该拦时打开呼吸页；而<b>只要出任何问题</b>——服务挂了、
+token 错了、网络断了、返回空白——结果里都没有 <code>https</code>，
+「如果」不成立，快捷指令什么都不做，<b>你的 App 正常打开</b>。</p>
+<p>所以<b>绝对不能反过来写成「不包含 pass」</b>。那样服务一挂，
+每次开 App 都跳去一个打不开的网页，你会被自己写的工具锁在手机外面。</p>
+</div>
+
 
 <h2>第三步 · 跑通一次</h2>
 <ol>
@@ -282,6 +304,10 @@ table.apps td{padding:8px 8px 8px 0;border-bottom:1px solid var(--rule);vertical
 table.apps .off{color:var(--faint)}
 table.apps .none{color:var(--dim);text-align:center;padding:18px 0}
 .doc a{color:var(--fg);text-underline-offset:3px}
+pre.copy.tight{margin:0;padding:8px 10px;font-size:.72rem}
+table.paste td{vertical-align:middle}
+a.try{display:inline-block;margin-top:6px;font-size:.78rem;color:var(--dim)}
+table.paste td:first-child{white-space:nowrap;padding-right:12px}
 p.masked{
   font-family:var(--num);letter-spacing:.18em;color:var(--faint);
   background:var(--rule);border-radius:10px;padding:12px 14px;margin:0 0 1rem;
