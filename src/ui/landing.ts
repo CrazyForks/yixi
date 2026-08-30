@@ -41,7 +41,8 @@ token 只以哈希存放，生成时只显示一次。
 <p class="looks">两版视觉，还没定：
 <a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></p>
 
-<p class="foot">这不是一个公开产品。想用的话，找发你 token 的人。</p>
+<p class="foot">这不是一个公开产品。想用的话，找发你 token 的人。<br>
+拿到 token 之后，打开 <code>/setup?k=你的token</code> 有一步一步的配置说明。</p>
 </main>`,
   })
 }

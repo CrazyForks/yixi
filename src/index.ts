@@ -5,6 +5,7 @@ import { renderBreathe } from './ui/breathe'
 import { renderMock } from './ui/mock'
 import { renderReview } from './ui/review'
 import { renderProbe } from './ui/probe'
+import { renderSetup } from './ui/setup'
 import { handleSettings } from './ui/settings'
 import { handleAdmin } from './api/admin'
 import { renderLanding } from './ui/landing'
@@ -44,6 +45,7 @@ export default {
       let res: Response
       if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/probe' && method === 'GET') res = await renderProbe(env, user)
+      else if (path === '/setup' && method === 'GET') res = await renderSetup(request, env, user)
       else if (path === '/settings') res = await handleSettings(request, env, user)
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)
       else return notFound()

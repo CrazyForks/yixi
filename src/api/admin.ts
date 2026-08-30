@@ -123,7 +123,10 @@ async function handleCreateUser(request: Request, env: Env, user: User): Promise
   return await renderAdmin(env, user, {
     name,
     token,
-    link: `${origin}/settings?k=${token}`,
+    // /setup, not /settings: a new holder needs the wiring instructions before
+    // an empty config screen means anything to them, and /setup can only print
+    // their finished gate URL while the token is still in the address bar.
+    link: `${origin}/setup?k=${token}`,
   })
 }
 
