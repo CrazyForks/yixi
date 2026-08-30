@@ -13,6 +13,7 @@ export default defineWorkersConfig(async () => {
             bindings: {
               TEST_MIGRATIONS: migrations,
               COOKIE_SECRET: 'test-cookie-secret',
+              TOKEN_KEY: 'test-token-key',
             },
           },
         },

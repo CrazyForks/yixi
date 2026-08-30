@@ -11,7 +11,12 @@ crons = ["0 4 * * *"]
 enabled = true
 
 # Secrets (wrangler secret put ...):
-#   COOKIE_SECRET — HMAC key for the /review session cookie
+#   COOKIE_SECRET — legacy; browser sessions are now server-side rows in
+#                   sessions_web and the cookie carries only their id, so
+#                   nothing signs anything any more. Harmless to keep.
+#   TOKEN_KEY     — AES-GCM key the gate tokens are sealed under, so a
+#                   logged-in holder can read their own key back. Never
+#                   stored in D1: a stolen database alone opens nothing.
 # User tokens live in the D1 `users` table as SHA-256 hashes; there is no
 # global access token.
 

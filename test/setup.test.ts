@@ -46,14 +46,21 @@ describe('/setup', () => {
     expect(html).not.toContain('&lt;你的token&gt;')
   })
 
-  it('refuses to invent a token it cannot know from a cookie session', async () => {
+  it('refuses to invent a token it cannot know, once asked', async () => {
+    const user = await seedUser()
+    const html = await render(user, '?show=1')
+
+    // This row predates accounts: only the hash was ever stored, so nothing can
+    // reproduce the plaintext. Saying so beats printing a plausible-looking
+    // wrong string.
+    expect(html).toContain('读不到你的 token 原文')
+  })
+
+  it('offers a reveal rather than showing anything by default', async () => {
     const user = await seedUser()
     const html = await render(user)
-
-    // Only the hash is stored, so a cookie session genuinely cannot reproduce
-    // the plaintext. Saying so beats printing a plausible-looking wrong string.
-    expect(html).toContain('&lt;你的token&gt;')
-    expect(html).toContain('读不到你的 token 原文')
+    expect(html).toContain('/setup?show=1')
+    expect(html).not.toContain('读不到你的 token 原文')
   })
 
   it('lists only this user’s app keys, never another user’s', async () => {

@@ -1,13 +1,13 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { COOKIE_NAME, authenticate, issueCookie, sha256Hex, timingSafeEqual, userFromToken } from '../src/auth'
-import type { Env, User } from '../src/types'
+import { COOKIE_NAME, authenticate, clearCookie, issueCookie, revokeCookie, sha256Hex, timingSafeEqual, userFromToken } from '../src/auth'
+import type { User } from '../src/types'
 
 const TOKEN = 'alice-token'
 const OTHER_TOKEN = 'bob-token'
 
 async function reset(): Promise<void> {
-  await env.DB.prepare('DELETE FROM users').run()
+  await env.DB.batch([env.DB.prepare('DELETE FROM sessions_web'), env.DB.prepare('DELETE FROM users')])
 }
 
 async function seedUser(token: string, name = 'alice', isOwner = 0): Promise<number> {
@@ -25,25 +25,6 @@ function request(path: string, cookie?: string): Request {
 function cookieValue(setCookie: string): string {
   const first = setCookie.split(';')[0] ?? ''
   return first.slice(first.indexOf('=') + 1)
-}
-
-/** Independently signs a payload the way auth.ts does, to forge test cookies. */
-async function sign(payload: string, secret = 'test-cookie-secret'): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)))
-  let binary = ''
-  for (const b of sig) binary += String.fromCharCode(b)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function forgedCookie(payload: string, secret?: string): Promise<string> {
-  return `${COOKIE_NAME}=${payload}.${await sign(payload, secret)}`
 }
 
 beforeEach(reset)
@@ -108,7 +89,7 @@ describe('authenticate — ?k= entry', () => {
 
     const auth = await authenticate(request(`/review?k=${TOKEN}`), env)
 
-    expect(auth?.seededFromToken).toBe(true)
+    expect(auth).toMatchObject({ seededFromToken: true, via: 'token', sessionId: null })
     expect(auth?.user.id).toBe(userId)
   })
 
@@ -131,7 +112,8 @@ describe('authenticate — ?k= entry', () => {
 
 describe('issueCookie', () => {
   it('is HttpOnly, Secure, SameSite=Lax and site-wide', async () => {
-    const user: User = { id: 1, name: 'alice', is_owner: 0, created_at: Date.now() }
+    const userId = await seedUser(TOKEN)
+    const user: User = { id: userId, name: 'alice', is_owner: 0, created_at: Date.now() }
 
     const setCookie = await issueCookie(env, user)
 
@@ -143,22 +125,42 @@ describe('issueCookie', () => {
     expect(setCookie).toMatch(/Max-Age=\d+/)
   })
 
-  it('carries no token — only the user id, an expiry and a signature', async () => {
+  it('carries a 128-bit opaque session id and nothing else', async () => {
+    await seedUser(TOKEN)
+    const user = (await userFromToken(env, TOKEN))!
+
+    const value = cookieValue(await issueCookie(env, user))
+
+    // Nothing but randomness: no token, and no `.`-separated payload the way
+    // the old signed cookie carried a user id and an expiry in the clear. The
+    // value means nothing without its row, which is what makes it revocable.
+    expect(value).toMatch(/^[0-9a-f]{32}$/)
+    expect(value).not.toContain(TOKEN)
+    expect(value).not.toContain(await sha256Hex(TOKEN))
+    expect(value).not.toContain('.')
+  })
+
+  it('records the session server-side, with an expiry the browser does not control', async () => {
     const userId = await seedUser(TOKEN)
     const user = (await userFromToken(env, TOKEN))!
 
     const value = cookieValue(await issueCookie(env, user))
 
-    expect(value).not.toContain(TOKEN)
-    expect(value).not.toContain(await sha256Hex(TOKEN))
-    expect(value.split('.')[0]).toBe(String(userId))
+    const row = await env.DB.prepare('SELECT user_id, created_at, expires_at FROM sessions_web WHERE id = ?1')
+      .bind(value)
+      .first<{ user_id: number; created_at: number; expires_at: number }>()
+    expect(row?.user_id).toBe(userId)
+    expect(row!.expires_at).toBeGreaterThan(Date.now())
   })
 
-  it('refuses to sign with an unconfigured secret rather than using a known one', async () => {
-    const user: User = { id: 1, name: 'alice', is_owner: 0, created_at: Date.now() }
-    const brokenEnv = { DB: env.DB, COOKIE_SECRET: '' } as Env
+  it('mints a fresh session per call, so one browser signing out does not sign out the rest', async () => {
+    await seedUser(TOKEN)
+    const user = (await userFromToken(env, TOKEN))!
 
-    await expect(issueCookie(brokenEnv, user)).rejects.toThrow(/COOKIE_SECRET/)
+    const first = cookieValue(await issueCookie(env, user))
+    const second = cookieValue(await issueCookie(env, user))
+
+    expect(first).not.toBe(second)
   })
 })
 
@@ -170,7 +172,7 @@ describe('authenticate — cookie entry', () => {
 
     const auth = await authenticate(request('/review', `${COOKIE_NAME}=${cookie}`), env)
 
-    expect(auth?.seededFromToken).toBe(false)
+    expect(auth).toMatchObject({ seededFromToken: false, via: 'cookie', sessionId: cookie })
     expect(auth?.user.id).toBe(userId)
   })
 
@@ -184,53 +186,68 @@ describe('authenticate — cookie entry', () => {
     expect(auth?.user.id).toBe(userId)
   })
 
-  it('rejects a tampered user id — the signature covers it', async () => {
-    const alice = await seedUser(TOKEN, 'alice')
-    const bob = await seedUser(OTHER_TOKEN, 'bob')
-    const cookie = cookieValue(await issueCookie(env, (await userFromToken(env, TOKEN))!))
-    const [, exp, sig] = cookie.split('.')
-
-    const forged = `${COOKIE_NAME}=${bob}.${exp}.${sig}`
-
-    expect(alice).not.toBe(bob)
-    expect(await authenticate(request('/review', forged), env)).toBeNull()
-  })
-
-  it('rejects a mangled signature and a structurally broken value', async () => {
+  it('rejects a mangled session id — one flipped character is a different session', async () => {
     await seedUser(TOKEN)
     const cookie = cookieValue(await issueCookie(env, (await userFromToken(env, TOKEN))!))
-    const mangled = cookie.slice(0, -1) + (cookie.endsWith('A') ? 'B' : 'A')
+    const mangled = cookie.slice(0, -1) + (cookie.endsWith('a') ? 'b' : 'a')
 
     expect(await authenticate(request('/review', `${COOKIE_NAME}=${mangled}`), env)).toBeNull()
     expect(await authenticate(request('/review', `${COOKIE_NAME}=garbage`), env)).toBeNull()
     expect(await authenticate(request('/review', `${COOKIE_NAME}=`), env)).toBeNull()
   })
 
-  it('rejects a cookie signed with a different secret', async () => {
+  it('rejects the old stateless cookie shape outright', async () => {
     const userId = await seedUser(TOKEN)
-    const payload = `${userId}.${Date.now() + 60_000}`
 
-    const forged = await forgedCookie(payload, 'not-the-cookie-secret')
+    // `<userId>.<expiry>.<hmac>` used to be the whole credential. It cannot be
+    // revoked, which is exactly why sessions moved into a table, so a leftover
+    // one in somebody's phone must simply stop working.
+    const legacy = `${COOKIE_NAME}=${userId}.${Date.now() + 60_000}.c2lnbmF0dXJl`
 
-    expect(await authenticate(request('/review', forged), env)).toBeNull()
-    // Control: the same payload under the real secret does authenticate, so the
-    // rejection above is about the key and not about the payload shape.
-    expect(await authenticate(request('/review', await forgedCookie(payload)), env)).not.toBeNull()
+    expect(await authenticate(request('/review', legacy), env)).toBeNull()
   })
 
-  it('rejects an expired cookie even though the signature is valid', async () => {
-    const userId = await seedUser(TOKEN)
+  it('rejects an expired session even though the cookie is intact', async () => {
+    await seedUser(TOKEN)
+    const cookie = cookieValue(await issueCookie(env, (await userFromToken(env, TOKEN))!))
 
-    const expired = await forgedCookie(`${userId}.${Date.now() - 1000}`)
+    await env.DB.prepare('UPDATE sessions_web SET expires_at = ?1 WHERE id = ?2').bind(Date.now() - 1, cookie).run()
 
-    expect(await authenticate(request('/review', expired), env)).toBeNull()
+    expect(await authenticate(request('/review', `${COOKIE_NAME}=${cookie}`), env)).toBeNull()
   })
 
-  it('rejects a validly signed cookie for a user that no longer exists', async () => {
+  it('rejects a revoked session — this is what the table bought', async () => {
+    await seedUser(TOKEN)
+    const cookie = cookieValue(await issueCookie(env, (await userFromToken(env, TOKEN))!))
+    expect(await authenticate(request('/review', `${COOKIE_NAME}=${cookie}`), env)).not.toBeNull()
+
+    await revokeCookie(env, cookie)
+
+    expect(await authenticate(request('/review', `${COOKIE_NAME}=${cookie}`), env)).toBeNull()
+  })
+
+  it('rejects a live session whose user no longer exists', async () => {
     const userId = await seedUser(TOKEN)
-    const cookie = await forgedCookie(`${userId}.${Date.now() + 60_000}`)
+    const cookie = cookieValue(await issueCookie(env, (await userFromToken(env, TOKEN))!))
     await env.DB.prepare('DELETE FROM users WHERE id = ?1').bind(userId).run()
 
-    expect(await authenticate(request('/review', cookie), env)).toBeNull()
+    expect(await authenticate(request('/review', `${COOKIE_NAME}=${cookie}`), env)).toBeNull()
+  })
+})
+
+describe('clearCookie', () => {
+  it('expires the cookie with the attributes it was set with, or the browser keeps it', async () => {
+    const cleared = clearCookie()
+
+    expect(cleared.startsWith(`${COOKIE_NAME}=;`)).toBe(true)
+    expect(cleared).toContain('Max-Age=0')
+    expect(cleared).toContain('Path=/')
+    expect(cleared).toContain('HttpOnly')
+    expect(cleared).toContain('Secure')
+  })
+
+  it('tolerates a caller with no session id — signing out twice is not an error', async () => {
+    expect(await revokeCookie(env, null)).toContain('Max-Age=0')
+    expect(await revokeCookie(env, 'not-a-session-id')).toContain('Max-Age=0')
   })
 })

@@ -30,6 +30,7 @@
 import type { Env, User } from '../types'
 import { sha256Hex } from '../auth'
 import { countAttemptsPerUser, createUser, listUsers, shanghaiDate } from '../db'
+import { randomHex, sealToken } from '../crypto'
 import { DEFAULT_THEME, escapeHtml, page } from '../ui/layout'
 import { CONSOLE_CSS, consoleHeader } from '../ui/console'
 
@@ -86,12 +87,6 @@ function forbidden(): Response {
 
 // --- create ----------------------------------------------------------------
 
-/** 128 bits, hex. The plaintext exists only inside this one response. */
-function generateToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
 interface OneTime {
   name: string
   token: string
@@ -111,10 +106,17 @@ async function handleCreateUser(request: Request, env: Env, user: User): Promise
   if (name.length === 0) return await renderAdmin(env, user, null, { error: '得给这个人起个名字。', status: 400 })
   if (name.length > 40) return await renderAdmin(env, user, null, { error: '名字太长了，40 个字以内。', status: 400 })
 
-  const token = generateToken()
-  // Only the hash is persisted. Nothing anywhere — not the DB, not a log line —
-  // can turn a stored row back into a working credential.
-  await createUser(env.DB, { name, tokenHash: await sha256Hex(token), isOwner: false })
+  const token = randomHex(16)
+  // Sealed as well as hashed, and it has to happen here: this is the only moment
+  // the plaintext exists. A row created with the hash alone can never show its
+  // holder their own key again, which is the whole reason accounts exist.
+  const sealed = await sealToken(env.TOKEN_KEY, token)
+  await createUser(env.DB, {
+    name,
+    tokenHash: await sha256Hex(token),
+    isOwner: false,
+    sealedToken: sealed,
+  })
 
   // Rendered directly rather than redirected: a 303 would drop the plaintext,
   // and putting it in the redirect's query string would write it into history.
@@ -123,10 +125,11 @@ async function handleCreateUser(request: Request, env: Env, user: User): Promise
   return await renderAdmin(env, user, {
     name,
     token,
-    // /setup, not /settings: a new holder needs the wiring instructions before
-    // an empty config screen means anything to them, and /setup can only print
-    // their finished gate URL while the token is still in the address bar.
-    link: `${origin}/setup?k=${token}`,
+    // /claim, not /setup: the first thing a new holder should do is bind an
+    // email and password to this token, because a token handed out and then
+    // lost used to mean the history behind it was gone. /setup is one tap away
+    // once they have an account.
+    link: `${origin}/claim`,
   })
 }
 
@@ -159,7 +162,7 @@ async function renderAdmin(env: Env, user: User, oneTime: OneTime | null, o: Ren
   const body = `${consoleHeader(user, 'admin')}
 <main>
   <h1>发号</h1>
-  <p class="lede">一个 token 就是一个身份，没有注册、没有密码、没有邮箱。你在这里建人、生成 token，然后线下发给对方。</p>
+  <p class="lede">现在任何人都能自己注册，这里只用于线下发号——建一个人、生成 token，把下面那个链接和 token 一起给他，他绑上邮箱和密码之后就和自助注册的人没有区别了。</p>
   ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
   ${oneTime ? oneTimePanel(oneTime) : ''}
   <section class="card">

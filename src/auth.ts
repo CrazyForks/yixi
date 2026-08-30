@@ -1,20 +1,39 @@
 import type { Env, User } from './types'
-import { findUserByTokenHash, getUserById } from './db'
+import { createWebSession, deleteWebSession, findUserByTokenHash, findUserByWebSession } from './db'
+import { randomHex } from './crypto'
 
 /**
- * A token IS an identity here — no registration, no password, no email. Two
- * ways in, both resolving to the same `User`:
+ * Who is asking. Three ways in, all resolving to the same `User`:
  *
- *   ?k=<token>   the long-lived credential, handed out by the owner offline
- *   cookie       an HMAC-signed, stateless echo of a successful ?k= visit
+ *   ?k=<token>   the gate credential itself. The Shortcut cannot set headers
+ *                conveniently, so /gate takes it in the query string, and a
+ *                person holding it may also use it as a one-time way into the
+ *                pages — it seeds a session and then drops out of the URL.
+ *   cookie       a logged-in browser. The value is a `sessions_web` row id and
+ *                nothing else: opaque, 128 bits, meaningless without the row.
+ *   password     handled in account.ts, which mints the same cookie once the
+ *                password checks out.
  *
- * The cookie exists purely for privacy: /review is a minute-by-minute log of
- * someone's worst impulses, and a URL that carries the token to it would sit
- * forever in history, bookmarks and screenshots.
+ * The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was
+ * cheaper — no read, no table — but could not be taken back. Changing a
+ * password has to sign the old sessions out, and with a signed cookie the only
+ * lever is rotating COOKIE_SECRET, which evicts everyone at once. A row per
+ * session buys revocation for one indexed read per page view.
  */
 
 export const COOKIE_NAME = 'yixi'
-const COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60
+
+/**
+ * Six months. Long on purpose: this thing is opened by a Shortcut on a phone,
+ * and a login prompt at that moment is a login prompt between someone and the
+ * app they are already reaching for. The session is revocable, which is what
+ * makes a long life affordable.
+ */
+export const WEB_SESSION_TTL_SECONDS = 180 * 24 * 60 * 60
+
+/** 128-bit, hex — the whole cookie value, per migration 0002. */
+const SESSION_ID_BYTES = 16
+const SESSION_ID_RE = /^[0-9a-f]{32}$/
 
 export interface AuthResult {
   user: User
@@ -23,6 +42,10 @@ export interface AuthResult {
    * Set-Cookie and let the token drop out of the URL from here on.
    */
   seededFromToken: boolean
+  /** Which credential answered — for callers that must not accept a raw token. */
+  via: 'token' | 'cookie'
+  /** The session this request rode in on, or null when it came by ?k=. */
+  sessionId: string | null
 }
 
 /**
@@ -52,6 +75,12 @@ export async function sha256Hex(input: string): Promise<string> {
  * need a preimage to aim it), but the confirming comparison is still done in
  * constant time here so that no future refactor of that query can turn into a
  * character-by-character oracle on the credential itself.
+ *
+ * Accounts changed nothing here. The encrypted copy of the token is never read
+ * on this path: /gate is hit every time a phone opens a watched app, and a
+ * decrypt (or worse, a password hash) in that path would blow the request
+ * budget. The hash is the credential; the ciphertext is only ever shown back to
+ * somebody who has already proved who they are.
  */
 export async function userFromToken(env: Env, token: string): Promise<User | null> {
   if (!token) return null
@@ -64,44 +93,45 @@ export async function userFromToken(env: Env, token: string): Promise<User | nul
 
 // --- cookie ---------------------------------------------------------------
 
-function base64url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const b of bytes) binary += String.fromCharCode(b)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function sign(env: Env, payload: string): Promise<string> {
-  // An unset COOKIE_SECRET is `undefined` at runtime despite the Env type, and
-  // TextEncoder would happily encode it as the literal string "undefined" —
-  // a fixed, publicly known signing key. Fail loudly instead.
-  if (!env.COOKIE_SECRET) throw new Error('COOKIE_SECRET is not configured')
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(env.COOKIE_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
-  return base64url(new Uint8Array(sig))
-}
-
 /**
- * `<userId>.<expiryMs>.<hmac>` — stateless, so there is no session table to
- * grow and no extra read on every page. The expiry is inside the signed payload
- * rather than trusted from Max-Age, which the browser controls.
+ * Opens a browser session and returns the Set-Cookie that carries it.
+ *
+ * The cookie holds the session id verbatim. There is nothing to sign: the id is
+ * 128 bits of randomness that means nothing without its row, so a forged or
+ * tampered value simply fails to match one. (A signature would only save the
+ * lookup on junk cookies, which the shape check below already does for free.)
  */
 export async function issueCookie(env: Env, user: User): Promise<string> {
-  const payload = `${user.id}.${Date.now() + COOKIE_MAX_AGE_SECONDS * 1000}`
-  const value = `${payload}.${await sign(env, payload)}`
+  const id = randomHex(SESSION_ID_BYTES)
+  const now = Date.now()
+  await createWebSession(env.DB, {
+    id,
+    userId: user.id,
+    createdAt: now,
+    expiresAt: now + WEB_SESSION_TTL_SECONDS * 1000,
+  })
   // SameSite=Lax, not Strict: on a phone these pages are opened by a top-level
   // navigation from somewhere else entirely — a Shortcut, a note, a message —
   // and Strict would drop the cookie on exactly that arrival, forcing the token
   // back into the URL that this cookie exists to keep it out of.
-  return `${COOKIE_NAME}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}`
+  return `${COOKIE_NAME}=${id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${WEB_SESSION_TTL_SECONDS}`
 }
 
-function readCookie(request: Request, name: string): string | null {
+/**
+ * Drops the session row and the cookie with it. The row goes first: a cookie
+ * the browser refused to clear must not still open anything.
+ */
+export async function revokeCookie(env: Env, sessionId: string | null): Promise<string> {
+  if (sessionId && SESSION_ID_RE.test(sessionId)) await deleteWebSession(env.DB, sessionId)
+  return clearCookie()
+}
+
+/** Max-Age=0 with the same attributes, which is how a browser is told to forget one. */
+export function clearCookie(): string {
+  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
+}
+
+export function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get('Cookie')
   if (!header) return null
   for (const part of header.split(';')) {
@@ -112,25 +142,14 @@ function readCookie(request: Request, name: string): string | null {
   return null
 }
 
-async function userFromCookie(request: Request, env: Env): Promise<User | null> {
+export function sessionIdFrom(request: Request): string | null {
   const raw = readCookie(request, COOKIE_NAME)
-  if (!raw || !env.COOKIE_SECRET) return null
-
-  const cut = raw.lastIndexOf('.')
-  if (cut <= 0) return null
-  const payload = raw.slice(0, cut)
-  const signature = raw.slice(cut + 1)
-  if (!timingSafeEqual(signature, await sign(env, payload))) return null
-
-  const [idPart, expPart] = payload.split('.')
-  if (idPart === undefined || expPart === undefined) return null
-  const id = Number(idPart)
-  const expiresAt = Number(expPart)
-  if (!Number.isInteger(id) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null
-
-  // A signature only proves the id was ours once; the user may since have been
-  // deleted, so the row still has to exist.
-  return await getUserById(env.DB, id)
+  // Anything that is not a session id — junk, a truncated value, or one of the
+  // old signed `<id>.<expiry>.<sig>` cookies still sitting in a phone — is
+  // rejected here rather than in D1. Those old cookies are dead by design: a
+  // stateless credential cannot be revoked, so honouring them would reopen the
+  // hole this table was added to close.
+  return raw && SESSION_ID_RE.test(raw) ? raw : null
 }
 
 /**
@@ -143,8 +162,11 @@ export async function authenticate(request: Request, env: Env): Promise<AuthResu
   const token = new URL(request.url).searchParams.get('k')
   if (token !== null) {
     const user = await userFromToken(env, token)
-    return user ? { user, seededFromToken: true } : null
+    return user ? { user, seededFromToken: true, via: 'token', sessionId: null } : null
   }
-  const user = await userFromCookie(request, env)
-  return user ? { user, seededFromToken: false } : null
+
+  const sessionId = sessionIdFrom(request)
+  if (!sessionId) return null
+  const user = await findUserByWebSession(env.DB, sessionId, Date.now())
+  return user ? { user, seededFromToken: false, via: 'cookie', sessionId } : null
 }

@@ -80,7 +80,7 @@ const testUser = (id: number, name = '测试'): User => ({
   created_at: Date.parse('2026-01-01T00:00:00Z'),
 })
 
-const testEnv: Env = { DB, COOKIE_SECRET: env.COOKIE_SECRET }
+const testEnv: Env = { DB, COOKIE_SECRET: env.COOKIE_SECRET, TOKEN_KEY: env.TOKEN_KEY }
 
 // --------------------------------------------------------------------------
 

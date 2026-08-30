@@ -2,6 +2,7 @@ import type { Env, User } from '../types'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { listUserApps } from '../db'
+import { revealToken } from '../account'
 
 /**
  * GET /setup — how to actually wire this up, on the phone that has to do it.
@@ -13,26 +14,48 @@ import { listUserApps } from '../db'
  * both values, so it prints the finished string to copy rather than a template
  * to fill in.
  *
- * The token is only recoverable when the reader arrived with `?k=` still in the
- * URL; a cookie session cannot reproduce it, because only the hash is stored.
- * In that case the page says so and links back with the token in place.
+ * Accounts changed what "knows" means here. This page used to be able to print
+ * the token only for a reader who still had `?k=` in the address bar, because a
+ * cookie session had nothing but the hash to work from — which meant the normal
+ * way to reach this page was also the way that could not finish the job. Now the
+ * token is kept sealed under TOKEN_KEY as well, so any signed-in holder gets the
+ * finished string. The old degraded path survives for the one case that is still
+ * genuinely unreadable: a row from the ticket-window era that was never claimed,
+ * or one sealed under a key that has since been rotated.
  */
 export async function renderSetup(request: Request, env: Env, user: User): Promise<Response> {
   const url = new URL(request.url)
   const origin = url.origin
-  const token = url.searchParams.get('k')
+  // `?k=` still wins: it is the token the reader is holding right now, and it
+  // needs no decrypt. Falling back rather than always unsealing also keeps a
+  // freshly-issued token working before it has been sealed.
+  // Gated the same way /account gates it. This page is one nav tap from every
+  // other console page, and the string it prints is the key to that person's
+  // whole record — a page that shows it to anyone who picks up an unlocked
+  // phone is a worse default than one extra tap. A token still in the address
+  // bar is already on screen, so there is nothing left to withhold there.
+  const fromQuery = url.searchParams.get('k')
+  const reveal = fromQuery !== null || url.searchParams.get('show') === '1'
+  const token = reveal ? (fromQuery ?? (await revealToken(env, user))) : null
   const apps = await listUserApps(env.DB, user.id)
 
   // `&amp;` rather than a bare `&`: the browser renders both as `&` so the copied
   // string is right either way, but only one of them is correct markup.
   const gateUrl = token
     ? `${origin}/gate?app=[快捷指令输入]&amp;k=${escapeHtml(token)}`
-    : `${origin}/gate?app=[快捷指令输入]&amp;k=&lt;你的token&gt;`
+    : `${origin}/gate?app=[快捷指令输入]&amp;k=&lt;上面那串&gt;`
 
+  // Three states, and they are not the same thing. Collapsing "you have not
+  // asked yet" into "we cannot show you this" would tell a perfectly normal
+  // user their account is broken.
   const tokenLine = token
     ? `<pre class="copy">${escapeHtml(token)}</pre>`
-    : `<p class="warn">这一页是用 cookie 打开的，读不到你的 token 原文——库里只存哈希。
-       想看到可以直接复制的完整地址，带上 <code>?k=你的token</code> 重新打开这一页。</p>`
+    : reveal
+      ? `<p class="warn">服务器这边读不到你的 token 原文，只存着它的哈希——这个账号是发号时代建的，
+         从来没绑过邮箱和密码。<a href="/claim">绑一次</a>，以后这一页就能直接印出来；
+         或者现在带上 <code>?k=你的token</code> 重新打开这一页。</p>`
+      : `<p class="masked">············ <a class="linky" href="/setup?show=1">显示</a>
+         <span class="hint">它是你所有记录的钥匙，别在别人能看见屏幕的时候点。</span></p>`
 
   const appRows = apps.length
     ? apps
@@ -259,4 +282,13 @@ table.apps td{padding:8px 8px 8px 0;border-bottom:1px solid var(--rule);vertical
 table.apps .off{color:var(--faint)}
 table.apps .none{color:var(--dim);text-align:center;padding:18px 0}
 .doc a{color:var(--fg);text-underline-offset:3px}
+p.masked{
+  font-family:var(--num);letter-spacing:.18em;color:var(--faint);
+  background:var(--rule);border-radius:10px;padding:12px 14px;margin:0 0 1rem;
+}
+p.masked .linky{margin-left:.6rem;font-family:var(--font);letter-spacing:0}
+p.masked .hint{
+  display:block;margin-top:.5rem;font-family:var(--font);
+  font-size:.8rem;letter-spacing:0;color:var(--dim);
+}
 `

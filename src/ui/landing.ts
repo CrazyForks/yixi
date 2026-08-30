@@ -1,10 +1,15 @@
 import { DEFAULT_THEME, page } from './layout'
 
 /**
- * GET / — the only page a stranger can reach. It explains what 一息 is and
- * stops there: there is no sign-up, because a token IS the identity and tokens
- * are handed out by hand. Wearing the same skin as the breathing page means
- * flipping DEFAULT_THEME re-dresses the whole product at once.
+ * GET / — what a stranger sees, and now the front door as well: /register and
+ * /login are the two links that used to be "ask the person who gave you a
+ * token". Wearing the same skin as the breathing page means flipping
+ * DEFAULT_THEME re-dresses the whole product at once.
+ *
+ * The 隐私 section is the part to keep honest rather than flattering. Sealing a
+ * copy of the token so people can get it back is strictly weaker than storing
+ * only a hash, and this page says so in the same breath as the guarantee that
+ * still holds — otherwise the first paragraph is doing marketing.
  */
 export function renderLanding(): Response {
   return page({
@@ -32,17 +37,23 @@ export function renderLanding(): Response {
 过一阵你能看到自己一周被拦了多少次，其中多少次没进去。</p>
 
 <h2>关于隐私</h2>
-<p>一个 token 就是一个人。没有注册、没有邮箱、没有密码。
-token 只以哈希存放，生成时只显示一次。
-发号的人只看得到聚合次数，看不到任何一条明细——
+<p>注册只要一个邮箱和一个密码。邮箱不发信、不验证，只是你下次登录的用户名。</p>
+<p>真正的身份是一把 token，快捷指令拿它认人。它加密存在服务器上，
+所以你登录之后还能看回来——代价是数据库和密钥同时泄露时它会跟着泄。
+这是为了「忘了也找得回来」换的，值不值得你自己判断。</p>
+<p>记录只有你自己看得到。发号的人只看得到聚合次数，看不到任何一条明细——
 不然这东西没人会真的用。</p>
 
 <h2>长什么样</h2>
 <p class="looks">两版视觉，还没定：
 <a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></p>
 
-<p class="foot">这不是一个公开产品。想用的话，找发你 token 的人。<br>
-拿到 token 之后，打开 <code>/setup?k=你的token</code> 有一步一步的配置说明。</p>
+<h2>开始用</h2>
+<p class="looks go"><a href="/register">注册</a><a href="/login">登录</a></p>
+
+<p class="foot">已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——
+重新注册会拿到一把新的，旧记录就找不回来了。<br>
+配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。</p>
 </main>`,
   })
 }
@@ -74,5 +85,10 @@ li::marker{color:var(--faint)}
   border:1px solid var(--rule);border-radius:999px;
   text-decoration:none;font-size:.85rem;color:var(--dim);
 }
-.foot{margin-top:4rem;color:var(--faint);font-size:.82rem}
+/* The one thing on this page anybody is meant to press, so it is the one thing
+   wearing the breathing page's own button. */
+.looks.go a{margin:0 .8rem 0 0;padding:.5rem 1.6rem;font-size:.95rem;min-height:44px;color:var(--fg)}
+.looks.go a:first-child{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
+.foot{margin-top:4rem;color:var(--faint);font-size:.82rem;line-height:1.9}
+.foot a{color:var(--dim);text-underline-offset:3px}
 `

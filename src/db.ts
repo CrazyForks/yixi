@@ -1,4 +1,5 @@
-import type { EventKind, Session, User, UserApp } from './types'
+import type { EventKind, Session, User, UserApp, WebSession } from './types'
+import type { PasswordRecord, SealedToken } from './crypto'
 
 /**
  * Every D1 statement in the app lives here. Callers pass the binding itself
@@ -55,15 +56,259 @@ export async function listUsers(db: D1Database): Promise<User[]> {
   return res.results
 }
 
+/**
+ * `sealedToken` is optional only so older callers keep compiling; every caller
+ * that holds the plaintext should pass it. Creation is the sole moment the
+ * plaintext exists, and a row without a sealed copy can never show its holder
+ * their own key again.
+ */
 export async function createUser(
   db: D1Database,
-  u: { name: string; tokenHash: string; isOwner?: boolean; createdAt?: number },
+  u: {
+    name: string
+    tokenHash: string
+    isOwner?: boolean
+    createdAt?: number
+    sealedToken?: { cipher: string; iv: string }
+  },
 ): Promise<number> {
   const res = await db
-    .prepare('INSERT INTO users (name, token_hash, is_owner, created_at) VALUES (?1, ?2, ?3, ?4)')
-    .bind(u.name, u.tokenHash, u.isOwner ? 1 : 0, u.createdAt ?? Date.now())
+    .prepare(
+      `INSERT INTO users (name, token_hash, is_owner, created_at, token_cipher, token_iv)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    )
+    .bind(
+      u.name,
+      u.tokenHash,
+      u.isOwner ? 1 : 0,
+      u.createdAt ?? Date.now(),
+      u.sealedToken?.cipher ?? null,
+      u.sealedToken?.iv ?? null,
+    )
     .run()
   return Number(res.meta.last_row_id)
+}
+
+// --- accounts -------------------------------------------------------------
+
+/**
+ * A user row with its account credentials attached. Only account.ts asks for
+ * this shape, for the same reason `StoredUser` exists: everything else in the
+ * app takes the plain `User` and so cannot spill a hash into a page.
+ *
+ * Every account column is nullable because rows predating accounts have none of
+ * them — a token that was handed out by the owner is still a complete identity,
+ * it just cannot log in with a password until somebody claims it.
+ */
+export interface AccountRecord extends User {
+  email: string | null
+  password_hash: string | null
+  password_salt: string | null
+  password_iters: number | null
+}
+
+const ACCOUNT_COLUMNS =
+  'id, name, is_owner, created_at, email, password_hash, password_salt, password_iters'
+
+/** `email` must already be lowercased by the caller; the index is not collating. */
+export async function findAccountByEmail(db: D1Database, email: string): Promise<AccountRecord | null> {
+  return await db
+    .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM users WHERE email = ?1`)
+    .bind(email)
+    .first<AccountRecord>()
+}
+
+export async function findAccountById(db: D1Database, id: number): Promise<AccountRecord | null> {
+  return await db
+    .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM users WHERE id = ?1`)
+    .bind(id)
+    .first<AccountRecord>()
+}
+
+/**
+ * Creates a self-registered user: credentials, and both copies of the gate
+ * token — the hash /gate verifies against and the sealed copy the owner can
+ * read back.
+ *
+ * Throws on a duplicate email; the partial unique index is the only authority
+ * on that, since any check-then-insert has a race between the two. Callers use
+ * `isEmailTakenError` to tell that apart from a real failure.
+ */
+export async function createAccount(
+  db: D1Database,
+  a: {
+    name: string
+    email: string
+    password: PasswordRecord
+    tokenHash: string
+    sealedToken: SealedToken
+    isOwner?: boolean
+    createdAt?: number
+  },
+): Promise<number> {
+  const res = await db
+    .prepare(
+      `INSERT INTO users
+         (name, token_hash, is_owner, created_at,
+          email, password_hash, password_salt, password_iters, token_cipher, token_iv)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+    )
+    .bind(
+      a.name,
+      a.tokenHash,
+      a.isOwner ? 1 : 0,
+      a.createdAt ?? Date.now(),
+      a.email,
+      a.password.hash,
+      a.password.salt,
+      a.password.iterations,
+      a.sealedToken.cipher,
+      a.sealedToken.iv,
+    )
+    .run()
+  return Number(res.meta.last_row_id)
+}
+
+/**
+ * Binds an account to a user row that has none — the migration path for tokens
+ * handed out before accounts existed, including the owner's own.
+ *
+ * `email IS NULL` in the WHERE clause is the concurrency guard: two claims of
+ * the same token can only have one winner, and the loser is told the token is
+ * already taken rather than silently overwriting the winner's password.
+ *
+ * This is also the only moment an old row can ever get a `token_cipher`. The
+ * plaintext token exists nowhere on the server, so it can only be sealed while
+ * the holder is presenting it.
+ */
+export async function attachAccount(
+  db: D1Database,
+  userId: number,
+  a: { email: string; password: PasswordRecord; sealedToken: SealedToken },
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE users
+       SET email = ?2, password_hash = ?3, password_salt = ?4, password_iters = ?5,
+           token_cipher = ?6, token_iv = ?7
+       WHERE id = ?1 AND email IS NULL`,
+    )
+    .bind(
+      userId,
+      a.email,
+      a.password.hash,
+      a.password.salt,
+      a.password.iterations,
+      a.sealedToken.cipher,
+      a.sealedToken.iv,
+    )
+    .run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+/**
+ * Sets the password and drops every live session in one transaction.
+ *
+ * These have to land together. A password change that stored the new hash but
+ * failed to revoke would leave whoever the change was defending against still
+ * signed in on their own device — with the owner believing they had just locked
+ * them out. Failing the whole thing is the safe half of that pair.
+ */
+export async function updateUserPassword(db: D1Database, userId: number, p: PasswordRecord): Promise<void> {
+  await db.batch([
+    db
+      .prepare('UPDATE users SET password_hash = ?2, password_salt = ?3, password_iters = ?4 WHERE id = ?1')
+      .bind(userId, p.hash, p.salt, p.iterations),
+    db.prepare('DELETE FROM sessions_web WHERE user_id = ?1').bind(userId),
+  ])
+}
+
+/** The encrypted copy of the gate token, for showing a logged-in owner their key. */
+export async function getSealedToken(db: D1Database, userId: number): Promise<SealedToken | null> {
+  const row = await db
+    .prepare('SELECT token_cipher, token_iv FROM users WHERE id = ?1')
+    .bind(userId)
+    .first<{ token_cipher: string | null; token_iv: string | null }>()
+  if (!row || row.token_cipher === null || row.token_iv === null) return null
+  return { cipher: row.token_cipher, iv: row.token_iv }
+}
+
+/**
+ * Whether a failed write was the email uniqueness index firing.
+ *
+ * D1 wraps SQLite's message ("UNIQUE constraint failed: users.email") rather
+ * than exposing a code, so the table.column name is matched explicitly: a
+ * token_hash collision is a different bug entirely and must not be reported to
+ * a stranger as "that email is taken".
+ */
+export function isEmailTakenError(err: unknown): boolean {
+  const parts = [String(err)]
+  if (err instanceof Error && err.cause !== undefined) parts.push(String(err.cause))
+  return parts.some((p) => /UNIQUE constraint failed:\s*users\.email/i.test(p))
+}
+
+// --- web sessions ---------------------------------------------------------
+
+export async function createWebSession(
+  db: D1Database,
+  s: { id: string; userId: number; createdAt: number; expiresAt: number },
+): Promise<void> {
+  await db
+    .prepare('INSERT INTO sessions_web (id, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)')
+    .bind(s.id, s.userId, s.createdAt, s.expiresAt)
+    .run()
+}
+
+export async function getWebSession(db: D1Database, id: string): Promise<WebSession | null> {
+  return await db
+    .prepare('SELECT id, user_id, created_at, expires_at FROM sessions_web WHERE id = ?1')
+    .bind(id)
+    .first<WebSession>()
+}
+
+/**
+ * Resolves a cookie to its user in one round trip, or null.
+ *
+ * The join is not an optimisation for its own sake: this runs on every page
+ * view, and the alternative — read the session, then read the user — doubles
+ * the D1 latency of every request on a phone that is already waiting.
+ *
+ * Expiry is enforced here rather than by a sweep, so a session is dead the
+ * moment it lapses even if nothing has cleaned it up yet.
+ */
+export async function findUserByWebSession(db: D1Database, id: string, now: number): Promise<User | null> {
+  return await db
+    .prepare(
+      `SELECT u.id, u.name, u.is_owner, u.created_at
+       FROM sessions_web s JOIN users u ON u.id = s.user_id
+       WHERE s.id = ?1 AND s.expires_at > ?2`,
+    )
+    .bind(id, now)
+    .first<User>()
+}
+
+export async function deleteWebSession(db: D1Database, id: string): Promise<void> {
+  await db.prepare('DELETE FROM sessions_web WHERE id = ?1').bind(id).run()
+}
+
+/**
+ * Signs a user out of every browser. This is what a password change and a token
+ * reset are for — a stateless cookie could not do it, which is why the table
+ * exists at all.
+ */
+export async function deleteWebSessionsForUser(db: D1Database, userId: number): Promise<number> {
+  const res = await db.prepare('DELETE FROM sessions_web WHERE user_id = ?1').bind(userId).run()
+  return res.meta.changes ?? 0
+}
+
+/**
+ * Housekeeping for the nightly cron. Lapsed rows are already refused by
+ * `findUserByWebSession`, so this only stops the table growing — notably from
+ * `?k=` arrivals, each of which mints a fresh session.
+ */
+export async function deleteExpiredWebSessions(db: D1Database, now: number): Promise<number> {
+  const res = await db.prepare('DELETE FROM sessions_web WHERE expires_at <= ?1').bind(now).run()
+  return res.meta.changes ?? 0
 }
 
 // --- user_apps ------------------------------------------------------------
@@ -126,21 +371,6 @@ export async function getSession(db: D1Database, sid: string): Promise<Session |
     .first<Session>()
 }
 
-/**
- * Claims a session for exactly one resolution and reports whether this caller
- * won. The `resolved_at IS NULL` guard lives inside the UPDATE rather than in a
- * read-then-write, because /resolve is hit by `sendBeacon` — retried by the
- * browser, and fired again by a double tap — and two concurrent claims that
- * both saw NULL would otherwise both log an event. This one statement is the
- * whole idempotency mechanism.
- */
-export async function resolveSessionOnce(db: D1Database, sid: string, resolvedAt: number): Promise<boolean> {
-  const res = await db
-    .prepare('UPDATE sessions SET resolved_at = ?2 WHERE sid = ?1 AND resolved_at IS NULL')
-    .bind(sid, resolvedAt)
-    .run()
-  return (res.meta.changes ?? 0) > 0
-}
 
 /**
  * Sessions are write-once breadcrumbs; only `events` is worth keeping. Trimming

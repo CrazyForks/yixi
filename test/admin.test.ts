@@ -29,12 +29,21 @@ async function reset(): Promise<void> {
   ])
 }
 
-async function seedUser(name: string, opts: { token?: string; isOwner?: boolean } = {}): Promise<User> {
+async function seedUser(
+  name: string,
+  opts: { token?: string; isOwner?: boolean; email?: string } = {},
+): Promise<User> {
   const createdAt = Date.now()
   const res = await env.DB.prepare(
-    'INSERT INTO users (name, token_hash, is_owner, created_at) VALUES (?1, ?2, ?3, ?4)',
+    'INSERT INTO users (name, token_hash, is_owner, created_at, email) VALUES (?1, ?2, ?3, ?4, ?5)',
   )
-    .bind(name, await sha256Hex(opts.token ?? `${name}-token`), opts.isOwner ? 1 : 0, createdAt)
+    .bind(
+      name,
+      await sha256Hex(opts.token ?? `${name}-token`),
+      opts.isOwner ? 1 : 0,
+      createdAt,
+      opts.email ?? null,
+    )
     .run()
   return { id: Number(res.meta.last_row_id), name, is_owner: opts.isOwner ? 1 : 0, created_at: createdAt }
 }
@@ -94,6 +103,19 @@ describe('隐私红线：owner 拿不到他人的 events 明细', () => {
     await seedEvent(friend.id, 'attempt', Date.now() - 30 * DAY_MS)
     return { owner, friend, eventTs }
   }
+
+  it('never renders another account\'s email address', async () => {
+    const owner = await seedUser('owner', { token: 'owner-token', isOwner: true, email: 'owner@example.com' })
+    await seedUser('老王', { token: 'friend-token', email: 'laowang-private@example.com' })
+
+    const html = await (await get('/admin', owner)).text()
+
+    // Accounts put a new piece of PII on the users table, and the same rule that
+    // keeps somebody else's abandon rate off this page covers their email. The
+    // roster answers "is this token being used", nothing more.
+    expect(html).not.toContain('laowang-private@example.com')
+    expect(html).not.toContain('@example.com')
+  })
 
   it('渲染聚合计数，但页面里没有任何一条 event 明细', async () => {
     const { owner, friend, eventTs } = await seedFriendWithHistory()

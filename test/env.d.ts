@@ -3,5 +3,6 @@ declare module 'cloudflare:test' {
     DB: D1Database
     TEST_MIGRATIONS: D1Migration[]
     COOKIE_SECRET: string
+    TOKEN_KEY: string
   }
 }

@@ -11,7 +11,7 @@ import { escapeHtml } from './layout'
 
 // --- shared console chrome -------------------------------------------------
 
-export type ConsolePage = 'review' | 'settings' | 'probe' | 'setup' | 'admin'
+export type ConsolePage = 'review' | 'settings' | 'probe' | 'setup' | 'account' | 'admin'
 
 export function consoleHeader(user: User, active: ConsolePage): string {
   const tab = (href: string, name: ConsolePage, text: string) =>
@@ -24,6 +24,7 @@ export function consoleHeader(user: User, active: ConsolePage): string {
     ${tab('/settings', 'settings', '设置')}
     ${tab('/probe', 'probe', '实测')}
     ${tab('/setup', 'setup', '怎么配')}
+    ${tab('/account', 'account', '账号')}
     ${user.is_owner ? tab('/admin', 'admin', '发号') : ''}
   </nav>
 </header>`
@@ -54,7 +55,12 @@ header,main{max-width:520px;margin:0 auto;padding:0 18px}
 header{display:flex;align-items:baseline;gap:10px;padding-top:26px;padding-bottom:14px}
 .brand{font-size:19px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
 .who{font-size:12px;color:var(--faint)}
-header nav{margin-left:auto;display:flex;gap:15px;font-size:13px}
+header nav{
+  margin-left:auto;display:flex;gap:15px;font-size:13px;
+  overflow-x:auto;white-space:nowrap;scrollbar-width:none;
+}
+header nav::-webkit-scrollbar{display:none}
+header nav a{flex:none}
 header nav a{color:var(--dim);text-decoration:none}
 header nav a.on{color:var(--fg)}
 main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}

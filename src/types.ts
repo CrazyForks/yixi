@@ -1,7 +1,21 @@
 export interface Env {
   DB: D1Database
-  /** HMAC key for the /review session cookie. `wrangler secret put COOKIE_SECRET`. */
+  /**
+   * Legacy. Browser sessions are rows in `sessions_web` now and the cookie
+   * carries only an opaque id, so nothing is signed with this any more. Kept
+   * so existing deployments do not have to drop a secret to upgrade.
+   */
   COOKIE_SECRET: string
+  /**
+   * AES-GCM key the gate tokens are sealed under, so a logged-in holder can
+   * read their own key back. `wrangler secret put TOKEN_KEY`.
+   *
+   * Never reaches D1. Rotating it does not lock anybody out — /gate verifies
+   * against `token_hash` and never touches the ciphertext — it only makes the
+   * old sealed copies unreadable, so people would have to be re-issued a token
+   * to see one again.
+   */
+  TOKEN_KEY: string
 }
 
 export interface User {
@@ -27,6 +41,21 @@ export interface Session {
   app: string
   created_at: number
   resolved_at: number | null
+}
+
+/**
+ * A logged-in browser. Distinct from `Session` above, which is one
+ * interception; these two never mix and are deliberately named apart.
+ *
+ * The id is the entire cookie value, so a row here is the only thing that makes
+ * a cookie work: deleting it signs that browser out, and deleting a user's rows
+ * signs them out everywhere. That is the whole reason this table exists.
+ */
+export interface WebSession {
+  id: string
+  user_id: number
+  created_at: number
+  expires_at: number
 }
 
 /**
