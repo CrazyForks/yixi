@@ -130,4 +130,35 @@ describe('probe', () => {
     expect(html).not.toContain('</script><img>')
     expect(html).toContain('\\u003c/script')
   })
+
+  it('refuses a grace window too short to survive the trip back', async () => {
+    // Tapping 继续 has to outlast Safari handing off plus the app cold-starting
+    // plus the automation firing again. A few seconds does not cover it, and the
+    // symptom — intercepted again the instant you arrive — reads as the whole
+    // tool being broken rather than as one number being wrong.
+    const res = await post({
+      op: 'save',
+      app: 'xhs',
+      label: '小红书',
+      scheme: 'xhsdiscover://',
+      wait_seconds: '5',
+      grace_seconds: '5',
+      enabled: 'on',
+    })
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain('刚跳回 App 就又被拦')
+  })
+
+  it('accepts the recommended window', async () => {
+    const res = await post({
+      op: 'save',
+      app: 'xhs',
+      label: '小红书',
+      scheme: 'xhsdiscover://',
+      wait_seconds: '5',
+      grace_seconds: '90',
+      enabled: 'on',
+    })
+    expect(res.status).toBe(303)
+  })
 })

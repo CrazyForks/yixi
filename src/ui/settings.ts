@@ -108,6 +108,13 @@ const SCHEME_PREFIX = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
  */
 
 
+/**
+ * Below this the return trip does not fit: tap 继续 → Safari hands off → the app
+ * cold-starts → the automation fires again. Somewhere in there the window has to
+ * still be open, or the user lands back in the breathing page they just left.
+ */
+const MIN_GRACE_SECONDS = 30
+
 function validAppKey(raw: string): string | null {
   return APP_KEY.test(raw) ? raw : null
 }
@@ -130,7 +137,13 @@ function validate(d: Draft): Omit<UserApp, 'user_id'> | string {
   if (wait === null || wait < 1 || wait > 120) return '等待秒数要是 1 到 120 之间的整数。'
 
   const grace = int(d.grace, DEFAULT_GRACE_SECONDS)
-  if (grace === null || grace < 5 || grace > 3600) return '免打扰秒数要是 5 到 3600 之间的整数。'
+  // The floor is not cosmetic. Tapping 继续 has to survive Safari handing off,
+  // the app cold-starting, and the automation firing again on the way in — a
+  // few seconds of real time. Set it below that and the user is intercepted
+  // again the moment they arrive, which reads as the tool being broken.
+  if (grace === null || grace < MIN_GRACE_SECONDS || grace > 3600) {
+    return `免打扰秒数要是 ${MIN_GRACE_SECONDS} 到 3600 之间的整数。太短会让你刚跳回 App 就又被拦。`
+  }
 
   return {
     app,
@@ -285,10 +298,10 @@ function secondsFields(wait: number, grace: number, ns: string): string {
     </div>
     <div class="field">
       <label for="${g}">免打扰 · 秒</label>
-      <input id="${g}" type="number" name="grace_seconds" value="${grace}" min="5" max="3600" step="1" inputmode="numeric" required>
+      <input id="${g}" type="number" name="grace_seconds" value="${grace}" min="30" max="3600" step="1" inputmode="numeric" required>
     </div>
   </div>
-  <p class="note note-tight">「免打扰」是点了「继续」之后不再拦你的时长。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。</p>`
+  <p class="note note-tight">「免打扰」是点了「继续」之后不再拦你的时长，<b>建议 90 秒</b>。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。设得太短（几秒）会让你刚跳回 App 就又被拦。</p>`
 }
 
 function enabledField(on: boolean, ns: string): string {
