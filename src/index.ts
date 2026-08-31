@@ -6,6 +6,7 @@ import { renderMock } from './ui/mock'
 import { renderReview } from './ui/review'
 import { renderProbe } from './ui/probe'
 import { renderSetup } from './ui/setup'
+import { handleLookup } from './ui/lookup'
 import {
   handleAccount,
   handleClaim,
@@ -75,6 +76,7 @@ export default {
       if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/probe' && method === 'GET') res = await renderProbe(env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
+      else if (path === '/lookup') res = await handleLookup(request, env, user)
       else if (path === '/setup' && method === 'GET') res = await renderSetup(request, env, user)
       else if (path === '/settings') res = await handleSettings(request, env, user)
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)

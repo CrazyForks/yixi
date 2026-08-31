@@ -11,7 +11,7 @@ import { escapeHtml } from './layout'
 
 // --- shared console chrome -------------------------------------------------
 
-export type ConsolePage = 'review' | 'settings' | 'probe' | 'setup' | 'account' | 'admin'
+export type ConsolePage = 'review' | 'settings' | 'lookup' | 'probe' | 'setup' | 'account' | 'admin'
 
 export function consoleHeader(user: User, active: ConsolePage): string {
   const tab = (href: string, name: ConsolePage, text: string) =>
@@ -22,6 +22,7 @@ export function consoleHeader(user: User, active: ConsolePage): string {
   <nav>
     ${tab('/review', 'review', '回顾')}
     ${tab('/settings', 'settings', '设置')}
+    ${tab('/lookup', 'lookup', '候选')}
     ${tab('/probe', 'probe', '实测')}
     ${tab('/setup', 'setup', '怎么配')}
     ${tab('/account', 'account', '账号')}
