@@ -58,7 +58,7 @@ The price is that the animation is not as smooth as native, and a Safari cold st
 
 One Cloudflare Worker and one D1 database. The whole app is a single `fetch` handler plus a nightly cron.
 
-- Every page is server-rendered, with CSS and JavaScript inlined. **Zero external requests** — no CDN, no web font, not even a favicon fetch. This is enforced by a `default-src 'none'` CSP, not just intended: the moment these pages open is the moment someone is reaching for a distraction on a bad connection, and one blocking round trip would end the product.
+- Every page is server-rendered, with CSS and JavaScript inlined. **Zero external requests** — no CDN, no web font, not even a favicon fetch. This is enforced by a `default-src 'none'` CSP, not just intended: the moment these pages open is the moment someone is reaching for a distraction on a bad connection, and one blocking round trip would end the product. The single exception is the optional Turnstile widget on `/register`, which is a sign-up page rather than an interception page — see step 6.
 - No client framework, no runtime dependencies. The `package.json` has five devDependencies and nothing else.
 - The interception log is never deleted. Sessions, logins and rate-limit windows are trimmed nightly; `events` is the product and stays forever.
 - Accounts are email + password, and the password is only ever a convenience. The real credential is a 128-bit random **gate token** that the Shortcut carries.
@@ -75,7 +75,7 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
 | `/lookup` | you | type an app name, get candidate URL schemes with sources |
-| `/probe` | you | tap-test each URL scheme on the actual phone |
+| `/probe` | — | kept as a 302 to `/lookup`; the two pages were merged, and old links and bookmarks still work |
 | `/setup` | you | the Shortcut walkthrough, with your own host and token filled in |
 | `/account` | you | read your gate token back, change your password, sign out |
 | `/mock?v=1\|2` | anyone | the two candidate visual skins, side by side |
@@ -175,9 +175,38 @@ npx wrangler pages deploy --branch main
 
 You get a `https://<project>.pages.dev`. Note that `*.pages.dev` subdomains are globally unique — if the name is taken, Cloudflare appends a suffix, and that suffixed hostname is the one to use everywhere below.
 
-### 6. Register, then make yourself owner
+### 6. Turn on the bot check (optional, and skipping it is supported)
 
-Open `https://<your-host>/register` and sign up with an email and a password. That is all a normal user ever needs; registration is open.
+Registration is open to anyone who finds the URL, and since this repository is public, the URL is too. The per-IP throttle in `src/ratelimit.ts` holds one address to 5 sign-ups an hour; it does nothing about a script spread over a few hundred addresses. [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) closes that gap, on `/register` and nowhere else.
+
+1. Cloudflare dashboard → **Turnstile** → **Add widget**. Widget mode **Managed**.
+2. Under hostnames, add **both** deployments — `<project>.pages.dev` *and* `<worker>.<subdomain>.workers.dev` — because both of them serve `/register`. Add `localhost` too if you want the challenge to appear in `npm run dev`.
+3. Copy the two values it hands you: a **site key** (public — it is rendered into the page) and a **secret key** (never leaves the server).
+4. Set both on both deployments:
+
+```bash
+# Worker
+npx wrangler secret put TURNSTILE_SITE_KEY   # paste the site key
+npx wrangler secret put TURNSTILE_SECRET     # paste the secret key
+
+# Pages — the same two values
+cd pages
+npx wrangler pages secret put TURNSTILE_SITE_KEY --project-name yixi
+npx wrangler pages secret put TURNSTILE_SECRET --project-name yixi
+```
+
+`TURNSTILE_SITE_KEY` is public, so it could equally be a `[vars]` entry in `wrangler.toml`. It is a secret here only so the two values travel together and cannot get half-deployed.
+
+**Leaving this out is a supported configuration, not a broken one.** With either value missing, no widget renders, nothing is verified, and `/register` behaves exactly as it did before this existed — which is what lets `npm run dev` and a first deploy work with no Cloudflare widget at all. The price is worth saying out loud: no keys means no bot protection beyond the per-IP throttle. Same fail-open judgment as everywhere else in this product — see [SECURITY.md](SECURITY.md).
+
+Two more things worth knowing:
+
+- **This is the only place the "zero external requests" rule is broken.** The widget script loads from `challenges.cloudflare.com`, which is the single origin the CSP allows — on `/register`, and only while the keys are set. Every other page keeps `default-src 'none'` with no exceptions. See the comment above `TURNSTILE_ORIGIN` in `src/ui/layout.ts`.
+- **The challenge needs JavaScript.** With a widget configured, a browser with JavaScript off cannot sign up. The form says so.
+
+### 7. Register, then make yourself owner
+
+Open `https://<your-host>/register` and sign up with an email and a password. That is all a normal user ever needs; registration is open (behind the Turnstile challenge, if you set one up in step 6).
 
 Owner is a separate thing, and there is deliberately no UI to grant it. If you want `/admin` (minting tokens for people offline), flip the flag directly:
 
@@ -188,11 +217,11 @@ npx wrangler d1 execute yixi --remote --command \
 
 `/admin` is entirely optional. Since registration is open, its only remaining job is handing a token to someone who would rather not create an account.
 
-### 7. Set up your first app
+### 8. Set up your first app
 
 1. `/settings` — add an app. The **app key** (e.g. `xhs`) is the string you will retype inside the iOS automation, and it must match exactly. Lowercase letters, digits, `-` and `_` only.
 2. `/lookup` — type the app's name to get candidate URL schemes, each labelled with where it came from. **None of them is verified.**
-3. `/probe` — open this on the iPhone and tap each candidate. Only the one that actually jumps counts.
+3. `/lookup` — open this on the iPhone and tap each candidate under 「实测」. Only the one that actually jumps counts.
 4. `/setup` — the Shortcut walkthrough, with your real host and token already pasted into the lines you need.
 
 ## Wiring up the iOS Shortcut
@@ -267,13 +296,14 @@ Read these before deploying. Some of them cannot be fixed in code.
 
 - **One iOS automation per app.** "When app is opened" takes exactly one app; there is no bulk mode and no multi-select. Five apps means five automations, built by hand. One Sec and every tool like it has the same constraint. This cannot be worked around from the server.
 - **The three iOS risks are settled.** Measured on a real device on 2026-08-31: the "when app is opened" automation runs with no confirmation prompt once 「运行前询问」 is off, the network round-trip per launch is unobtrusive, and tapping 继续 does hand control back to the target app. `xhsdiscover://` and `QDReader://` are the two schemes this project has actually observed working; everything else in the table is transcribed, not tested.
-- **Some apps have removed their URL scheme entirely.** Nothing in `/probe` will jump for them, no matter which candidate you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
+- **Some apps have removed their URL scheme entirely.** Nothing under `/lookup`'s 「实测」 section will jump for them, no matter which candidate you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
 - **One network round trip on every app open.** No client cache, no offline fallback. On a weak signal it is perceptible. If it ever becomes intolerable, that is a signal to change the architecture, not the configuration.
 - **The App Store fallback in `/lookup` does not work from the Cloudflare edge.** When an app is not in the bundled table, `/lookup` tries `itunes.apple.com` to confirm the app exists and get its bundle id. That call fails from the Worker runtime while working fine from a laptop. Known, not yet fixed. The page reports "could not check" and refuses to invent a scheme, so nothing is silently wrong; the main path is unaffected.
 - **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
 - **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
 - **A breathing page left open for hours can still be resolved.** `/resolve` deliberately has no freshness check: refusing a stale resolve means no grace window opens, so jumping back to the app gets you intercepted instantly and you are in the loop. `/b` does refuse to *render* a session older than ten minutes, so this only applies to a page that was already loaded.
 - **JavaScript is required** on the breathing page (there is a `<noscript>` telling you to go back to the home screen).
+- **JavaScript is also required to register, once Turnstile is configured.** The widget cannot produce a token without it, and a missing token is refused — the form says so in a `<noscript>` line. Not configuring Turnstile leaves `/register` working without JavaScript, as before.
 - **The two visual skins are still unresolved.** `/mock?v=1` is 「墨」 (ink washes on near-black, serif) and `?v=2` is 「息」 (a hairline ring and one dot). `DEFAULT_THEME` in `src/ui/layout.ts` is `ink`. Flip that one constant to change the product's face.
 - **This is a nudge, not a blocker.** Anyone can disable the automation in two taps. That is by design — see the fail-open discussion above — and it means the tool only works for someone who wants it to.
 
@@ -284,10 +314,10 @@ Read these before deploying. Some of them cannot be fixed in code.
 | Runtime | Cloudflare Workers (also deployed as a Pages Function) |
 | Storage | Cloudflare D1 (SQLite) |
 | Language | TypeScript, strict, no runtime dependencies |
-| Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) |
+| Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 281 tests over 13 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 350 tests over 16 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
@@ -301,6 +331,7 @@ src/crypto.ts       PBKDF2 passwords, AES-GCM token sealing, random hex
 src/db.ts           every D1 statement in the app, and nothing else
 src/stats.ts        /review aggregation; the grace_pass exclusion lives here
 src/ratelimit.ts    per-IP fixed-window throttle for the open endpoints
+src/turnstile.ts    the optional /register challenge, and its fail-open rules
 src/scheme.ts       the URL-scheme denylist — one authority, three call sites
 src/schemes.ts      frozen snapshot of two public scheme collections (60 apps)
 src/types.ts        Env, User, event kinds, the shared constants

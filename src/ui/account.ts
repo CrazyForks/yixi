@@ -39,6 +39,7 @@ import {
 } from '../account'
 import { sessionIdFrom } from '../auth'
 import { shanghaiDate } from '../db'
+import { TURNSTILE_FIELD, turnstileKeys, verifyTurnstile } from '../turnstile'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 
@@ -57,19 +58,41 @@ const FORM_UNREADABLE = '表单没读出来，重试一次。'
 // --- /register --------------------------------------------------------------
 
 export async function handleRegister(request: Request, env: Env): Promise<Response> {
-  if (request.method === 'GET') return registerPage({})
+  // Read once and reuse: the site key renders the widget, the secret verifies
+  // it, and a deployment with neither renders no widget and verifies nothing.
+  const turnstile = turnstileKeys(env)
+  const siteKey = turnstile?.siteKey ?? null
+
+  if (request.method === 'GET') return registerPage({ siteKey })
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return registerPage({ error: FORM_UNREADABLE, status: 400 })
+  if (!form) return registerPage({ siteKey, error: FORM_UNREADABLE, status: 400 })
 
   const draft: SignupDraft = { email: field(form, 'email'), name: field(form, 'name') }
   const password = secret(form, 'password')
 
+  // Deliberately the first thing checked, ahead of the password-match test and
+  // well ahead of register()'s PBKDF2. Not only to save the work: this page is
+  // the one place in the product that answers "is this address already
+  // registered" (see SECURITY.md — it is an unavoidable leak in a signup form
+  // with no verification mail), so putting the challenge first means that
+  // oracle costs a solved challenge too, not just a cheap POST.
+  //
+  // Reads as a no-op when no widget is configured; that is the whole fail-open
+  // design, and src/turnstile.ts explains what it costs.
+  const human = await verifyTurnstile(turnstile, field(form, TURNSTILE_FIELD))
+  if (!human.allow) {
+    // One sentence for every way this can fail — no token, expired token,
+    // replayed token, forged token — in the same spirit as /login below. The
+    // outcome type does not even carry the reason, so this cannot drift.
+    return registerPage({ siteKey, draft, error: CHALLENGE_FAILED, status: 400 })
+  }
+
   // Whether two boxes match is a question about this form, not about the
   // account, so it never reaches src/account.ts.
   if (password !== secret(form, 'password2')) {
-    return registerPage({ draft, error: MISMATCH, status: 400 })
+    return registerPage({ siteKey, draft, error: MISMATCH, status: 400 })
   }
 
   const res = await register(env, { email: draft.email, password, name: draft.name || undefined })
@@ -81,7 +104,7 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
       res.error === 'email_taken'
         ? { href: `/login?email=${encodeURIComponent(draft.email)}`, label: '去登录 →' }
         : undefined
-    return registerPage({ draft, error: accountErrorMessage(res.error), status: 400, action })
+    return registerPage({ siteKey, draft, error: accountErrorMessage(res.error), status: 400, action })
   }
 
   // 303 rather than rendering the account page from this POST: a phone that
@@ -95,6 +118,8 @@ interface SignupDraft {
 }
 
 interface RegisterOptions {
+  /** Non-null only when a Turnstile widget is configured; see src/turnstile.ts. */
+  siteKey: string | null
   draft?: SignupDraft
   error?: string
   status?: number
@@ -106,6 +131,9 @@ function registerPage(o: RegisterOptions): Response {
   return gatePage({
     title: '注册 · 一息',
     status: o.status,
+    // The only page in the product that loads anything from another host, and
+    // only while a widget is actually configured. layout.ts explains the break.
+    turnstile: o.siteKey !== null,
     body: `<h1>注册</h1>
 <p class="lede">注册之后你会拿到一把 <b>token</b>。iPhone 的「快捷指令」拿它认出你，你被拦下的每一条记录也都记在它名下。它就是这个账号本身。</p>
 ${banner(o.error, 'bad', o.action)}
@@ -132,6 +160,7 @@ ${banner(o.error, 'bad', o.action)}
     </div>
     ${passwordField('f-reg-pw', 'password', `密码 · 至少 ${PASSWORD_MIN} 位`, 'new-password')}
     ${passwordField('f-reg-pw2', 'password2', '再打一遍', 'new-password')}
+    ${turnstileWidget(o.siteKey)}
     <div class="actions">
       <button class="primary" type="submit">注册</button>
     </div>
@@ -594,6 +623,8 @@ interface GatePageOptions {
   title: string
   body: string
   status?: number
+  /** Only /register ever sets this, and only when a widget is configured. */
+  turnstile?: boolean
 }
 
 /**
@@ -606,8 +637,9 @@ function gatePage(o: GatePageOptions): Response {
   return page({
     title: o.title,
     theme: DEFAULT_THEME,
-    css: CONSOLE_CSS + ACCOUNT_CSS,
+    css: CONSOLE_CSS + ACCOUNT_CSS + (o.turnstile ? TURNSTILE_CSS : ''),
     status: o.status ?? 200,
+    ...(o.turnstile ? { turnstile: true } : {}),
     body: `<main class="gate">
 <a class="mark" href="/">一息</a>
 ${o.body}
@@ -650,6 +682,14 @@ function safeNext(raw: string | null, base: string): string | undefined {
 }
 
 const MISMATCH = '两次输入的密码不一样，再来一次。'
+
+/**
+ * Every Turnstile rejection, worded once. Which one it was — nothing submitted,
+ * expired, already used, forged — is exactly the thing not to tell whoever is
+ * probing, and `TurnstileOutcome` does not carry the reason to this layer at all,
+ * so there is nothing here to accidentally branch on.
+ */
+const CHALLENGE_FAILED = '人机验证没过。刷新这一页，重新验证一次。'
 
 /**
  * `action` is the way out of the problem the banner just described — "this
@@ -700,6 +740,32 @@ function tokenField(id: string): string {
       <label for="${id}">token · 32 位十六进制，粘贴进来</label>
       <input id="${id}" type="text" name="token" required maxlength="200" class="mono"
         autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="latin">
+    </div>`
+}
+
+/**
+ * The Turnstile widget, and nothing at all when no widget is configured — which
+ * is what keeps `npm run dev` and a fresh self-host deploy working.
+ *
+ * Implicit rendering (a `cf-turnstile` div, no JavaScript of our own): the
+ * script finds the div, draws itself, and injects a hidden `cf-turnstile-response`
+ * input into the enclosing form. So the plain POST/redirect/GET form at the top
+ * of this file stays exactly that — no fetch, no submit handler, nothing to go
+ * wrong on a bad connection, which is the property these pages are built around.
+ *
+ * `data-theme="auto"` so the widget follows the same prefers-color-scheme switch
+ * the rest of the page does. `data-action` is Turnstile's own analytics marker.
+ *
+ * The <noscript> line matters: with a widget configured, no JavaScript means no
+ * token and therefore no sign-up. Saying so beats a form that rejects every
+ * attempt without ever explaining why.
+ */
+function turnstileWidget(siteKey: string | null): string {
+  if (siteKey === null) return ''
+  return `<div class="field">
+      <div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}"
+        data-action="turnstile-spin-v1" data-theme="auto" data-language="zh-cn"></div>
+      <noscript><p class="note flat">人机验证需要 JavaScript，请先在浏览器里打开它。</p></noscript>
     </div>`
 }
 
@@ -764,4 +830,21 @@ main.gate h1{margin:0 0 .5rem;font-size:1.25rem;font-weight:400;letter-spacing:.
 }
 .tok.masked{color:var(--faint);letter-spacing:.3em;-webkit-user-select:none;user-select:none}
 a.linky.tap,button.linky.tap{display:inline-flex;align-items:center;min-height:44px;text-decoration:underline}
+`
+
+/**
+ * Shipped only on the one page that has a widget, not folded into ACCOUNT_CSS.
+ * Two reasons, and the second is the one that matters: /login, /claim and
+ * /recover have no widget to style, and a test asserts that the string
+ * `cf-turnstile` does not appear on them at all — an invariant that is only
+ * worth anything if a stray CSS rule cannot satisfy it.
+ *
+ * Turnstile draws itself in a fixed 300px-wide iframe and offers no narrower
+ * variant that keeps the checkbox on one line. That is wider than this column
+ * inside a 320px phone, so it gets scaled in place there: a page-wide
+ * horizontal scrollbar on the sign-up form is the worse outcome.
+ */
+const TURNSTILE_CSS = `
+.cf-turnstile{max-width:100%}
+@media (max-width:360px){.cf-turnstile{transform:scale(.82);transform-origin:top left;height:54px}}
 `

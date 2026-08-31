@@ -1,6 +1,6 @@
-// Shared chrome for the three "console" pages — /settings, /probe, /admin (and
-// the nav /review renders too). They must read as one surface that people tab
-// between, not four separate designs.
+// Shared chrome for the "console" pages — /settings, /lookup, /setup, /account,
+// /admin (and the nav /review renders itself). They must read as one surface
+// that people tab between, not five separate designs.
 //
 // This lives in its own module rather than inside any one page: a page module
 // that doubles as the shared library for its siblings is a dependency direction
@@ -8,22 +8,41 @@
 
 import type { User } from '../types'
 import { escapeHtml } from './layout'
+import { ICON_CSS, icon, type IconName } from './icons'
 
 // --- shared console chrome -------------------------------------------------
 
-export type ConsolePage = 'review' | 'settings' | 'lookup' | 'probe' | 'setup' | 'account' | 'admin'
+/**
+ * Every page name is also an icon name, deliberately: a tab that cannot be
+ * drawn is a compile error rather than a blank square on someone's phone.
+ */
+export type ConsolePage = Extract<
+  IconName,
+  'review' | 'settings' | 'lookup' | 'setup' | 'account' | 'admin'
+>
 
+/**
+ * Five tabs, six for the owner. It was seven, and on a 375px phone the last two
+ * were off-screen behind a scrollbar that is deliberately hidden — so nothing on
+ * the page suggested they existed.
+ *
+ * Two changes fixed that. 「实测」 merged into 「候选」, because finding a string
+ * and trying it are two steps of one job and splitting them meant tabbing back
+ * and forth; and the labels shrank under their icons instead of sitting beside
+ * them. Every tab keeps its word: 「回顾」 and 「怎么配」 have no icon anyone
+ * would guess, and an icon-only nav here would trade a scroll nobody can see for
+ * a guess nobody can make. The current tab additionally sits on a pale ink disc.
+ */
 export function consoleHeader(user: User, active: ConsolePage): string {
-  const tab = (href: string, name: ConsolePage, text: string) =>
-    `<a href="${href}"${active === name ? ' class="on"' : ''}>${text}</a>`
+  const tab = (href: string, name: ConsolePage, text: string): string =>
+    `<a href="${href}"${active === name ? ' class="on" aria-current="page"' : ''}>${icon(name)}<span class="lb">${text}</span></a>`
   return `<header>
   <span class="brand">一息</span>
   <span class="who">${escapeHtml(user.name)}</span>
-  <nav>
+  <nav aria-label="导航">
     ${tab('/review', 'review', '回顾')}
     ${tab('/settings', 'settings', '设置')}
     ${tab('/lookup', 'lookup', '候选')}
-    ${tab('/probe', 'probe', '实测')}
     ${tab('/setup', 'setup', '怎么配')}
     ${tab('/account', 'account', '账号')}
     ${user.is_owner ? tab('/admin', 'admin', '发号') : ''}
@@ -53,17 +72,20 @@ export const CONSOLE_CSS = `
 @media (prefers-color-scheme:dark){:root{--danger:#c9795c}}
 body{font-size:15px;line-height:1.7}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
-header{display:flex;align-items:baseline;gap:10px;padding-top:26px;padding-bottom:14px}
+header{display:flex;align-items:center;gap:10px;padding-top:22px;padding-bottom:12px}
 .brand{font-size:19px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
 .who{font-size:12px;color:var(--faint)}
+/* Wrapping is the safety net, not the design: six items at this size fit one
+   row inside a 375px phone, and a wrap only ever beats the horizontal scroll
+   this used to need — that scrollbar is hidden, so nothing announced it. */
 header nav{
-  margin-left:auto;display:flex;gap:15px;font-size:13px;
-  overflow-x:auto;white-space:nowrap;scrollbar-width:none;
+  margin-left:auto;display:flex;align-items:flex-end;justify-content:flex-end;
+  flex-wrap:wrap;gap:1px;min-width:0;
 }
-header nav::-webkit-scrollbar{display:none}
-header nav a{flex:none}
-header nav a{color:var(--dim);text-decoration:none}
-header nav a.on{color:var(--fg)}
+header nav a{flex:none;display:inline-flex;flex-direction:column;align-items:center;gap:3px;
+  padding:5px 4px;border-radius:7px;color:var(--faint);text-decoration:none}
+header nav a .lb{font-size:9.5px;line-height:1.3;letter-spacing:0;white-space:nowrap}
+header nav a.on{color:var(--fg);background:var(--ring-track)}
 main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 h1{font-size:17px;font-weight:600;margin:8px 0 6px}
 h2{margin:0 0 10px;font-size:13px;font-weight:400;color:var(--dim);letter-spacing:.12em}
@@ -106,4 +128,4 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:28px 0 18px}
 .note-tight{margin-bottom:14px}
 .note.flat{margin:0}
 p.flat{margin:0}
-`
+${ICON_CSS}`

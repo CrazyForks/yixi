@@ -19,6 +19,16 @@ enabled = true
 #                   stored in D1: a stolen database alone opens nothing.
 # User tokens live in the D1 `users` table as SHA-256 hashes; there is no
 # global access token.
+#
+# Optional, and both or neither (README step 6):
+#   TURNSTILE_SITE_KEY — public; rendered into /register. Could be a [vars]
+#                        entry instead, kept as a secret so the pair travels
+#                        together and cannot get half-deployed.
+#   TURNSTILE_SECRET   — verifies the challenge server-side.
+# Leave either unset and /register renders no widget and verifies nothing,
+# which is a supported configuration: sign-up keeps working with only the
+# per-IP throttle behind it. Set both on the Pages project too, or the
+# hostname most people actually use is the unprotected one.
 
 # NOTE for anyone cloning this: `database_id` below is the author's own
 # database. It is not a credential — using it requires an API token for that

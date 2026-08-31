@@ -140,6 +140,33 @@ export function themeParam(name: ThemeName): '1' | '2' {
 }
 
 /**
+ * The one and only external origin this product is allowed to talk to, and the
+ * single break in the "zero external requests" rule at the top of this file.
+ *
+ * WHY THE EXCEPTION EXISTS. /register is open to anyone who reads the (public)
+ * README, and a per-IP throttle alone does not stop a script spread over a few
+ * hundred addresses. Turnstile is the only bot check available that does not
+ * require running one, and its widget is a script served from Cloudflare's own
+ * host — there is no self-hosted build of it. So the choice was "no bot
+ * protection" or "one external origin on one page", and this is the second.
+ *
+ * WHERE THE BREAK IS. Exactly one page, exactly one origin, and only while
+ * Turnstile is configured: `pageOptions.turnstile` is what widens the policy,
+ * and only src/ui/account.ts's /register handler ever sets it — and only when
+ * both keys are present. Every other page (the breathing page, /review,
+ * /setup, /settings, /probe, /lookup, /login, /claim, /recover, the landing
+ * page) is served with the byte-identical `default-src 'none'` policy it had
+ * before Turnstile existed, so none of them can reach any external host. That
+ * is a property of the code rather than a promise: the flag that relaxes the
+ * CSP is the same flag that emits the loader, so neither can appear without the
+ * other, and no caller can name a different host.
+ */
+const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com'
+
+/** `async defer`: it must never be on the critical path of rendering the form. */
+const TURNSTILE_LOADER = `<script src="${TURNSTILE_ORIGIN}/turnstile/v0/api.js" async defer></script>`
+
+/**
  * Content-Security-Policy is how the "zero external requests" rule stops being
  * a promise and starts being enforced: nothing may load from anywhere.
  *
@@ -147,17 +174,29 @@ export function themeParam(name: ThemeName): '1' | '2' {
  * fetch and would be blocked without it. Note that no directive here restricts
  * the top-level `location.href = 'xhsdiscover://'` jump; `navigate-to` was never
  * shipped by any browser, so the scheme hand-off is untouched by this policy.
+ *
+ * With `turnstile` on, three directives gain `TURNSTILE_ORIGIN` and nothing
+ * else: `script-src` for api.js, `frame-src` for the iframe the widget actually
+ * draws itself in (without it the challenge silently never appears, because
+ * frame-src falls back to `default-src 'none'`), and `connect-src` for the
+ * calls api.js makes back to its own host while solving. `default-src 'none'`
+ * still covers everything else even on that page.
  */
-const CSP = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  "connect-src 'self'",
-  "img-src data:",
-  "base-uri 'none'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ')
+function contentSecurityPolicy(turnstile: boolean): string {
+  const external = turnstile ? ` ${TURNSTILE_ORIGIN}` : ''
+  const directives = [
+    "default-src 'none'",
+    `script-src 'unsafe-inline'${external}`,
+    "style-src 'unsafe-inline'",
+    `connect-src 'self'${external}`,
+    'img-src data:',
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ]
+  if (turnstile) directives.push(`frame-src ${TURNSTILE_ORIGIN}`)
+  return directives.join('; ')
+}
 
 const BASE_CSS = `
 *,*::before,*::after{box-sizing:border-box}
@@ -194,6 +233,13 @@ export interface PageOptions {
   status?: number
   /** Defaults to `no-store`; session pages must never be replayed from cache. */
   cacheControl?: string
+  /**
+   * Load the Turnstile widget script and widen the CSP by exactly one origin.
+   * The only caller is /register, and only when a widget is configured. One flag
+   * for both halves on purpose — a page cannot end up with the loader and no
+   * policy for it, or a relaxed policy it does not use.
+   */
+  turnstile?: boolean
 }
 
 export function pageHtml(o: PageOptions): string {
@@ -209,7 +255,7 @@ export function pageHtml(o: PageOptions): string {
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="data:,">
 <title>${escapeHtml(o.title)}</title>
-<style>${t.tokens}${BASE_CSS}${o.css ?? ''}</style>
+<style>${t.tokens}${BASE_CSS}${o.css ?? ''}</style>${o.turnstile ? '\n' + TURNSTILE_LOADER : ''}
 </head>
 <body${o.bodyAttrs ? ' ' + o.bodyAttrs : ''}>
 ${o.body}
@@ -224,7 +270,7 @@ export function page(o: PageOptions): Response {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': o.cacheControl ?? 'no-store',
-      'content-security-policy': CSP,
+      'content-security-policy': contentSecurityPolicy(o.turnstile === true),
       'referrer-policy': 'no-referrer',
       'x-content-type-options': 'nosniff',
     },

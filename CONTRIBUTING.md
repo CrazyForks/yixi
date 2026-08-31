@@ -51,7 +51,7 @@ Safari only follows a custom URL scheme from inside the synchronous call stack o
 Guarded by tests, and they are stricter than they look:
 
 - `test/breathe.test.ts` strips comments from the page script first (the script *carries* a comment containing the word `await`, so a naive grep would go green on the bug), then asserts the word appears nowhere in it, and that nothing awaiting sits between the `sendBeacon` call and `location.href=SCHEME`.
-- `test/lookup.test.ts` extracts the `jump()` function from `/lookup` and from `/probe` and asserts they are **byte-for-byte identical**. That is deliberately stronger than "no await": an `<a href>` and a synchronous handler are different mechanisms in Safari, and a scheme certified by the wrong one would still fail where it counts. If you change one, change both, and the test will tell you.
+- `test/lookup.test.ts` asserts that `/lookup` — which absorbed `/probe`, so it is the only page that jumps to a candidate — contains **exactly one** `jump()` and **exactly one** assignment to `location.href`, and that the statement matches the breathing page's own, modulo the variable name. This used to be a byte comparison between two pages' copies of the function; with one page the copies are gone and what is left to protect is that the candidates, the configured apps and the hand-typed box did not each grow their own navigation. It is deliberately stronger than "no await": an `<a href>` and a synchronous handler are different mechanisms in Safari, and a scheme certified by the wrong one would still fail where it counts.
 
 ## 3. `/gate` is the hot path
 
@@ -82,7 +82,7 @@ Concrete examples from this repo's history: dropping the same-site check on the 
 
 ## Things that will get a patch turned down
 
-- **Adding an external request to a page.** No CDN, no web font, no analytics, no favicon file. The CSP (`default-src 'none'`) will block it anyway, so it will simply not work — but the reason matters more than the mechanism: these pages open in the moment somebody is reaching for a distraction, often on a bad connection, and one blocking round trip ends the product.
+- **Adding an external request to a page.** No CDN, no web font, no analytics, no favicon file. The CSP (`default-src 'none'`) will block it anyway, so it will simply not work — but the reason matters more than the mechanism: these pages open in the moment somebody is reaching for a distraction, often on a bad connection, and one blocking round trip ends the product. There is exactly one exception in the codebase, the Turnstile widget on `/register`, and it is not a precedent: `/register` is not on the interception path, the widget is optional, and the CSP is widened by one origin on that one page (see `TURNSTILE_ORIGIN` in `src/ui/layout.ts`). A second exception needs the same standard of argument.
 - **"Balancing" the breathing page's buttons.** 「算了」 appears first, alone, and is visually loud; 「继续」 arrives 800ms later as a small underlined link. The asymmetry *is* the feature. So is the absence of a numeric countdown — a number invites you to stare at it and tick it down, which is the opposite of the point.
 - **Widening what `/admin` can show.** `AdminRow` is the ceiling by construction. See [SECURITY.md](SECURITY.md#what-the-owner-cannot-see).
 - **Making a page depend on JavaScript that does not need to.** `/review`, `/settings` and the account pages are plain HTML forms with POST/redirect/GET, no fetch, no framework. Only the breathing page and the two probe pages have any script at all, and each has a reason.

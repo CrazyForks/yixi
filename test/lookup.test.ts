@@ -1,15 +1,25 @@
-// Coverage for /lookup — the page that hands out URL schemes nobody has tested.
+// Coverage for /lookup — the page that hands out URL schemes nobody has tested,
+// and, since /probe merged into it, the page that tries them too.
 //
 // The tests that matter here are not the rendering ones. They are:
 //
 //   - nothing in the shipped table may claim to be verified, and every listed
 //     line must carry a source link. This project's two worst bugs were both an
 //     unverified string being read as an answer; a table that can quietly grow
-//     a `verified` row would reintroduce that at scale.
-//   - the jump must be the same mechanism /probe uses, character for character.
-//     A jump that works here but not on the breathing page would certify
-//     schemes that fail in the only place it counts, and it would look fine in
-//     every other test.
+//     a `verified` row would reintroduce that at scale. The tier assertions go
+//     through `class="sig verified"` rather than through the words next to it:
+//     the legend names all three tiers on every render, so a page-wide search
+//     for a tier's label can no longer tell you what a row claims.
+//   - exactly one jump, and it must be the mechanism the breathing page uses.
+//     A jump that works here but not there would certify schemes that fail in
+//     the only place it counts, and it would look fine in every other test.
+//     This used to be a byte comparison against /probe's copy of the function;
+//     with one page there is one copy, so the guard became "no other navigation
+//     exists on the page" — which is what the two-page comparison was really
+//     protecting.
+//   - everything /probe could do still happens here: a button per configured
+//     app, a box for a string that is saved nowhere, and an id per app so an old
+//     /probe#app-xhs bookmark still lands on the right card.
 //   - writing a candidate into user_apps must not disturb the numbers a user
 //     chose, and must never repoint an unrelated app.
 //   - the App Store lookup is best-effort. When it is down the page still
@@ -18,7 +28,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleLookup } from '../src/ui/lookup'
-import { renderProbe } from '../src/ui/probe'
+import { renderBreathe } from '../src/ui/breathe'
 import { getUserApp, listUserApps, upsertUserApp } from '../src/db'
 import { safeScheme } from '../src/scheme'
 import { APPS, deriveFromBundleId, findApps, suggestKey } from '../src/schemes'
@@ -170,10 +180,24 @@ describe('GET /lookup', () => {
     const page = await html('/lookup')
     expect(page).toContain('action="/lookup"')
     expect(page).toContain('name="q"')
-    expect(page).toContain('这一页只是抄书')
-    expect(page).toContain('没有被验证过')
+    // The warning is now one visible line plus a fold. Both halves must exist:
+    // the claim, and the reason it is not safe to skip the try.
+    expect(page).toContain('没验证过')
+    expect(page).toContain('猜错不会报错')
     expect(page).toContain('候选') // the nav tab
-    expect(page).not.toContain('data-i=') // nothing to jump to yet
+    expect(page).not.toContain('data-i=') // no candidate and no app yet
+  })
+
+  it('carries both halves of the merged page even with nothing configured', async () => {
+    const page = await html('/lookup')
+    // 找字符串
+    expect(page).toContain('id="q"')
+    // 试字符串 — the hand-typed box is not gated on having any app saved, which
+    // is the case /probe existed for: a string copied off a forum, tried before
+    // it is written anywhere.
+    expect(page).toContain('id="manual"')
+    expect(page).toContain('id="manual-go"')
+    expect(page).toContain('还没有配置任何 App')
   })
 
   it('lists candidates with their tier and their source link', async () => {
@@ -181,8 +205,9 @@ describe('GET /lookup', () => {
     expect(page).toContain('起点读书')
     expect(page).toContain('QDReader://')
     expect(page).toContain('m.qidian.QDReaderAppStore')
-    // confidence, in words, next to the string
-    expect(page).toContain('实测跳通过')
+    // The tier is a mark on the row, not a sentence in it.
+    expect(page).toContain('class="sig verified"')
+    expect(page).toContain('跳通过')
     // promotion does not erase provenance — a reader can still see where the
     // string was transcribed from before anyone put it on a phone
     expect(page).toContain('https://github.com/WengYuehTing/iOS-app-info')
@@ -195,7 +220,7 @@ describe('GET /lookup', () => {
     // first version of this test looked for '2026-08-31' and passed while the
     // UI rendered no evidence at all, because SNAPSHOT_DATE happened to be the
     // same day. A page-wide substring search is not a rendering assertion.
-    expect(page).toMatch(/<span class="tag when">\s*\d{4}-\d{2}-\d{2}\s*<\/span>/)
+    expect(page).toMatch(/<span class="mk when">[\s\S]{0,400}?\d{4}-\d{2}-\d{2}\s*<\/span>/)
     expect(page).toMatch(/<p class="evidence">[^<]*iPhone[^<]*<\/p>/)
   })
 
@@ -211,8 +236,19 @@ describe('GET /lookup', () => {
     const page = await html('/lookup?q=微博')
     expect(page).toContain('sinaweibo://')
     expect(page).toContain('两份清单一致')
-    expect(page).toContain('清单收录 · 未验证')
-    expect(page).not.toContain('实测跳通过')
+    expect(page).toContain('class="sig listed"')
+    expect(page).not.toContain('class="sig verified"')
+  })
+
+  it('explains the three tiers once per page instead of once per row', async () => {
+    const page = await html('/lookup?q=微博')
+    // The gloss used to be repeated inside every pill. One legend, and the rows
+    // carry a seal plus two or three characters.
+    expect(page).toContain('class="tiers"')
+    expect(page).toContain('清单里抄来的，可能已经失效')
+    expect(page).toContain('照 bundle id 硬推的，跳不通是常态')
+    // Said once. Two occurrences would mean the legend came back per card.
+    expect(page.split('清单里抄来的，可能已经失效').length - 1).toBe(1)
   })
 
   it('offers a 试一下 button and a 就用这个 form per candidate, island in order', async () => {
@@ -221,8 +257,17 @@ describe('GET /lookup', () => {
     expect(page).toContain('data-i="1"')
     expect(islandOf(page)).toEqual(['iqiyi://', 'qiyi-iphone://'])
     expect(page).toContain('name="op" value="use"')
-    expect(page).toContain('跳通了 · 就用这个')
-    expect(page).toContain('试着跳到「爱奇艺」')
+    // The ordinals are the ordering rule — 试跳 first, 存进 only after the phone
+    // really jumped — moved out of a paragraph and into the buttons that obey
+    // it. Losing them loses the rule, so they are asserted, and in order.
+    expect(page).toContain('试跳「爱奇艺」')
+    expect(page).toContain('跳通了 · 存进')
+    const tryAt = page.indexOf('试跳「爱奇艺」')
+    const saveAt = page.indexOf('跳通了 · 存进')
+    expect(tryAt).toBeGreaterThan(-1)
+    expect(saveAt).toBeGreaterThan(tryAt)
+    expect(page).toMatch(/<span class="ord">1<\/span>/)
+    expect(page).toMatch(/<span class="ord">2<\/span>/)
   })
 
   it('flags a candidate the user already wrote down, still as unverified', async () => {
@@ -239,9 +284,9 @@ describe('GET /lookup', () => {
     // your own config is not evidence that the phone answers to it, and the tier
     // must not drift upwards just because someone saved it.
     const page = await html('/lookup?q=微博')
-    expect(page).toContain('你已写进 weibo')
-    expect(page).toContain('清单收录 · 未验证')
-    expect(page).not.toContain('实测跳通过')
+    expect(page).toContain('已写进 weibo')
+    expect(page).toContain('class="sig listed"')
+    expect(page).not.toContain('class="sig verified"')
   })
 
   it('escapes whatever the user typed', async () => {
@@ -274,15 +319,128 @@ describe('the jump mechanism', () => {
     expect(code).toContain("addEventListener('click'")
   })
 
-  it('uses byte-for-byte the same jump as /probe', async () => {
+  it('routes every jumpable thing on the page through one jump()', async () => {
+    // /probe used to hold a second copy of this function, and a test compared
+    // the two byte for byte. The copies are gone; what is left to protect is
+    // that the candidates, the configured apps and the hand-typed box did not
+    // each grow their own navigation. One assignment to location.href on the
+    // whole page is the strongest form of that.
+    await upsertUserApp(env.DB, {
+      user_id: 1,
+      app: 'xhs',
+      label: '小红书',
+      scheme: 'xhsdiscover://',
+      wait_seconds: 10,
+      grace_seconds: 90,
+      enabled: 1,
+    })
+    const code = codeOnly(scriptOf(await html('/lookup?q=小红书')))
+
+    expect(code.match(/function jump\(scheme\)/g)).toHaveLength(1)
+    expect(code.match(/location\.href/g)).toHaveLength(1)
+    expect(code).toContain('location.href = scheme;')
+    // Everything that can jump goes through it.
+    expect(code).toContain("querySelectorAll('button[data-i]')")
+    expect(code).toContain('jump(v)')
+  })
+
+  it('jumps the way the breathing page jumps', async () => {
+    // The whole worth of trying a scheme here is that it exercises the exact
+    // mechanism 「继续」 uses. Safari only opens a custom scheme from inside the
+    // synchronous call stack of a real gesture: a bare assignment to
+    // location.href in a click handler, with nothing awaited on the way to it.
+    // An <a href>, a setTimeout, or a promise chain is a different mechanism
+    // and would certify schemes that then fail where it counts.
     const grab = (js: string): string => {
-      const m = js.match(/function jump\(scheme\) \{[\s\S]*?\n {2}\}/)
-      expect(m, 'jump function not found').toBeTruthy()
-      return m![0]
+      const m = codeOnly(js).match(/location\.href\s*=\s*[A-Za-z]+;/)
+      expect(m, 'no synchronous assignment to location.href').toBeTruthy()
+      return m![0].replace(/\s+/g, '')
     }
-    const mine = grab(scriptOf(await html('/lookup?q=小红书')))
-    const probe = grab(scriptOf(await (await renderProbe(env, user)).text()))
-    expect(mine).toBe(probe)
+
+    const sid = crypto.randomUUID().replace(/-/g, '')
+    await upsertUserApp(env.DB, {
+      user_id: 1,
+      app: 'xhs',
+      label: '小红书',
+      scheme: 'xhsdiscover://',
+      wait_seconds: 10,
+      grace_seconds: 90,
+      enabled: 1,
+    })
+    await env.DB.prepare(
+      'INSERT INTO sessions (sid, user_id, app, created_at, resolved_at) VALUES (?1, 1, ?2, ?3, NULL)',
+    )
+      .bind(sid, 'xhs', Date.now())
+      .run()
+
+    const breathe = await (await renderBreathe(new Request(`https://yixi.test/b?s=${sid}`), env)).text()
+
+    // Same statement, same shape, only the name of the variable holding the
+    // scheme differs.
+    expect(grab(scriptOf(await html('/lookup?q=小红书')))).toBe('location.href=scheme;')
+    expect(grab(scriptOf(breathe))).toBe('location.href=SCHEME;')
+  })
+})
+
+describe('the probe region — everything /probe used to be', () => {
+  const app = (over: Partial<Parameters<typeof upsertUserApp>[1]> = {}): Promise<void> =>
+    upsertUserApp(env.DB, {
+      user_id: 1,
+      app: 'xhs',
+      label: '小红书',
+      scheme: 'xhsdiscover://',
+      wait_seconds: 10,
+      grace_seconds: 90,
+      enabled: 1,
+      ...over,
+    })
+
+  it('gives every configured app a button and an id, disabled ones included', async () => {
+    await app()
+    await app({ app: 'dy', label: '抖音', scheme: 'dyscheme://', enabled: 0 })
+
+    const page = await html('/lookup')
+    expect(page).toContain('id="app-xhs"')
+    expect(page).toContain('id="app-dy"')
+    // Hiding a disabled row would leave the reader wondering why nothing fires.
+    expect(page).toContain('已停用')
+    expect(page).toContain('data-i="0"')
+    expect(page).toContain('data-i="1"')
+    // island order matches button order (listUserApps orders by app: dy, xhs)
+    expect(islandOf(page)).toEqual(['dyscheme://', 'xhsdiscover://'])
+    expect(page).toContain('href="/settings#app-xhs"')
+  })
+
+  it('numbers the two regions from one island, candidates first', async () => {
+    // The indices are positional, and the candidate rows render before the app
+    // cards. Get this wrong and a button jumps to somebody else's scheme —
+    // silently, because every string here is a plausible one.
+    await app()
+    const page = await html('/lookup?q=爱奇艺')
+    expect(islandOf(page)).toEqual(['iqiyi://', 'qiyi-iphone://', 'xhsdiscover://'])
+    expect(page).toContain('data-i="2"')
+  })
+
+  it('escapes a scheme containing a tag-closer in the JSON island', async () => {
+    await app({ app: 'x', label: 'x', scheme: 'a://</script><img>' })
+    const page = await html('/lookup')
+    expect(page).not.toContain('</script><img>')
+    expect(page).toContain('\\u003c/script')
+  })
+
+  it('keeps the "only a real jump counts" rule and the how-to-read-it list', async () => {
+    await app()
+    const page = await html('/lookup')
+    expect(page).toContain('iPhone 的 Safari 里')
+    expect(page).toContain('跳得动才算数')
+    expect(page).toContain('Safari 打不开该网页')
+    expect(page).toContain('放弃拦截')
+  })
+
+  it('says what to do when nothing is configured rather than showing an empty list', async () => {
+    const page = await html('/lookup')
+    expect(page).toContain('没什么可试的')
+    expect(page).toContain('/settings')
   })
 })
 
@@ -295,8 +453,9 @@ describe('when the table has never heard of the name', () => {
       itunes([{ trackName: '起点读书', bundleId: 'm.qidian.QDReaderAppStore' }]),
     )
     expect(page).toContain('表里没有「foobarbaz」')
-    expect(page).toContain('下面全是猜的')
-    expect(page).toContain('推导 · 很可能不对')
+    expect(page).toContain('下面全是<b>猜的</b>')
+    expect(page).toContain('class="sig derived"')
+    expect(page).toContain('大概不对')
     expect(page).toContain('m.qidian.QDReaderAppStore')
     expect(page).toContain('QDReader://')
     // The App Store never publishes a scheme; saying so is the whole point.
@@ -320,8 +479,10 @@ describe('when the table has never heard of the name', () => {
     )
     expect(res.status).toBe(200)
     const page = await res.text()
-    expect(page).toContain('没走通')
+    expect(page).toContain('读不懂')
     expect(page).toContain('不会替你编一个 scheme 出来')
+    // and it points at the box on this page rather than at the retired /probe
+    expect(page).toContain('手输框')
     expect(islandOf(page)).toEqual([])
   })
 
@@ -331,25 +492,35 @@ describe('when the table has never heard of the name', () => {
       stubFetch(() => new Response('not json at all', { status: 200 })),
       stubFetch(() => new Response(JSON.stringify({ results: 'wat' }), { status: 200 })),
     ]
-    for (const f of bad) {
-      const res = await get(term, f)
+    // Each of these fails for a different reason and must say so. Collapsing
+    // them into one message is what sent me hunting a timeout that never
+    // happened: production was getting HTTP 403 from Apple, which refuses
+    // datacenter egress, while a laptop on a home connection worked fine.
+    const expected = ['拒绝了这次查询', '读不懂', '读不懂']
+    for (let i = 0; i < bad.length; i++) {
+      const res = await get(term, bad[i]!)
       expect(res.status).toBe(200)
-      expect(await res.text()).toContain('没走通')
+      expect(await res.text(), `case ${i}`).toContain(expected[i]!)
     }
   })
 
   it('gives up on a timeout rather than hanging the page', async () => {
     const res = await handleLookup(new Request(`https://yixi.test${term}`), env, user, {
       timeoutMs: 5,
-      fetchImpl: stubFetch(
-        () =>
-          new Promise<Response>((_resolve, reject) => {
-            setTimeout(() => reject(new Error('aborted')), 50)
-          }),
-      ),
+      // Honours the signal, because a stub that ignores it is not simulating a
+      // timeout — it is simulating a slow reply that fails for its own reasons,
+      // which is a different branch.
+      fetchImpl: ((_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('too slow')), 200)
+          init?.signal?.addEventListener('abort', () => {
+            clearTimeout(t)
+            reject(new Error('aborted by signal'))
+          })
+        })) as unknown as typeof fetch,
     })
     expect(res.status).toBe(200)
-    expect(await res.text()).toContain('没走通')
+    expect(await res.text()).toContain('超时')
   })
 
   it('does not spend an outbound request on a one-character name', async () => {
@@ -421,7 +592,9 @@ describe('POST /lookup — 就用这个', () => {
     const page = await html('/lookup?q=小红书&saved=xhs&mode=new')
     expect(page).toContain('已把')
     expect(page).toContain('xhsdiscover://')
-    expect(page).toContain('/probe#app-xhs')
+    // Used to send the reader to /probe; the card is on this page now.
+    expect(page).toContain('href="#app-xhs"')
+    expect(page).toContain('id="app-xhs"')
   })
 
   it('changes only the scheme of a row that already exists', async () => {

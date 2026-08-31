@@ -4,5 +4,7 @@ declare module 'cloudflare:test' {
     TEST_MIGRATIONS: D1Migration[]
     COOKIE_SECRET: string
     TOKEN_KEY: string
+    TURNSTILE_SITE_KEY: string
+    TURNSTILE_SECRET: string
   }
 }

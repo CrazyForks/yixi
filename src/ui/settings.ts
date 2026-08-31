@@ -14,6 +14,7 @@ import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { deleteUserApp, listUserApps, upsertUserApp } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { fold, hl, icon } from './icons'
 import { forbiddenPrefixes } from '../scheme'
 
 
@@ -196,14 +197,14 @@ async function renderSettings(env: Env, user: User, o: RenderOptions): Promise<R
   ${apps.length === 0 ? emptyState() : cards}
   <hr class="sep">
   <h2>加一个</h2>
-  <p class="note">还不知道 URL scheme 也没关系：去<a href="/lookup">候选</a>页输入 App 名字，那里会列出可试的候选并标明来源；点一下就能试跳，跳通了直接写进这里。</p>
+  <p class="note">还不知道 URL scheme 也没关系：去<a href="/lookup">候选</a>页输入 App 名字，那里会列出可试的候选并标明来源，同一页往下就能试跳，跳通了直接写进这里。</p>
   ${addCard(draftMatchesRow ? undefined : draft)}
 </main>`
 
   return page({
     title: `设置 · 一息`,
     theme: DEFAULT_THEME,
-    css: CONSOLE_CSS,
+    css: CONSOLE_CSS + SETTINGS_CSS,
     body,
     status: o.status ?? 200,
   })
@@ -240,7 +241,7 @@ function appCard(a: Omit<UserApp, 'user_id'>): string {
   ${enabledField(a.enabled === 1, a.app)}
   <div class="actions">
     <button class="primary" type="submit" name="op" value="save">保存</button>
-    <a class="linky" href="/probe#app-${key}">去实测这个 scheme</a>
+    <a class="linky go" href="/lookup#app-${key}">${icon('jump')}去实测这个 scheme</a>
     <button class="linky danger" type="submit" name="op" value="delete" formnovalidate onclick="return confirm('删掉这条配置？已经记下的次数不会被删。')">删除</button>
   </div>
 </form>`
@@ -288,20 +289,37 @@ function schemeField(value: string, ns: string): string {
   </div>`
 }
 
+/**
+ * The two numbers, and the one sentence about them that may not be deleted.
+ *
+ * This block renders once per configured app plus once for the add form, so the
+ * old three-clause paragraph was the single most repeated piece of prose in the
+ * product. The claim that costs the reader something when it is missed — too
+ * short a window and you are intercepted the instant you land — keeps a
+ * permanently visible line, in the same closed-loop mark the field label wears.
+ * The background (what the window is for, why those triggers do not enter the
+ * statistics) is one tap away.
+ */
 function secondsFields(wait: number, grace: number, ns: string): string {
   const w = fieldId(ns, 'wait')
   const g = fieldId(ns, 'grace')
   return `<div class="row">
     <div class="field">
-      <label for="${w}">等待 · 秒</label>
+      <label for="${w}">${icon('clock')}等待 · 秒</label>
       <input id="${w}" type="number" name="wait_seconds" value="${wait}" min="1" max="120" step="1" inputmode="numeric" required>
     </div>
     <div class="field">
-      <label for="${g}">免打扰 · 秒</label>
+      <label for="${g}">${icon('loop')}免打扰 · 秒</label>
       <input id="${g}" type="number" name="grace_seconds" value="${grace}" min="30" max="3600" step="1" inputmode="numeric" required>
     </div>
   </div>
-  <p class="note note-tight">「免打扰」是点了「继续」之后不再拦你的时长，<b>建议 90 秒</b>。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。设得太短（几秒）会让你刚跳回 App 就又被拦。</p>`
+  <div class="hint">
+    ${hl('loop', '「免打扰」建议 <span class="num">90</span> 秒。设得太短（几秒）会让你<b>刚跳回 App 就又被拦</b>。')}
+    ${fold(
+      '它到底管什么',
+      '<p>点了「继续」之后这段时间内不再拦你。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。</p>',
+    )}
+  </div>`
 }
 
 function enabledField(on: boolean, ns: string): string {
@@ -322,3 +340,16 @@ function enabledField(on: boolean, ns: string): string {
 function fieldId(ns: string, name: string): string {
   return `f-${ns}-${name}`
 }
+
+/*
+ * The icon in a <label> stays inline rather than turning the label into a flex
+ * row: two of these labels carry a <b> inside their prose, and as flex items a
+ * text run and its <b> get pulled apart by the row gap.
+ */
+const SETTINGS_CSS = `
+.field label .ic{width:14px;height:14px;color:var(--faint);margin-right:5px}
+.hint{font-size:12.5px;line-height:1.75;color:var(--dim);margin:0 0 15px}
+.hint b{color:var(--fg)}
+.hint .ic{color:var(--dim)}
+a.linky.go{display:inline-flex;align-items:center;gap:6px}
+`

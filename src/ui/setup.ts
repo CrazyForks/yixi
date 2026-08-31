@@ -1,6 +1,7 @@
 import type { Env, User } from '../types'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { fold, hl, icon } from './icons'
 import { listUserApps } from '../db'
 import { revealToken } from '../account'
 
@@ -122,19 +123,41 @@ ${tokenLine}
 「接收输入」时才会出现，新建的默认没有。整条链路只有三个动作，全部照抄即可。</p>
 </div>
 
-<h3>① 「获取 URL 的内容」</h3>
-<p>动作搜索框里搜 <code>URL</code>，选「获取 URL 的内容」。
-把下面这一整条<b>粘进 URL 那一栏</b>（已经是你的真实地址和 token）：</p>
-${firstPasteLine}
-<p>展开「显示更多」，确认方法是 <code>GET</code>。请求头和请求体留空。</p>
-
-<h3>② 「如果」</h3>
-<pre class="shape">如果   「URL 的内容」   包含   https</pre>
-<p>中间选<b>「包含」</b>，右边手打 <code>https</code> 五个字母。
-左边那栏会自动接上一步的结果，不用动。</p>
-
-<h3>③ 「打开 URL」，拖到「如果」里面</h3>
-<p>URL 那一栏同样自动接「URL 的内容」，不用动。</p>
+<ol class="steps">
+<li>
+  <span class="no">1</span>
+  <div class="sbody">
+    <p class="shead">${icon('fetch')}「获取 URL 的内容」</p>
+    <p>动作搜索框里搜 <code>URL</code>，把下面这一整条<b>粘进 URL 那一栏</b>（已经是你的真实地址和 token）：</p>
+    ${firstPasteLine}
+    <p class="chips"><span class="chip">显示更多 · 方法 GET</span><span class="chip">请求头 空</span><span class="chip">请求体 空</span></p>
+  </div>
+</li>
+<li>
+  <span class="no">2</span>
+  <div class="sbody">
+    <p class="shead">${icon('branch')}「如果」</p>
+    <pre class="shape">如果   「URL 的内容」   包含   https</pre>
+    <p class="chips"><span class="chip">左栏 自动接上一步</span><span class="chip">中间 包含</span><span class="chip">右栏 手打 https</span></p>
+    <div class="hard">
+    <p class="hl">${icon('lockout')}<span><b>这个条件只能这么写。</b>它是整套配置里唯一一处写反了会把你锁在手机外面的地方。</span></p>
+    <p>服务器只回两种东西：该拦你时回一条 <code>https://…</code> 开头的网址，不该拦时回 <code>pass</code> 这个词。</p>
+    <p>所以这一条同时干了两件事：该拦时打开呼吸页；而<b>只要出任何问题</b>——服务挂了、
+    token 错了、网络断了、返回空白——结果里都没有 <code>https</code>，
+    「如果」不成立，快捷指令什么都不做，<b>你的 App 正常打开</b>。</p>
+    <p>所以<b>绝对不能反过来写成「不包含 pass」</b>。那样服务一挂，
+    每次开 App 都跳去一个打不开的网页，你会被自己写的工具锁在手机外面。</p>
+    </div>
+  </div>
+</li>
+<li>
+  <span class="no">3</span>
+  <div class="sbody">
+    <p class="shead">${icon('jump')}「打开 URL」，拖到「如果」<b>里面</b></p>
+    <p class="chips"><span class="chip">URL 栏 自动接「URL 的内容」</span></p>
+  </div>
+</li>
+</ol>
 
 <h3>建完是这三行</h3>
 <pre class="shape">获取 URL 的内容    （粘好的整条网址）        GET
@@ -179,17 +202,6 @@ ${pasteRows}
 拦 5 个 App 就是 5 条。One Sec 和所有同类工具都这样，iOS 没给别的口子。</p>
 </div>
 
-<div class="box">
-<h3>为什么条件是「包含 https」这么怪的写法</h3>
-<p>服务器只回两种东西：该拦你时回一条 <code>https://…</code> 开头的网址，不该拦时回 <code>pass</code> 这个词。</p>
-<p>所以这一条同时干了两件事：该拦时打开呼吸页；而<b>只要出任何问题</b>——服务挂了、
-token 错了、网络断了、返回空白——结果里都没有 <code>https</code>，
-「如果」不成立，快捷指令什么都不做，<b>你的 App 正常打开</b>。</p>
-<p>所以<b>绝对不能反过来写成「不包含 pass」</b>。那样服务一挂，
-每次开 App 都跳去一个打不开的网页，你会被自己写的工具锁在手机外面。</p>
-</div>
-
-
 <h2>第三步 · 跑通一次</h2>
 <ol>
 <li>从桌面点开你刚配的那个 App</li>
@@ -198,7 +210,7 @@ token 错了、网络断了、返回空白——结果里都没有 <code>https</
 <li>点「算了」→ 给你一句话，你自己退出去</li>
 <li>点「继续」→ 应该跳回那个 App</li>
 </ol>
-<p>第 5 步跳不回去，说明这个 App 的 scheme 不对，去 <a href="/probe">实测</a> 挨个试。</p>
+<p>第 5 步跳不回去，说明这个 App 的 scheme 不对，去 <a href="/lookup">候选</a>页下半截挨个试。</p>
 <p>跳回去的一瞬间自动化<b>会被再次触发，这是正常的</b>。服务端有一分半的免打扰窗口，
 这次直接放行，也不会被算成一次冲动。放下手机超过一分半再拿起来才会重新拦你——这是刻意的。</p>
 
@@ -217,7 +229,7 @@ token 错了、网络断了、返回空白——结果里都没有 <code>https</
 
 <h2>坏掉的时候必须放你进去</h2>
 
-<p>第二步②的条件写的是「<b>包含 <code>https</code></b>」。这不是随手写的，
+<p>第一步第 2 个动作的条件写的是「<b>包含 <code>https</code></b>」。这不是随手写的，
 <b>永远不要改成「不包含 <code>pass</code>」</b>。</p>
 
 <p>差别在服务出问题的时候。<code>/gate</code> 有一堆理由给不出正常答复：token 被换了、Worker 挂了、
@@ -232,41 +244,60 @@ token 错了、网络断了、返回空白——结果里都没有 <code>https</
 
 <p>这两种坏法完全不对等：一边少拦一次，一边几个 App 全废。所以默认行为必须是拿不准就放行。</p>
 
-<p>同理还有两条：<b>别给「获取 URL 的内容」加出错处理</b>（网络失败时整条快捷指令中止，
-后面的「打开 URL」就不会执行，App 照常打开，这正是要的）；
-<b>别在「如果」后面加「否则」去打开任何东西</b>（「否则」就是「服务没说要拦」，那就该什么都不做）。</p>
+${fold(
+  '还有两处照这个道理该省掉的东西',
+  `<p>同理还有两条：<b>别给「获取 URL 的内容」加出错处理</b>（网络失败时整条快捷指令中止，
+  后面的「打开 URL」就不会执行，App 照常打开，这正是要的）；
+  <b>别在「如果」后面加「否则」去打开任何东西</b>（「否则」就是「服务没说要拦」，那就该什么都不做）。</p>`,
+)}
 
 <h2>出问题了</h2>
 
-<h3>App 打不开了 / 每次开 App 都跳到打不开的网页</h3>
-<p><b>先止血</b>：「快捷指令」→「自动化」，把那条的开关关掉，App 立刻恢复。
-一息挂了不该影响你用手机。然后回上一节检查「如果」的条件是不是写反了。</p>
+<p class="note note-tight">六种症状，点开看对应的那一条。</p>
 
-<h3>点「继续」跳不回 App</h3>
-<p>大概率 scheme 不对。去 <a href="/probe">实测</a>，找到这个 App 的按钮点一下：跳走了说明
-scheme 对，问题在别处；没反应就在那页顶部的输入框里换候选试，试通了回 <a href="/settings">设置</a> 改。
-有些 App 已经彻底没有 scheme，怎么点都不动——那就只能对它放弃拦截。</p>
-
-<h3>打开 App，自动化压根没触发</h3>
-<ol>
-<li>「运行前询问」没关干净，回自动化详情页再确认一次</li>
-<li>触发条件选错了，必须是「已打开」</li>
-<li>从后台切回前台在部分 iOS 版本上不触发，先把 App 从后台划掉再从桌面点</li>
-<li>自动化被关了，列表里每条右侧有开关</li>
-<li>重启 iPhone。「打开 App 时」偶发失灵是 iOS 的老毛病</li>
-</ol>
-
-<h3>每次都直接进 App，从来没被拦过</h3>
-<p>自动化跑了，但服务端判定「不管这个 App」：app 键对不上（大小写敏感，<code>XHS</code> ≠ <code>xhs</code>）、
-在<a href="/settings">设置</a>里被停用了、或者你一直在一分半的免打扰窗口里。</p>
-
-<h3>刚点「继续」跳回去，马上又被拦</h3>
-<p>免打扰窗口没生效。要么 <code>/resolve</code> 没打成功（网络断了），
-要么这个 App 的 grace 秒数设得太短，去<a href="/settings">设置</a>调大。</p>
-
-<h3>开 App 明显变慢</h3>
-<p>每次开 App 都要等一次到 Cloudflare 的网络往返，信号差时会有感知。没有客户端缓存。
-慢到不可接受的话，这是要改方案的信号，不是配置问题。</p>
+${fold(
+  'App 打不开了 / 每次开 App 都跳到打不开的网页',
+  `<p><b>先止血</b>：「快捷指令」→「自动化」，把那条的开关关掉，App 立刻恢复。
+  一息挂了不该影响你用手机。然后回上一节检查「如果」的条件是不是写反了。</p>`,
+  'tr',
+)}
+${fold(
+  '点「继续」跳不回 App',
+  `<p>大概率 scheme 不对。去 <a href="/lookup">候选</a>页下半截，找到这个 App 的按钮点一下：跳走了说明
+  scheme 对，问题在别处；没反应就在同一页换个候选试，或者用那个手输框试你抄来的字符串，
+  试通了点「存进」直接写回配置。
+  有些 App 已经彻底没有 scheme，怎么点都不动——那就只能对它放弃拦截。</p>`,
+  'tr',
+)}
+${fold(
+  '打开 App，自动化压根没触发',
+  `<ol>
+  <li>「运行前询问」没关干净，回自动化详情页再确认一次</li>
+  <li>触发条件选错了，必须是「已打开」</li>
+  <li>从后台切回前台在部分 iOS 版本上不触发，先把 App 从后台划掉再从桌面点</li>
+  <li>自动化被关了，列表里每条右侧有开关</li>
+  <li>重启 iPhone。「打开 App 时」偶发失灵是 iOS 的老毛病</li>
+  </ol>`,
+  'tr',
+)}
+${fold(
+  '每次都直接进 App，从来没被拦过',
+  `<p>自动化跑了，但服务端判定「不管这个 App」：app 键对不上（大小写敏感，<code>XHS</code> ≠ <code>xhs</code>）、
+  在<a href="/settings">设置</a>里被停用了、或者你一直在一分半的免打扰窗口里。</p>`,
+  'tr',
+)}
+${fold(
+  '刚点「继续」跳回去，马上又被拦',
+  `<p>免打扰窗口没生效。要么 <code>/resolve</code> 没打成功（网络断了），
+  要么这个 App 的 grace 秒数设得太短，去<a href="/settings">设置</a>调大。</p>`,
+  'tr',
+)}
+${fold(
+  '开 App 明显变慢',
+  `<p>每次开 App 都要等一次到 Cloudflare 的网络往返，信号差时会有感知。没有客户端缓存。
+  慢到不可接受的话，这是要改方案的信号，不是配置问题。</p>`,
+  'tr',
+)}
 
 </main>`,
   })
@@ -315,6 +346,7 @@ const TEST_SCRIPT = `
 
 const SETUP_CSS = `
 .doc{max-width:38rem}
+
 .doc h1{margin:0 0 .6rem;font-size:1.5rem;font-weight:400;letter-spacing:.2em}
 .doc .lede{margin:0 0 2rem;color:var(--dim);font-size:.92rem;line-height:1.8}
 .doc h2{
@@ -375,4 +407,51 @@ p.masked .hint{
   display:block;margin-top:.5rem;font-family:var(--font);
   font-size:.8rem;letter-spacing:0;color:var(--dim);
 }
+
+/* The three actions, as a rail. What used to be two or three sentences of prose
+   per step is now one line plus a row of chips: 「展开显示更多，确认方法是 GET。
+   请求头和请求体留空。」 is three assertions about three fields, which is a
+   shape a sentence is bad at and a row of chips is good at. The pasted URL and
+   the 「如果」 line stay literal — those are things to copy off the screen, and
+   an icon flow would be a paraphrase of the exact words the reader has to find
+   in the Shortcuts editor.
+
+   Every selector below is qualified with .doc on purpose: the .doc p, .doc ol
+   and .doc li rules above are all one class plus one type, so a bare .shead or
+   .chips loses the specificity race and silently keeps the document's margins
+   and its .9 opacity. */
+.doc ol.steps{list-style:none;margin:0 0 1.2rem;padding:0;opacity:1}
+.doc ol.steps > li{display:flex;gap:10px;margin:0;padding:0 0 1rem}
+.doc ol.steps .no{flex:none;width:20px;height:20px;border-radius:4px;border:1px solid var(--rule);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--num);font-size:11px;color:var(--dim);margin-top:4px}
+.doc .sbody{flex:1;min-width:0}
+.doc .sbody > p{margin:0 0 .7rem}
+.doc .sbody pre{margin:0 0 .7rem}
+.doc p.shead{display:flex;align-items:center;gap:7px;margin:0 0 .5rem;
+  font-size:.95rem;line-height:1.5;opacity:1}
+.doc p.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;opacity:1}
+.doc .chip{font-size:10.5px;color:var(--dim);border:1px solid var(--rule);border-radius:3px;
+  padding:2px 9px;white-space:nowrap;font-family:var(--num);letter-spacing:.04em}
+
+/* The one passage on this page that hurts if it is read wrong, so it is the one
+   passage that stays open in full: a condition written backwards locks the
+   reader out of their own phone. Only the two 「同理」 corollaries further down
+   fold, and they are corollaries, not the rule. */
+.doc .hard{border-left:2px solid var(--danger);padding:2px 0 2px 11px;margin:.9rem 0 0;color:var(--dim)}
+.doc .hard p{margin:0 0 .7rem;font-size:.86rem;line-height:1.8;opacity:1}
+.doc .hard p:last-child{margin-bottom:0}
+.doc .hard .hl{margin-bottom:.7rem}
+.doc .hard .ic{color:var(--danger)}
+.doc .hard b{color:var(--danger)}
+.doc .hard code{background:transparent;padding:0}
+
+/* Six symptoms, none of which anyone reads until one of them is theirs. */
+.doc details > summary{font-size:.8rem}
+.doc details.tr{margin:0;border-top:1px solid var(--rule)}
+.doc details.tr:last-of-type{border-bottom:1px solid var(--rule)}
+.doc details.tr > summary{font-size:.9rem;color:var(--dim);letter-spacing:0;padding:.72rem 0}
+.doc details.tr[open] > summary{color:var(--fg)}
+.doc details.tr > p,.doc details.tr > ol{margin:0 0 .9rem;font-size:.88rem}
+.doc details > p{font-size:.88rem}
 `

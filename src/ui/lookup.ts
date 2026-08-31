@@ -1,30 +1,40 @@
-// /lookup — type an app's name, get the strings that might be its URL scheme.
+// /lookup — the whole URL-scheme question on one page: find the strings that
+// might be an app's scheme, then try them on the phone in your hand.
 //
-// /probe answers "does this scheme work"; nothing answered "what should I type
-// into /probe", and the honest answer is that this server does not know. The
-// lists circulating online disagree with each other, apps drop schemes without
-// telling anyone, and a wrong scheme produces no error at all — the user
-// breathes for ten seconds, taps 「继续」, and stops in Safari. This project has
-// twice had an unverified string read as an answer, so this page is built the
-// other way round: every line arrives labelled with where it came from and how
-// little that is worth, and the only thing that settles the question is the
-// phone in the reader's hand.
+// It used to be two pages. /probe answered "does this scheme work", nothing
+// answered "what should I type into /probe", and the honest answer is that this
+// server does not know. The lists circulating online disagree with each other,
+// apps drop schemes without telling anyone, and a wrong scheme produces no
+// error at all — the user breathes for ten seconds, taps 「继续」, and stops in
+// Safari. This project has twice had an unverified string read as an answer, so
+// this page is built the other way round: every line arrives labelled with where
+// it came from and how little that is worth, and the only thing that settles the
+// question is the phone in the reader's hand.
 //
-// Hence the button order. 「试一下」 is the wide, dark, obvious one; 「就用这个」
-// is a quiet line of text underneath it. Testing first is not advice here, it is
-// the visual hierarchy — the same reason the breathing page shows 算了 first and
-// louder than 继续.
+// Which is exactly why the split was wrong. Finding a candidate and trying it
+// are two steps of one job, and putting them on separate tabs meant the reader
+// had to carry a string between them — while the nav paid for it with a sixth
+// tab that a 375px phone could not show. /probe now redirects here, and the two
+// regions below are the two steps, in order.
 //
-// The jump uses `location.href` inside a click handler, copied from probe.ts
-// deliberately and not merely coincidentally: `<a href>` and a synchronous
-// handler are different mechanisms in Safari, and a scheme certified by the
-// wrong one would still fail where it matters.
+// Hence the button order inside a candidate: 「试跳」 is the wide, dark, obvious
+// one and carries a ①; 「存进…」 is a quiet line underneath carrying a ②.
+// Testing first is not advice here, it is the visual hierarchy — the same reason
+// the breathing page shows 算了 first and louder than 继续.
+//
+// The jump uses `location.href` inside a click handler, which is the same
+// synchronous gesture-stack navigation the breathing page's 「继续」 performs.
+// `<a href>`, a `setTimeout`, or anything after an `await` is a different
+// mechanism in Safari, and a scheme certified by the wrong one would still fail
+// where it matters. One `jump()` now serves the candidates, the configured apps
+// and the hand-typed box, so the three cannot drift apart.
 
 import type { Env, User, UserApp } from '../types'
 import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { getUserApp, listUserApps, upsertUserApp } from '../db'
 import { DEFAULT_THEME, escapeHtml, jsonScript, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { fold, hl, icon, seal } from './icons'
 import { forbiddenSchemePattern, safeScheme } from '../scheme'
 import {
   APPS,
@@ -73,8 +83,8 @@ export async function handleLookup(
 /**
  * The app key charset and the two length caps are /settings' rules restated.
  * The scheme itself is not restated — `safeScheme` is the one authority on that,
- * shared with /probe and the breathing page, because three copies of that
- * particular list had already drifted once.
+ * shared with the breathing page, because three copies of that particular list
+ * had already drifted once.
  */
 const APP_KEY = /^[a-z0-9_-]{1,32}$/
 const MAX_LABEL = 40
@@ -160,8 +170,17 @@ type StoreResult =
   | { state: 'ok'; apps: StoreApp[] }
   /** The App Store answered and has no such app. */
   | { state: 'empty' }
-  /** Timed out, refused, or returned something unreadable. */
-  | { state: 'unavailable' }
+  /**
+   * The App Store did not give a usable answer. `why` is carried because the
+   * three causes need different advice and one of them is not the operator's
+   * fault at all: Apple appears to refuse Cloudflare's egress addresses, so
+   * this path fails in production while working from a laptop. Collapsing them
+   * into "timed out or was blocked" sent me chasing a timeout that never
+   * happened.
+   */
+  | { state: 'unavailable'; why: 'refused'; status: number }
+  | { state: 'unavailable'; why: 'timeout' }
+  | { state: 'unavailable'; why: 'unreadable' }
   /** Query too short or too long to be worth an outbound request. */
   | { state: 'skipped' }
 
@@ -183,7 +202,11 @@ async function searchAppStore(term: string, deps: LookupDeps): Promise<StoreResu
 
   const f = deps.fetchImpl ?? fetch
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   try {
     const url =
       'https://itunes.apple.com/search?term=' +
@@ -195,11 +218,11 @@ async function searchAppStore(term: string, deps: LookupDeps): Promise<StoreResu
       // roughly never; one cached edge copy spares both sides the round trip.
       cf: { cacheTtl: 3600, cacheEverything: true },
     })
-    if (!res.ok) return { state: 'unavailable' }
+    if (!res.ok) return { state: 'unavailable', why: 'refused', status: res.status }
 
     const body: unknown = await res.json()
     const results = (body as { results?: unknown }).results
-    if (!Array.isArray(results)) return { state: 'unavailable' }
+    if (!Array.isArray(results)) return { state: 'unavailable', why: 'unreadable' }
 
     const apps: StoreApp[] = []
     for (const r of results) {
@@ -213,7 +236,14 @@ async function searchAppStore(term: string, deps: LookupDeps): Promise<StoreResu
     }
     return apps.length === 0 ? { state: 'empty' } : { state: 'ok', apps }
   } catch {
-    return { state: 'unavailable' }
+    // Keyed off our own timer rather than the rejection's name: whether an
+    // aborted fetch rejects with something called AbortError is the runtime's
+    // business, and this only needs to know whether we were the one who gave
+    // up. "We stopped waiting" and "the request never landed" point at
+    // different things to check.
+    return timedOut
+      ? { state: 'unavailable', why: 'timeout' }
+      : { state: 'unavailable', why: 'unreadable' }
   } finally {
     clearTimeout(timer)
   }
@@ -244,23 +274,25 @@ async function render(env: Env, user: User, deps: LookupDeps, o: RenderOptions):
     const hits = findApps(q)
     results =
       hits.length > 0
-        ? `<h2>「${escapeHtml(q)}」的候选 · ${hits.length} 个 App</h2>\n` +
+        ? `<h2>「${escapeHtml(q)}」的候选 · ${hits.length} 个 App</h2>\n${legend()}\n` +
           hits.map((a) => tableCard(a, q, mine, jumps)).join('\n')
         : await missCard(q, mine, jumps, deps)
   }
 
+  // The candidate region renders first so its schemes take the low indices in
+  // the island; the probe region below appends to the same array. One island and
+  // one jump(), whatever the button belongs to.
   const body = `${consoleHeader(user, 'lookup')}
 <main>
   <h1>查 URL scheme</h1>
-  <p class="lede">输入 App 的名字，这一页把两份公开清单里记着的字符串抄给你，省掉一个个手打。它<b>不知道哪个是对的</b>。</p>
+  <p class="lede">输入 App 的名字，这一页把两份公开清单里记着的字符串抄给你，省掉一个个手打。它<b>不知道哪个是对的</b>——下半页就是用来试的。</p>
   ${searchForm(q)}
   ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
   ${await savedBanner(env, user, o)}
   ${disclaimer()}
-  ${results || firstRun()}
+  ${results === '' ? firstRun() : results}
   <hr class="sep">
-  <p class="note">一个候选都试不通的时候，这个 App 大概已经把 scheme 关掉了——只能对它放弃拦截，或者接受「点完继续自己再点一次图标」。
-  手上已经有字符串想直接试，去<a href="/probe">实测</a>页最下面那个输入框。</p>
+  ${probeRegion(mine, jumps)}
 </main>
 ${jsonScript('lookup-data', jumps.schemes)}`
 
@@ -280,23 +312,49 @@ function searchForm(q: string): string {
   <input id="q" type="text" name="q" value="${escapeHtml(q)}" placeholder="小红书 / 起点 / bilibili"
     inputmode="search" autocapitalize="none" autocorrect="off" spellcheck="false"
     maxlength="60" enterkeyhint="search">
-  <button type="submit">查</button>
+  <button type="submit">${icon('lookup', { label: '查' })}</button>
 </form>`
 }
 
 /**
- * The page's one non-negotiable paragraph. It is above the results rather than
- * below them because the failure it describes is silent: a wrong scheme looks
- * exactly like a right one until the moment it matters.
+ * The page's one non-negotiable claim, and it stays above the results because
+ * the failure it describes is silent: a wrong scheme looks exactly like a right
+ * one until the moment it matters.
+ *
+ * It used to be four paragraphs. What holds it together now is not the icon but
+ * the ordinals on the two buttons in every row — the rule 「试跳 first, 存进 only
+ * after your phone really jumped」 moved *into* the thing it governs, so the line
+ * up here only has to state it, not teach it.
  */
 function disclaimer(): string {
-  return `<div class="warnbox">
-  <b>这一页只是抄书</b>
-  <p class="flat">下面每一条都<b>没有被验证过</b>。清单会过期，App 也会悄悄把 scheme 关掉，而且<b>猜错不会报错</b>——
-  你会呼吸十秒、点「继续」，然后停在 Safari 里哪也去不了。所以顺序是：先点「试一下」，
-  手机<b>真的跳进那个 App</b> 了，再点「就用这个」。</p>
-  <p class="flat meta">清单快照抄于 ${SNAPSHOT_DATE}，之后的变动这里不知道。表里共 ${APPS.length} 个 App。</p>
+  return `<div class="strip">
+  ${hl('caveat', '下面每条都<b>没验证过</b> · 先<b>试跳</b>，跳通了再存')}
+  ${fold(
+    '为什么不能直接存',
+    `<p>清单会过期，App 也会悄悄把 scheme 关掉，而且<b>猜错不会报错</b>——你会呼吸十秒、点「继续」，
+      然后停在 Safari 里哪也去不了。清单快照抄于 ${SNAPSHOT_DATE}，之后的变动这里不知道；表里共 ${APPS.length} 个 App。</p>`,
+  )}
 </div>`
+}
+
+/**
+ * The three tiers, explained once per page instead of once per row.
+ *
+ * This is where most of the deleted words went. Every candidate used to carry
+ * 「实测跳通过」/「清单收录 · 未验证」/「推导 · 很可能不对」 as a pill, three
+ * different lengths wrapping at three different places, and the difference
+ * between the tiers had to be read rather than seen. Shape carries it now:
+ * a pressed seal, a recorded seal, a seal drawn in dashes.
+ */
+function legend(): string {
+  const row = (tier: 'verified' | 'listed' | 'derived', short: string, gloss: string): string =>
+    `<li class="t-${tier}"><span class="sigbig">${seal(tier, { cls: 'lg', label: short })}</span>
+    <b>${short}</b><span class="tm">${gloss}</span></li>`
+  return `<ul class="tiers">
+  ${row('verified', '跳通过', '在真手机上跳进去过，日期和机型就在那一条上')}
+  ${row('listed', '未验证', '清单里抄来的，可能已经失效')}
+  ${row('derived', '大概不对', '照 bundle id 硬推的，跳不通是常态')}
+</ul>`
 }
 
 function firstRun(): string {
@@ -314,27 +372,27 @@ async function savedBanner(env: Env, user: User, o: RenderOptions): Promise<stri
       : `等待 ${row.wait_seconds} 秒、免打扰 ${row.grace_seconds} 秒，都是默认值。`
   return `<p class="banner good">已把 <span class="mono">${escapeHtml(row.app)}</span> 的 scheme 写成
   <span class="mono">${escapeHtml(row.scheme)}</span>。${tail}
-  <a class="banner-go" href="/probe#app-${escapeHtml(row.app)}">去实测这条</a></p>`
+  <a class="banner-go" href="#app-${escapeHtml(row.app)}">去下面实测这条</a></p>`
 }
 
-// --- cards -----------------------------------------------------------------
+// --- candidates ------------------------------------------------------------
 
 function tableCard(a: AppEntry, q: string, mine: UserApp[], jumps: Jumps): string {
-  const head = `<div class="card-head">
+  return `<section class="card">
+  <div class="card-head">
     <span class="name">${escapeHtml(a.name)}</span>
     <span class="key">${escapeHtml(a.key)}</span>
     <span class="badge">${escapeHtml(a.category)}</span>
-  </div>`
-  const bundle =
-    a.bundleId === undefined
-      ? ''
-      : `<p class="note flat">bundle id <span class="mono">${escapeHtml(a.bundleId)}</span></p>`
-
-  return `<section class="card">
-  ${head}
-  ${bundle}
+  </div>
+  ${bundleFold(a.bundleId)}
   ${a.candidates.map((c) => candidateRow(c, a.name, a.key, q, mine, jumps)).join('\n')}
 </section>`
+}
+
+/** One tap for the reader who wants to check the derivation; one line for everyone else. */
+function bundleFold(bundleId: string | undefined): string {
+  if (bundleId === undefined) return ''
+  return fold('bundle id', `<p class="mono bid">${escapeHtml(bundleId)}</p>`)
 }
 
 /**
@@ -353,9 +411,18 @@ async function missCard(q: string, mine: UserApp[], jumps: Jumps, deps: LookupDe
 <p class="empty">名字太短或者太长，没法去 App Store 核对。换个写法再试。</p>`
   }
   if (store.state === 'unavailable') {
+    const detail =
+      store.why === 'refused'
+        ? `App Store 拒绝了这次查询（HTTP ${store.status}）。这多半不是你配错了——
+           Apple 会挡掉数据中心出口的地址，而这个服务就跑在 Cloudflare 上，所以从这里查
+           常常查不通，从自己电脑上查却正常。`
+        : store.why === 'timeout'
+          ? '等 App Store 回话超时了。过一会儿再试。'
+          : 'App Store 回了一段读不懂的东西。过一会儿再试。'
     return `${preamble}
-<p class="empty">去 App Store 核对这一步没走通（超时或者被挡了）。<br>
-这一页<b>不会替你编一个 scheme 出来</b>——过一会儿再试，或者直接去<a href="/probe">实测</a>页手打一个来试。</p>`
+<p class="empty">${detail}<br>
+这一页<b>不会替你编一个 scheme 出来</b>——往下翻到「实测」那一段，用手输框打一个候选来试，
+或者去<a href="https://github.com/WengYuehTing/iOS-app-info" rel="noreferrer">这份清单</a>里找。</p>`
   }
   if (store.state === 'empty') {
     return `${preamble}
@@ -376,26 +443,30 @@ async function missCard(q: string, mine: UserApp[], jumps: Jumps, deps: LookupDe
     <span class="key">${escapeHtml(key)}</span>
     <span class="badge">App Store</span>
   </div>
-  <p class="note flat">bundle id <span class="mono">${escapeHtml(app.bundleId)}</span></p>
+  ${bundleFold(app.bundleId)}
   ${rows}
 </section>`
     })
     .join('\n')
 
   return `${preamble}
-<div class="warnbox">
-  <b>下面全是猜的</b>
-  <p class="flat">App Store 只证明了这些 App 存在，以及 Apple 给它们的正式名字和 bundle id。
-  <b>它没有告诉任何人 URL scheme 是什么</b>——scheme 不在 App Store 的数据里。
-  下面每一条都是照 bundle id 的命名规律硬推出来的，<b>大概率不对</b>，跳不通是正常结果。</p>
+<div class="strip">
+  ${hl('caveat', '下面全是<b>猜的</b> · App Store 从来不公布 scheme')}
+  ${fold(
+    'App Store 到底证明了什么',
+    `<p>它只证明了这些 App 存在，以及 Apple 给它们的正式名字和 bundle id。
+      <b>它没有告诉任何人 URL scheme 是什么</b>——scheme 不在 App Store 的数据里。
+      下面每一条都是照 bundle id 的命名规律硬推出来的，<b>大概率不对</b>，跳不通是正常结果。</p>`,
+  )}
 </div>
+${legend()}
 ${cards}`
 }
 
-const TIER: Record<Candidate['confidence'], { cls: string; text: string }> = {
-  verified: { cls: 'verified', text: '实测跳通过' },
-  listed: { cls: 'listed', text: '清单收录 · 未验证' },
-  derived: { cls: 'derived', text: '推导 · 很可能不对' },
+const TIER: Record<Candidate['confidence'], { cls: string; short: string }> = {
+  verified: { cls: 'verified', short: '跳通过' },
+  listed: { cls: 'listed', short: '未验证' },
+  derived: { cls: 'derived', short: '大概不对' },
 }
 
 function candidateRow(
@@ -408,22 +479,20 @@ function candidateRow(
 ): string {
   const i = jumps.schemes.push(c.scheme) - 1
   const tier = TIER[c.confidence]
-  const evidence =
-    c.confidence === 'verified' && c.verifiedNote
-      ? `<p class="evidence">${escapeHtml(c.verifiedNote)}</p>`
-      : ''
 
-  const tags = [`<span class="tag ${tier.cls}">${tier.text}</span>`]
-  // A verified badge with nothing behind it is just a louder 「清单收录」. One
-  // phone on one iOS version is real evidence and a limited one, so the reader
-  // gets the date and the circumstances and can weigh it — a scheme that worked
-  // once can be dropped in the app's next release.
+  const marks: string[] = []
+  // A verified seal with nothing behind it is just a louder 「未验证」. One phone
+  // on one iOS version is real evidence and a limited one, so the reader gets
+  // the date here and the circumstances just below, and can weigh it — a scheme
+  // that worked once can be dropped in the app's next release.
   if (c.confidence === 'verified' && c.verifiedOn) {
-    tags.push(`<span class="tag when">${escapeHtml(c.verifiedOn)}</span>`)
+    marks.push(`<span class="mk when">${icon('clock')}${escapeHtml(c.verifiedOn)}</span>`)
   }
-  if (isCorroborated(c)) tags.push('<span class="tag">两份清单一致</span>')
+  if (isCorroborated(c)) marks.push(`<span class="mk">${icon('agree')}两份清单一致</span>`)
   for (const s of c.sources) {
-    tags.push(`<a class="src" href="${escapeHtml(s.url)}" rel="noreferrer">${escapeHtml(s.label)}</a>`)
+    marks.push(
+      `<a class="mk" href="${escapeHtml(s.url)}" rel="noreferrer">${icon('source')}${escapeHtml(s.label)}</a>`,
+    )
   }
   // Their own row, matched on the scheme rather than on the app key: this is
   // the only "the user picked this" signal the server has, and it deliberately
@@ -431,76 +500,181 @@ function candidateRow(
   // about whether a phone answers to it.
   const saved = mine.find((m) => m.scheme.toLowerCase() === c.scheme.toLowerCase())
   if (saved !== undefined) {
-    tags.push(
-      `<a class="tag mine" href="/settings#app-${escapeHtml(saved.app)}">你已写进 ${escapeHtml(saved.app)}</a>`,
+    marks.push(
+      `<a class="mk mine" href="/settings#app-${escapeHtml(saved.app)}">${icon('save')}已写进 ${escapeHtml(saved.app)}</a>`,
     )
   }
 
+  const evidence =
+    c.confidence === 'verified' && c.verifiedNote
+      ? `<p class="evidence">${escapeHtml(c.verifiedNote)}</p>`
+      : ''
+
   return `<form class="cand" method="post" action="/lookup">
-  <code class="mono cand-scheme">${escapeHtml(c.scheme)}</code>
-  <div class="tags">${tags.join('\n    ')}</div>
+  <div class="c2-row">
+    <span class="sig ${tier.cls}">${seal(c.confidence)}${tier.short}</span>
+    <code class="mono cand-scheme">${escapeHtml(c.scheme)}</code>
+  </div>
+  ${marks.length === 0 ? '' : `<div class="marks">${marks.join('\n    ')}</div>`}
   ${evidence}
-  ${c.caveat === undefined ? '' : `<p class="caveat">${escapeHtml(c.caveat)}</p>`}
-  <button class="try" type="button" data-i="${i}">试着跳到「${escapeHtml(appName)}」</button>
+  ${c.caveat === undefined ? '' : fold('备注', `<p>${escapeHtml(c.caveat)}</p>`)}
+  <button class="try" type="button" data-i="${i}"><span class="ord">1</span>${icon('jump')}试跳「${escapeHtml(appName)}」</button>
   <input type="hidden" name="op" value="use">
   <input type="hidden" name="q" value="${escapeHtml(q)}">
   <input type="hidden" name="key" value="${escapeHtml(key)}">
   <input type="hidden" name="label" value="${escapeHtml(appName)}">
   <input type="hidden" name="scheme" value="${escapeHtml(c.scheme)}">
-  <div class="actions">
-    <button class="linky use" type="submit">跳通了 · 就用这个</button>
-    <span class="note flat">写进 <span class="mono">${escapeHtml(key)}</span> 这条配置</span>
+  <div class="acts">
+    <button class="use2" type="submit"><span class="ord">2</span>${icon('save')}跳通了 · 存进 <span class="mono">${escapeHtml(key)}</span></button>
   </div>
 </form>`
+}
+
+// --- the probe region ------------------------------------------------------
+
+/**
+ * The second half of the same job, and everything the standalone /probe page
+ * could do: one big button per configured app, a box for a string that is not
+ * saved anywhere yet, and the jump written the one way that counts.
+ *
+ * `id="app-<key>"` is load-bearing beyond scrolling: /probe#app-xhs redirects
+ * here without a fragment of its own, so the browser re-applies the original
+ * one and an old bookmark still lands on the right card.
+ */
+function probeRegion(apps: UserApp[], jumps: Jumps): string {
+  return `<section class="probe">
+  <h2>实测 · 跳得动才算数</h2>
+  ${hl('jump', '在 <b>iPhone 的 Safari 里</b>点，电脑上点没有意义。这一页不记录任何东西，点多少次都不进你的回顾。')}
+  ${fold(
+    '怎么看结果',
+    `<ul>
+      <li>手机<b>跳到那个 App</b> 了 —— scheme 对，回上面点那条候选的「存进」，或者去<a href="/settings">设置</a>填。</li>
+      <li>点了<b>没反应</b>，或弹出「Safari 打不开该网页」 —— scheme 不对，换一个候选再试。</li>
+      <li>一个候选都试不通 —— 这个 App 大概已经把 scheme 关掉了，只能对它放弃拦截，或者接受「点完继续自己再点一次图标」。</li>
+    </ul>`,
+  )}
+  <div class="manual">
+    <label class="sr" for="manual">手打一个 scheme</label>
+    <input id="manual" type="text" class="mono" placeholder="someapp://" inputmode="url"
+      autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" enterkeyhint="go">
+    <button id="manual-go" type="button">试试</button>
+  </div>
+  <p class="note" id="manual-err" hidden></p>
+  <p class="note">手上已经有字符串就直接填这一栏，不用先写进配置。</p>
+  <h3>你已配的 App</h3>
+  ${apps.length === 0 ? probeEmpty() : apps.map((a) => appCard(a, jumps)).join('\n')}
+</section>`
+}
+
+function probeEmpty(): string {
+  return `<p class="empty">还没有配置任何 App，没什么可试的。<br>上面查一个，跳通了直接存；或者去<a href="/settings">设置</a>手动加。</p>`
+}
+
+function appCard(a: UserApp, jumps: Jumps): string {
+  const i = jumps.schemes.push(a.scheme) - 1
+  const key = escapeHtml(a.app)
+  return `<section class="card${a.enabled ? '' : ' off'}" id="app-${key}">
+  <div class="card-head">
+    <span class="name">${escapeHtml(a.label)}</span>
+    <span class="key">${key}</span>
+    ${a.enabled ? '' : '<span class="badge">已停用</span>'}
+  </div>
+  <code class="mono scheme">${escapeHtml(a.scheme)}</code>
+  <button class="try" type="button" data-i="${i}">${icon('jump')}试跳「${escapeHtml(a.label)}」</button>
+  <div class="after">
+    <a class="mk" href="/settings#app-${key}">${icon('settings')}改这条配置</a>
+  </div>
+</section>`
 }
 
 // --- assets ----------------------------------------------------------------
 
 const LOOKUP_CSS = `
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.find{display:flex;gap:8px;align-items:stretch;margin:0 0 18px}
+.find{display:flex;gap:8px;align-items:stretch;margin:0 0 16px}
 .find input{flex:1;min-width:0}
 .find button{flex:0 0 auto;background:transparent;color:var(--fg);border:1px solid var(--rule);
-  border-radius:10px;padding:0 20px;font-size:15px;font-weight:600}
+  border-radius:10px;padding:0 20px;display:inline-flex;align-items:center;justify-content:center}
 .find button:active{opacity:.72}
-.warnbox{border:1px solid var(--rule);border-radius:14px;padding:14px;margin:0 0 18px;
-  font-size:13px;line-height:1.75;color:var(--dim)}
-.warnbox b{color:var(--fg)}
-.warnbox p{margin:8px 0 0}
-.warnbox .meta{font-size:11.5px;color:var(--faint);margin-top:10px}
+.find button .ic{width:18px;height:18px}
+
+/* the two "read this before you trust the list" strips */
+.strip{border:1px solid var(--rule);border-radius:7px;padding:10px 12px;margin:0 0 16px;
+  font-size:12.5px;line-height:1.7;color:var(--dim)}
+.strip b{color:var(--fg)}
+details > ul{margin:8px 0 9px;padding-left:1.15em;font-size:12.5px;line-height:1.85;color:var(--dim)}
+details > ul b{color:var(--fg)}
+details > ul li{margin:3px 0}
+
+/* the three tiers, said once */
+.tiers{list-style:none;margin:0 0 18px;padding:0}
+.tiers li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--rule)}
+.tiers li:first-child{border-top:0;padding-top:2px}
+.sigbig{display:inline-flex;flex:none;color:var(--dim)}
+.tiers b{flex:none;min-width:4.4em;font-size:13px;font-weight:600;color:var(--fg)}
+.tiers .tm{font-size:11.5px;line-height:1.6;color:var(--faint)}
+.t-verified .sigbig{color:var(--fg)}
+.t-derived .sigbig{color:var(--danger)}
+.t-derived b{color:var(--danger)}
+
+/* one candidate */
 .cand{border-top:1px solid var(--rule);padding:14px 0 2px;margin:0}
 .cand:first-of-type{border-top:0;padding-top:4px}
-.cand-scheme{display:block;word-break:break-all;font-size:14px;margin:0 0 9px;
-  -webkit-user-select:all;user-select:all}
-.tags{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 8px;font-size:11px;line-height:1.9}
-.tag{border:1px solid var(--rule);border-radius:99px;padding:1px 9px;color:var(--dim);
-  white-space:nowrap;letter-spacing:.06em;text-decoration:none}
-.tag.derived{border-color:var(--danger);color:var(--danger)}
-.tag.verified{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
-.tag.mine{border-style:dashed}
-.src{color:var(--faint);font-size:11px;text-decoration:underline;text-underline-offset:3px}
-.evidence{margin:5px 0 0;font-size:.78rem;color:var(--dim);line-height:1.6}
-.tag.when{font-variant-numeric:tabular-nums;letter-spacing:.04em}
-.caveat{font-size:12px;line-height:1.75;color:var(--dim);margin:0 0 10px}
-.try{width:100%;background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
-  border-radius:12px;padding:14px 18px;font-size:15px;font-weight:600;min-height:52px}
+.c2-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 8px}
+.cand-scheme{word-break:break-all;font-size:13.5px;-webkit-user-select:all;user-select:all}
+.sig{display:inline-flex;align-items:center;gap:5px;font-size:11px;letter-spacing:.06em;
+  white-space:nowrap;color:var(--dim)}
+.sig.verified{color:var(--fg)}
+.sig.derived{color:var(--danger)}
+.marks{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+.mk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);
+  text-decoration:none;border:1px solid var(--rule);border-radius:4px;padding:1.5px 9px;white-space:nowrap}
+.mk.mine{border-style:dashed;color:var(--faint)}
+.mk.when{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.evidence{margin:7px 0 0;font-size:.78rem;color:var(--dim);line-height:1.6}
+.bid{font-size:11.5px;color:var(--faint);margin:6px 0 0;-webkit-user-select:all;user-select:all}
+
+/* ① try, ② save — the ordinals are the ordering rule, not decoration */
+.try{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
+  border-radius:6px;padding:13px 16px;font-size:15px;font-weight:600;min-height:50px;margin-top:12px}
 .try:active{opacity:.72}
-.cand .actions{gap:10px;justify-content:space-between}
-.cand .actions .note{text-align:right}
+.acts{display:flex;justify-content:center;margin:0}
+.use2{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:13px;
+  padding:12px 0 2px;min-height:44px}
+.use2 .mono{font-size:12.5px}
+.ord{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:17px;height:17px;border-radius:3px;border:1px solid currentColor;
+  font-family:var(--num);font-size:10.5px;font-weight:400;opacity:.72}
 h2{margin:22px 0 12px}
+
+/* the probe region */
+.probe h3{margin:20px 0 12px;font-size:12px;font-weight:400;color:var(--faint);letter-spacing:.14em}
+.probe .scheme{display:block;color:var(--dim);word-break:break-all;margin:0 0 4px}
+.manual{display:flex;gap:8px;align-items:stretch;margin:12px 0 0}
+.manual input{flex:1;min-width:0}
+.manual button{flex:0 0 auto;background:transparent;color:var(--fg);border:1px solid var(--rule);
+  border-radius:10px;padding:0 16px;font-size:15px;font-weight:600}
+.manual button:active{opacity:.72}
+.after{display:flex;justify-content:flex-end;margin-top:11px}
 `
 
 /**
- * Byte-for-byte the jump from probe.ts, and that is the requirement rather than
- * a coincidence. `location.href` assigned synchronously inside a click handler
- * is the same gesture-stack navigation the breathing page's 「继续」 performs;
- * an `<a href>`, a `setTimeout`, or anything reached after an `await` is a
- * different mechanism in Safari, and would certify schemes that then fail in
- * the one place it counts.
+ * The jump is the whole product surface for this page, and its shape is the
+ * requirement rather than a style. `location.href` assigned synchronously inside
+ * a click handler is the same gesture-stack navigation the breathing page's
+ * 「继续」 performs; an `<a href>`, a `setTimeout`, or anything reached after an
+ * `await` is a different mechanism in Safari, and would certify schemes that
+ * then fail in the one place it counts.
+ *
+ * Every jumpable thing on the page — a candidate, a configured app, a string
+ * typed into the box — goes through this one function. That used to be a promise
+ * kept by a test comparing two pages byte for byte; now it is structural.
  *
  * BAD repeats the denylist even though the write path already refuses those
- * schemes: nothing here came out of the database, and a derived candidate is
- * assembled from a string Apple returned.
+ * schemes: the box accepts anything the reader types, including a line pasted
+ * from a forum, and a derived candidate is assembled from a string Apple
+ * returned.
  */
 const SCRIPT = `
 (function () {
@@ -521,5 +695,16 @@ const SCRIPT = `
       jump(schemes[Number(e.currentTarget.getAttribute('data-i'))]);
     });
   }
+
+  var input = document.getElementById('manual');
+  var err = document.getElementById('manual-err');
+  function tryManual() {
+    var v = (input.value || '').trim();
+    if (jump(v)) { err.hidden = true; return; }
+    err.textContent = v ? '这个不像一个能跳的 scheme，形状要是 xxx:// 。' : '先填一个 scheme。';
+    err.hidden = false;
+  }
+  document.getElementById('manual-go').addEventListener('click', tryManual);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryManual(); });
 })();
 `

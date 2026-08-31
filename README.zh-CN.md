@@ -59,7 +59,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 
 一个 Cloudflare Worker 加一个 D1。整个 App 就是一个 `fetch` 处理函数，外加一条每日 cron。
 
-- 页面全部服务端渲染，CSS 和 JS 内联，**零外部请求**——没有 CDN、没有网络字体、连 favicon 都是 `data:`。这一条由 `default-src 'none'` 的 CSP 强制，不只是承诺：打开这些页面的时刻，人正伸手去够一个干扰源，网络还经常不好，多一次阻塞请求这个产品就废了。
+- 页面全部服务端渲染，CSS 和 JS 内联，**零外部请求**——没有 CDN、没有网络字体、连 favicon 都是 `data:`。这一条由 `default-src 'none'` 的 CSP 强制，不只是承诺：打开这些页面的时刻，人正伸手去够一个干扰源，网络还经常不好，多一次阻塞请求这个产品就废了。唯一的例外是 `/register` 上那个可选的 Turnstile widget——那是注册页，不是拦截页，见第 6 步。
 - 没有前端框架，没有运行时依赖。`package.json` 里只有五个 devDependencies。
 - 拦截记录永不删除。session、登录态、限流窗口每晚清理，`events` 表是这个产品本身，一直留着。
 - 账号是邮箱加密码，但密码只是方便。真正的身份是一把 128 位随机的 **gate token**，快捷指令拿它认人。
@@ -76,7 +76,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | `/review` | 本人 | 今天、七天、哪个 App 最消耗你 |
 | `/settings` | 本人 | 增删改自己要拦的 App |
 | `/lookup` | 本人 | 输入 App 名字，给出带来源的 scheme 候选 |
-| `/probe` | 本人 | 在真手机上逐个实测 URL scheme |
+| `/probe` | —— | 保留为 302 跳 `/lookup`；两页已合并，旧链接和书签仍然有效 |
 | `/setup` | 本人 | 快捷指令配置向导，印着你自己的地址和 token |
 | `/account` | 本人 | 看回自己的 gate token、改密码、退出登录 |
 | `/mock?v=1\|2` | 所有人 | 两版呼吸页视觉对比 |
@@ -174,9 +174,38 @@ npx wrangler pages deploy --branch main
 
 部署完会给你一个 `https://<项目名>.pages.dev`。注意 `*.pages.dev` 的子域名是**全局唯一**的，名字被占用时 Cloudflare 会自动加后缀，那个带后缀的主机名才是后面到处要用的地址。
 
-### 6. 注册，然后把自己设成 owner
+### 6. 打开人机验证（可选，不开也是被支持的配置）
 
-打开 `https://<你的地址>/register`，用邮箱和密码注册。普通使用者到这里就够了，注册是开放的。
+注册是开放的，谁找到地址都能注册；而这个仓库是公开的，所以地址也是公开的。`src/ratelimit.ts` 里的每 IP 限流把单个地址压在每小时 5 次，但对一个铺在几百个地址上的脚本毫无办法。[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) 补的就是这一块，而且只加在 `/register` 上。
+
+1. Cloudflare 控制台 → **Turnstile** → **Add widget**，模式选 **Managed**。
+2. 主机名那里要把**两处部署都填上**——`<项目名>.pages.dev` 和 `<worker名>.<子域>.workers.dev`——因为两边都在提供 `/register`。想让 `npm run dev` 也弹验证，再加一个 `localhost`。
+3. 记下它给你的两个值：**site key**（公开的，会被渲染进页面）和 **secret key**（永不离开服务端）。
+4. 两个值都要设到两处部署上：
+
+```bash
+# Worker
+npx wrangler secret put TURNSTILE_SITE_KEY   # 粘贴 site key
+npx wrangler secret put TURNSTILE_SECRET     # 粘贴 secret key
+
+# Pages —— 同样这两个值
+cd pages
+npx wrangler pages secret put TURNSTILE_SITE_KEY --project-name yixi
+npx wrangler pages secret put TURNSTILE_SECRET --project-name yixi
+```
+
+`TURNSTILE_SITE_KEY` 本身是公开的，写成 `wrangler.toml` 里的 `[vars]` 也完全可以。这里当 secret 设，只是为了让两个值一起走，不至于只部署了一半。
+
+**不设它是被支持的配置，不是坏掉的配置。**两个值缺任何一个，就不渲染 widget、不做任何校验，`/register` 的行为和这个功能存在之前一模一样——这正是 `npm run dev` 和第一次部署能在完全没有 Cloudflare widget 的情况下跑通的原因。代价也值得明说：不设就等于除了每 IP 限流之外没有任何机器人防护。这和这个产品其他地方的 fail-open 是同一套判断，见 [SECURITY.md](SECURITY.md)。
+
+另外两件该知道的事：
+
+- **这是「零外部请求」这条规矩唯一被破的地方。**widget 脚本从 `challenges.cloudflare.com` 加载，那也是 CSP 在这一页唯一放行的域——只在 `/register`，且只在两个值都设好时。其他每一页都仍然是 `default-src 'none'`，一个例外都没有。理由写在 `src/ui/layout.ts` 里 `TURNSTILE_ORIGIN` 上面的注释里。
+- **验证需要 JavaScript。**配了 widget 之后，关掉 JavaScript 的浏览器注册不了。表单上写了这句话。
+
+### 7. 注册，然后把自己设成 owner
+
+打开 `https://<你的地址>/register`，用邮箱和密码注册。普通使用者到这里就够了，注册是开放的（如果第 6 步配了 Turnstile，则要先过一次人机验证）。
 
 owner 是另一回事，而且刻意没有任何界面能授予。想用 `/admin`（线下给人发号），直接改数据库：
 
@@ -187,11 +216,11 @@ npx wrangler d1 execute yixi --remote --command \
 
 `/admin` 完全是可选的。既然注册已经开放，它剩下的唯一用途是给一个不想注册账号的人递一把 token。
 
-### 7. 配上第一个 App
+### 8. 配上第一个 App
 
 1. `/settings` —— 加一个 App。**App 键**（比如 `xhs`）就是你之后要在 iOS 自动化里手打的那行文本，必须一字不差。只能用小写字母、数字、`-`、`_`。
 2. `/lookup` —— 输入 App 名字，拿到一组 scheme 候选，每条都标着来源。**没有一条是被验证过的。**
-3. `/probe` —— 在 iPhone 上打开这一页，挨个点。**只有真的跳进那个 App 的才算数。**
+3. `/lookup` —— 在 iPhone 上打开这一页，在「实测」那一段挨个点。**只有真的跳进那个 App 的才算数。**
 4. `/setup` —— 快捷指令向导，你要粘的每一行都已经填好了真实地址和 token。
 
 ## iOS 快捷指令怎么配
@@ -266,13 +295,14 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 
 - **iOS 的「打开 App 时」自动化必须一个 App 建一条。**它只接受一个 App，不能批量、不能多选。拦 5 个 App 就要手动建 5 条。One Sec 和所有同类工具都这样，服务端绕不过去。
 - **iOS 那三个风险已经落地。**2026-08-31 真机实测：关掉「运行前询问」后自动化零点击直接跑；每次开 App 一次网络往返无明显卡顿；点「继续」确实能跳回目标 App。`xhsdiscover://` 和 `QDReader://` 是本项目真正观察到能用的两个 scheme，表里其余都是转录的，没上过手机。
-- **有些 App 已经彻底移除了自己的 URL scheme。**`/probe` 里怎么点都不动，换哪个候选都一样。只能对它放弃拦截，或者接受「点完继续自己再点一次图标」（第二次会落在免打扰窗口里，不会再被拦）。
+- **有些 App 已经彻底移除了自己的 URL scheme。**`/lookup` 的「实测」段里怎么点都不动，换哪个候选都一样。只能对它放弃拦截，或者接受「点完继续自己再点一次图标」（第二次会落在免打扰窗口里，不会再被拦）。
 - **每次开 App 都要等一次网络往返。**没有客户端缓存，没有离线兜底。信号差的时候有感知。慢到不可接受的话，那是要改方案的信号，不是配置问题。
 - **`/lookup` 的 App Store 兜底查询从 Cloudflare 边缘调不通。**表里查不到某个 App 时，`/lookup` 会去 `itunes.apple.com` 确认它存在并拿 bundle id。这个调用在 Worker 运行时里失败，本机直连正常。**已知问题，尚未修**。页面会明说「这一步没走通」并且拒绝替你编一个 scheme，所以不会悄悄给出错的东西；主路径不受影响。
 - **中国大陆访问要用 Pages 那个地址。**见上文[为什么要部署两次](#为什么要部署两次)。`pages.dev` 是共享后缀，今天干净不代表永远——绑自有域名是唯一持久的解法。
 - **界面全是中文。**每一页、每个按钮、每条报错。欢迎 i18n PR。
 - **呼吸页放很久之后仍然可以点「继续」。**`/resolve` 刻意不做时效校验：拒绝过期的 resolve 就开不出免打扰窗口，跳回 App 会被立刻再拦，转进死循环。`/b` 确实会拒绝**渲染**超过十分钟的 session，所以这条只对已经加载出来的页面成立。
 - **呼吸页需要 JavaScript**（没有时会显示一句 `<noscript>` 提示，让你回主屏幕重新打开）。
+- **配了 Turnstile 之后，注册也需要 JavaScript。**widget 没有 JS 就产不出 token，而缺 token 会被拒——表单里有一句 `<noscript>` 说明。不配 Turnstile 的话，`/register` 和以前一样不需要 JS。
 - **两版视觉还没定。**`/mock?v=1` 是「墨」（近黑底水墨晕圈加衬线中文），`?v=2` 是「息」（一个细圆环加一个圆点）。`src/ui/layout.ts` 里的 `DEFAULT_THEME` 目前是 `ink`。改这一个常量就换整个产品的脸。
 - **它是提醒，不是拦路。**任何人都能两下关掉那条自动化。这是刻意的设计（见上文关于 fail-open 的讨论），也意味着这个工具只对自己想要它的人有效。
 
@@ -283,10 +313,10 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 运行时 | Cloudflare Workers（同时以 Pages Function 部署一份） |
 | 存储 | Cloudflare D1（SQLite） |
 | 语言 | TypeScript，strict，零运行时依赖 |
-| 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制） |
+| 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 13 个文件 281 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 16 个文件 350 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
@@ -300,6 +330,7 @@ src/crypto.ts       PBKDF2 密码、AES-GCM 封存 token、随机 hex
 src/db.ts           全部 D1 语句，只有 D1 语句
 src/stats.ts        /review 的聚合层，grace_pass 的排除规则在这里
 src/ratelimit.ts    开放端点的每 IP 固定窗口限流
+src/turnstile.ts    /register 上那道可选的人机验证，以及它的 fail-open 规则
 src/scheme.ts       URL scheme 黑名单 —— 一份正本，三处调用
 src/schemes.ts      两份公开 scheme 清单的固化快照（60 个 App）
 src/types.ts        Env、User、事件类型、共享常量

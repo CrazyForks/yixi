@@ -1,11 +1,12 @@
-// Render + write-path coverage for the two pages that have no other owner:
-// /settings (the whole reason this is a multi-user product) and /probe (the
-// only thing standing between the user and a URL scheme copied off a forum).
+// Render + write-path coverage for /settings — the whole reason this is a
+// multi-user product rather than one person's database — plus the redirect that
+// /probe became when it merged into /lookup.
 //
-// The escaping cases at the end are not ceremony: both pages interpolate
-// user-supplied labels and schemes, and /probe hands its schemes to an inline
-// script, so a scheme that can close a <script> tag would be code execution on
-// the page whose whole job is to navigate somewhere.
+// The escaping case is not ceremony: this page interpolates user-supplied labels
+// and schemes into markup.
+//
+// The rendering of the merged probe region lives in test/lookup.test.ts, where
+// the page it now belongs to is.
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -102,36 +103,34 @@ describe('settings', () => {
   })
 })
 
-describe('probe', () => {
-  it('empty state', async () => {
-    const html = await (await renderProbe(env, user)).text()
-    expect(html).toContain('还没有配置任何 App')
+describe('/probe, after the merge', () => {
+  it('redirects to /lookup instead of 404-ing an old bookmark', async () => {
+    const res = await renderProbe(env, user)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/lookup')
   })
 
-  it('renders a button and a JSON island per app, disabled ones included', async () => {
-    await post({ op: 'save', app: 'xhs', label: '小红书', scheme: 'xhsdiscover://', enabled: '1' })
-    await post({ op: 'save', app: 'dy', label: '抖音', scheme: 'dyscheme://' })
-    const r = await renderProbe(env, user)
-    expect(r.status).toBe(200)
-    const html = await r.text()
-    expect(html).toContain('id="app-xhs"')
-    expect(html).toContain('id="app-dy"')
-    expect(html).toContain('已停用')
-    expect(html).toContain('data-i="0"')
-    expect(html).toContain('data-i="1"')
-    // island order must match button order (listUserApps orders by app: dy, xhs)
-    expect(html).toContain('["dyscheme://","xhsdiscover://"]')
-    expect(html).toContain('href="/settings#app-xhs"')
+  it('sends no fragment of its own, so /probe#app-xhs still lands on the card', async () => {
+    // Per RFC 7231 a browser re-applies the original fragment when the Location
+    // has none, and /lookup gives every configured app that same id. A Location
+    // of '/lookup#top' would silently break every bookmark this redirect exists
+    // to keep working.
+    const res = await renderProbe(env, user)
+    expect(res.headers.get('location')).not.toContain('#')
   })
 
-  it('escapes a scheme containing a tag-closer in the JSON island', async () => {
-    await post({ op: 'save', app: 'x', label: 'x', scheme: 'a://</script><img>', enabled: '1' })
-    const html = await (await renderProbe(env, user)).text()
-    expect(html).not.toContain('</script><img>')
-    expect(html).toContain('\\u003c/script')
+  it('is temporary, not permanent', async () => {
+    // Safari caches a 301 more or less forever, which would outlive any future
+    // decision to split these pages again. Nobody navigates here deliberately,
+    // so the extra round trip costs nothing worth having.
+    const res = await renderProbe(env, user)
+    expect(res.status).not.toBe(301)
+    expect(res.headers.get('cache-control')).toBe('no-store')
   })
+})
 
-  it('refuses a grace window too short to survive the trip back', async () => {
+describe('the grace window', () => {
+  it('refuses a window too short to survive the trip back', async () => {
     // Tapping 继续 has to outlast Safari handing off plus the app cold-starting
     // plus the automation firing again. A few seconds does not cover it, and the
     // symptom — intercepted again the instant you arrive — reads as the whole
@@ -160,5 +159,16 @@ describe('probe', () => {
       enabled: 'on',
     })
     expect(res.status).toBe(303)
+  })
+
+  it('keeps the warning beside the field, folded but never deleted', async () => {
+    // This paragraph renders once per configured app plus once for the add form,
+    // so it was the most repeated prose in the product. The claim that costs the
+    // reader something stays visible; the background folds.
+    await post({ op: 'save', app: 'xhs', label: '小红书', scheme: 'a://', enabled: '1' })
+    const html = await (await get('/settings')).text()
+    expect(html).toContain('刚跳回 App 就又被拦')
+    expect(html).toContain('它到底管什么')
+    expect(html).toContain('不进统计')
   })
 })

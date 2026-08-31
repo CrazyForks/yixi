@@ -18,3 +18,27 @@ TOKEN_KEY=dev-only-not-a-real-key
 # 浏览器会话现在是 sessions_web 表里的行，cookie 只带一个不可猜的 id，
 # 没有任何东西需要签名。全新部署可以不设。
 COOKIE_SECRET=unused
+
+# ── Turnstile（可选；不填就是不启用，注册照常可用）─────────────────────
+#
+# 只保护 /register。/login 已有每 IP 限流，加验证码只会惩罚打错密码的真用户；
+# /claim 和 /recover 都要求手里有一把 128 位随机 token，猜不出来，
+# 验证码在那儿是纯噪音。
+#
+# 两个值必须【同时】填，缺一个就整体关掉：
+#   只有 site key —— 渲染出一个没人校验的 widget；
+#   只有 secret   —— 不渲染 widget，于是每次提交都没有 token，永远被拒。
+# 两种都是把人锁在门外，所以代码把「半配置」直接当成没配置，并打一条 warn。
+#
+# 不填的代价说明白：除了每 IP 限流之外没有任何机器人防护。
+# 这是有意的取舍，理由和快捷指令那侧的 fail-open 是同一条——
+# 详见 src/turnstile.ts 顶部的注释和 SECURITY.md。
+#
+# 值从 Cloudflare 控制台 → Turnstile → Add widget 拿；本地开发想真弹验证，
+# 要把 localhost 加进那个 widget 的主机名列表里。
+#
+# 也可以用 Cloudflare 的公开测试值：site key 1x00000000000000000000AA
+# 配 secret 1x0000000000000000000000000000000AA 永远判通过，
+# 用来验证接线通了而不用真去点。
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET=

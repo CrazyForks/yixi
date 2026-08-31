@@ -288,6 +288,6 @@ function header(user: User): string {
   return `<header>
   <span class="brand">一息</span>
   <span class="who">${escapeHtml(user.name)}</span>
-  <nav><a class="on" href="/review">回顾</a><a href="/settings">设置</a><a href="/probe">实测</a></nav>
+  <nav><a class="on" href="/review">回顾</a><a href="/settings">设置</a><a href="/lookup">候选</a></nav>
 </header>`
 }

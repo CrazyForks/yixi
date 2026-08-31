@@ -82,13 +82,17 @@ The one aggregate that *is* shown — attempts in the last 7 days — exists for
 
 ## Fail-open is deliberate, and it is a security decision too
 
-Two places in this system fail open on purpose.
+Three places in this system fail open on purpose.
 
 **1. The Shortcut.** `/gate?fmt=text` answers either a `https://…` URL or the word `pass`, and the Shortcut's condition is *contains `https`*. A dead Worker, a rotated token, a timeout, a blank body and a poisoned DNS answer all fail to contain `https`, so nothing opens and the app the user wanted starts normally.
 
 **2. The rate limiter.** `checkRate` catches D1 errors and allows the request. A broken throttle must not become an outage.
 
-Both are the same judgment: **locking someone out of their own phone is worse than failing to stop them once.** The asymmetry is not close. One direction costs a missed interception; the other bricks several apps at a moment when the person is probably in a hurry, using a tool they built themselves.
+**3. The Turnstile check on `/register`** (`src/turnstile.ts`), in two of its three failure modes. No keys configured → no widget, no verification, sign-up works as it always did. Keys configured but Cloudflare cannot answer — the siteverify call throws, times out, returns non-2xx, returns unparseable JSON, or reports a problem with *our own* secret (`missing-input-secret`, `invalid-input-secret`, `internal-error`) → the registration proceeds. A typo in `TURNSTILE_SECRET` must not mean "nobody can ever have an account", with the reason visible only to whoever reads the logs.
+
+The third mode is **not** fail-open, on purpose: a missing, expired, replayed, oversized or rejected token is refused, and so is any error code not on that short list of ours — including `bad-request`, which a caller can induce with a token of their choosing. That token check is the only thing the feature actually catches; waving it through would make the whole thing theatre. The residual risk is a browser that can reach this app but not `challenges.cloudflare.com`, which cannot register while that is true; an operator watching that happen deletes the secret and is back to case 1.
+
+All three are the same judgment: **locking someone out of their own phone is worse than failing to stop them once.** The asymmetry is not close. One direction costs a missed interception; the other bricks several apps at a moment when the person is probably in a hurry, using a tool they built themselves.
 
 This is why the Shortcut condition must never be inverted to *does not contain `pass`*. Written that way, a service outage takes every watched app down with it.
 
@@ -96,7 +100,16 @@ This is why the Shortcut condition must never be inverted to *does not contain `
 
 Things to know before you point a hostname at it.
 
-**Registration is open, and there is no captcha.** `/register`, `/login`, `/claim` and `/recover` are reachable by anyone who finds the URL. The only defense is a per-IP fixed-window throttle (`src/ratelimit.ts`): register 5/hour, claim 5/hour, recover 10/hour, login 12/10min, keyed on `CF-Connecting-IP`. There is no Turnstile and no email verification, so a distributed script can still create accounts and put rows in your D1. The window is fixed rather than sliding, so a burst straddling a boundary briefly gets about double the allowance — fine for making sustained abuse cost real time, not a precise gate. If you expose this publicly, add Turnstile.
+**Registration is open.** `/register`, `/login`, `/claim` and `/recover` are reachable by anyone who finds the URL. The baseline defense on all four is a per-IP fixed-window throttle (`src/ratelimit.ts`): register 5/hour, claim 5/hour, recover 10/hour, login 12/10min, keyed on `CF-Connecting-IP`. The window is fixed rather than sliding, so a burst straddling a boundary briefly gets about double the allowance — fine for making sustained abuse cost real time, not a precise gate. There is no email verification of any kind.
+
+**`/register` can additionally require a Turnstile challenge, and by default it does not.** Set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` (README step 6) and every sign-up has to solve a Managed challenge before anything else in the handler runs. Leave either unset and there is no widget and no verification — the throttle is all you have, and a script spread over a few hundred addresses walks through it. This is a real gap if your host is public, and the repository being public means it is discoverable; the two-value fix is the whole remedy.
+
+The challenge deliberately guards **only** `/register`. `/login` was left alone because a challenge there taxes whoever mistyped their own password, which is the common case, while the 12/10min throttle already makes guessing hopeless. `/claim` and `/recover` were left alone because both already require a 128-bit token in hand; a challenge cannot slow down something that is not guessable. Adding one to any of the three would charge friction to real users and buy nothing.
+
+Two consequences of turning it on that are easy to miss:
+
+- **It is checked before anything else `/register` does**, which means the `email_taken` disclosure two paragraphs down now costs a solved challenge too. That was not the reason for adding it, but it is the most useful thing it does.
+- **A widget needs JavaScript.** With the keys set, a browser with JavaScript off cannot register. The form says so in a `<noscript>` line rather than silently rejecting.
 
 **Email addresses are never verified and no mail is ever sent.** The direct consequence: `/register` tells a stranger whether a given address already has an account (`email_taken`, with a link to sign in). That disclosure is unavoidable for a signup form that has to be usable without verification, and it is a real leak — "does this person use 一息" is answerable at `/register` even though it is not answerable at `/login`. If that matters for your users, you need verification mail, which this project deliberately does not have.
 
@@ -114,7 +127,11 @@ Things to know before you point a hostname at it.
 
 Listed so you can check it rather than trust it.
 
-- **CSP `default-src 'none'`** on every page, with `connect-src 'self'` (load-bearing: `sendBeacon('/resolve')` is a `connect-src` fetch), `img-src data:`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`. No page can reach any external host. Note that no CSP directive restricts the top-level `location.href = 'xhsdiscover://'` hand-off — `navigate-to` was never shipped by any browser.
+- **CSP `default-src 'none'`** on every page, with `connect-src 'self'` (load-bearing: `sendBeacon('/resolve')` is a `connect-src` fetch), `img-src data:`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`. Note that no CSP directive restricts the top-level `location.href = 'xhsdiscover://'` hand-off — `navigate-to` was never shipped by any browser.
+
+  **One page has one exception, and it is the only external origin in the product.** With Turnstile configured, `/register` adds `https://challenges.cloudflare.com` to exactly three directives — `script-src` (api.js), `frame-src` (the iframe the widget draws itself in; without it the challenge silently never appears, because `frame-src` otherwise falls back to `default-src 'none'`) and `connect-src` (api.js calling its own host while solving) — and adds no other host to anything. `default-src 'none'`, `form-action 'self'` and `frame-ancestors 'none'` are unchanged even there.
+
+  It is structural rather than a promise: one boolean on `PageOptions` both widens the policy and emits the loader, so neither can appear without the other, no caller can name a different host, and the flag is set by exactly one handler and only when both keys are present. Tests assert the full policy string on `/register`, assert that the set of hosts it names has one member, and assert that `/`, `/login`, `/claim` and `/recover` are served the byte-identical pre-Turnstile policy.
 - **URL schemes are denylisted at the sink.** `javascript:`, `data:`, `vbscript:`, `blob:`, `file:` and `about:` are rejected by one shared module (`src/scheme.ts`) that `/settings` calls at write time, `/probe` and `/lookup` call in the browser, and the breathing page calls immediately before navigating. The last of those is the only check a scheme inserted straight into D1 still has to pass. Three hand-maintained copies of that list had already drifted before it was centralised.
 - **User-supplied strings reach the inline scripts as inert JSON islands**, not as generated JavaScript, with `<`, U+2028 and U+2029 escaped so a label or a scheme cannot close the tag or break the string.
 - **Constant-time comparison** on the token hash and the password hash, in both cases so that no future refactor of the surrounding query can become a character-by-character oracle.

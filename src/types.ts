@@ -16,6 +16,18 @@ export interface Env {
    * to see one again.
    */
   TOKEN_KEY: string
+  /**
+   * Turnstile, guarding /register only. Both optional and both required
+   * together: with either one missing the challenge is disabled and sign-up
+   * works exactly as it did before it existed, which is what lets `npm run dev`
+   * and a fresh self-host deploy work without a Cloudflare widget. See the
+   * header of src/turnstile.ts for the fail-open reasoning and its price.
+   *
+   * TURNSTILE_SITE_KEY is public — it is rendered into the page — so it can be
+   * a plain `[vars]` entry. TURNSTILE_SECRET must be a secret.
+   */
+  TURNSTILE_SITE_KEY?: string
+  TURNSTILE_SECRET?: string
 }
 
 export interface User {

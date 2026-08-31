@@ -3,7 +3,6 @@ import { authenticate, issueCookie } from './auth'
 import { handleGate, handleResolve } from './gate'
 import { renderBreathe } from './ui/breathe'
 import { renderMock } from './ui/mock'
-import { renderUiMock } from './ui/uimock'
 import { renderReview } from './ui/review'
 import { renderProbe } from './ui/probe'
 import { renderSetup } from './ui/setup'
@@ -47,13 +46,25 @@ export default {
       if (path === '/resolve' && method === 'POST') return await handleResolve(request, env)
       if (path === '/b' && method === 'GET') return await renderBreathe(request, env)
       if (path === '/mock' && method === 'GET') return renderMock(url)
-      if (path === '/mock-ui' && method === 'GET') return renderUiMock(url)
       if (path === '/' && method === 'GET') return renderLanding()
 
       // Sign-up and sign-in must answer before authenticate(), or the only way
       // to get an account would be to already have one. Registration being open
       // to anyone, the POSTs are throttled per IP — GETs are just pages and are
       // not worth the D1 write.
+      //
+      // /register carries a second gate on top of this throttle: a Turnstile
+      // challenge. It is verified inside handleRegister rather than here,
+      // because a rejection has to come back as the sign-up form with the
+      // address still typed in it — this layer can only answer in bare status
+      // codes, and making somebody re-find and re-type the form is how you get
+      // a second throwaway account instead of a retry. src/turnstile.ts holds
+      // the check and the fail-open reasoning.
+      //
+      // The other three are left on the throttle alone, deliberately: a
+      // challenge on /login would tax whoever mistyped their own password, and
+      // /claim and /recover already demand a 128-bit token that cannot be
+      // guessed, so there is nothing there for a challenge to slow down.
       const openRoutes: Record<string, (r: Request, e: Env) => Promise<Response>> = {
         '/register': handleRegister,
         '/login': handleLogin,
