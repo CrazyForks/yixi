@@ -100,12 +100,29 @@ describe('the table itself', () => {
     }
   })
 
-  it('claims nothing is verified — only a phone can promote a candidate', () => {
-    const verified = APPS.flatMap((a) => a.candidates.filter((c) => c.confidence === 'verified'))
-    expect(verified).toEqual([])
-    // `derived` means "guessed here"; the shipped table only transcribes.
-    const derived = APPS.flatMap((a) => a.candidates.filter((c) => c.confidence !== 'listed'))
+  it('never guesses in the shipped table', () => {
+    // `derived` means "invented here from a bundle id". That belongs to the live
+    // App Store fallback, which labels it as a guess; a transcribed table must
+    // not contain any.
+    const derived = APPS.flatMap((a) => a.candidates.filter((c) => c.confidence === 'derived'))
     expect(derived).toEqual([])
+  })
+
+  it('makes every "verified" claim carry its evidence', () => {
+    // This guard used to forbid the tier outright, because at the time nothing
+    // had been tested on a device and an unearned 「实测跳通过」 label is worse
+    // than no label. Now that some entries are earned, the guard's job changes:
+    // stop the tier from becoming a louder `listed`. A claim that cannot say
+    // when it was observed, and on what, is not evidence.
+    const claims = APPS.flatMap((a) =>
+      a.candidates.filter((c) => c.confidence === 'verified').map((c) => ({ app: a.name, c })),
+    )
+    for (const { app, c } of claims) {
+      expect(c.verifiedOn, `${app} ${c.scheme}`).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(c.verifiedNote?.length ?? 0, `${app} ${c.scheme}`).toBeGreaterThan(8)
+      // Promotion does not erase where the string came from.
+      expect(c.sources.length, `${app} ${c.scheme}`).toBeGreaterThan(0)
+    }
   })
 
   it('gives every listed candidate a traceable source and a navigable scheme', () => {
@@ -165,10 +182,21 @@ describe('GET /lookup', () => {
     expect(page).toContain('QDReader://')
     expect(page).toContain('m.qidian.QDReaderAppStore')
     // confidence, in words, next to the string
-    expect(page).toContain('清单收录 · 未验证')
-    // provenance, as a link the reader can follow
+    expect(page).toContain('实测跳通过')
+    // promotion does not erase provenance — a reader can still see where the
+    // string was transcribed from before anyone put it on a phone
     expect(page).toContain('https://github.com/WengYuehTing/iOS-app-info')
     expect(page).toContain('iOS-app-info')
+  })
+
+  it('shows when and on what a verified candidate was observed', async () => {
+    const page = await html('/lookup?q=起点')
+    // Assert the elements the verification actually adds, not a bare date: the
+    // first version of this test looked for '2026-08-31' and passed while the
+    // UI rendered no evidence at all, because SNAPSHOT_DATE happened to be the
+    // same day. A page-wide substring search is not a rendering assertion.
+    expect(page).toMatch(/<span class="tag when">\s*\d{4}-\d{2}-\d{2}\s*<\/span>/)
+    expect(page).toMatch(/<p class="evidence">[^<]*iPhone[^<]*<\/p>/)
   })
 
   it('shows both sides when the two collections disagree', async () => {
@@ -200,15 +228,18 @@ describe('GET /lookup', () => {
   it('flags a candidate the user already wrote down, still as unverified', async () => {
     await upsertUserApp(env.DB, {
       user_id: 1,
-      app: 'xhs',
-      label: '小红书',
-      scheme: 'xhsdiscover://',
+      app: 'weibo',
+      label: '微博',
+      scheme: 'sinaweibo://',
       wait_seconds: 10,
       grace_seconds: 90,
       enabled: 1,
     })
-    const page = await html('/lookup?q=小红书')
-    expect(page).toContain('你已写进 xhs')
+    // Deliberately an app nobody has put on a phone yet: writing a string into
+    // your own config is not evidence that the phone answers to it, and the tier
+    // must not drift upwards just because someone saved it.
+    const page = await html('/lookup?q=微博')
+    expect(page).toContain('你已写进 weibo')
     expect(page).toContain('清单收录 · 未验证')
     expect(page).not.toContain('实测跳通过')
   })

@@ -50,6 +50,10 @@ export interface Candidate {
   sources: SchemeSource[]
   /** A reason to distrust this particular line, rendered verbatim to the user. */
   caveat?: string
+  /** ISO date the jump was observed on a real device. Only for `verified`. */
+  verifiedOn?: string
+  /** What was observed, and on what — so a reader can judge how far it carries. */
+  verifiedNote?: string
 }
 
 export type Category = '社交' | '短视频' | '影音' | '小说阅读' | '购物' | '资讯' | '音乐' | '游戏' | '其他'
@@ -98,6 +102,19 @@ function fromUrlScheme(scheme: string, caveat?: string): Candidate {
  */
 function fromBoth(scheme: string, caveat?: string): Candidate {
   return { scheme, confidence: 'listed', sources: [APP_INFO, URL_SCHEME], caveat }
+}
+
+/**
+ * Someone pressed 「继续」 on a real iPhone and the app opened.
+ *
+ * This is the only tier that is evidence rather than transcription, and the
+ * only way to earn it is a device. `date` and `note` are required so a reader
+ * can weigh it: one phone on one iOS version is not a guarantee for every
+ * phone, and a scheme that worked in 2026 can be removed in the next release.
+ * A tier that cannot say when and on what would just be a louder `listed`.
+ */
+function verified(scheme: string, date: string, note: string, sources: SchemeSource[]): Candidate {
+  return { scheme, confidence: 'verified', sources, verifiedOn: date, verifiedNote: note }
 }
 
 /** Whether a candidate is backed by more than one independent transcription. */
@@ -195,11 +212,13 @@ export const APPS: AppEntry[] = [
     aliases: ['xhs', 'xiaohongshu', 'rednote', '红书', '小红薯'],
     bundleId: 'com.xingin.discover',
     category: '社交',
-    // Cross-checked while writing this file: this project's own README, design
-    // doc and tests have all used xhsdiscover:// since the first commit, and
-    // iOS-app-info records the same string against the same bundle id. Still
-    // tier `listed` — agreement between a doc and a list is not a phone.
-    candidates: [fromAppInfo('xhsdiscover://')],
+    // Promoted out of `listed` on 2026-08-31: the author tapped 「继续」 on the
+    // breathing page and 小红书 opened. Before that it had only ever been
+    // agreement between this project's own docs and iOS-app-info — which is
+    // agreement between two transcriptions, not a phone answering.
+    candidates: [
+      verified('xhsdiscover://', '2026-08-31', '作者的 iPhone 上从呼吸页点「继续」跳转成功', [APP_INFO]),
+    ],
   },
   {
     name: '微信',
@@ -385,10 +404,13 @@ export const APPS: AppEntry[] = [
     aliases: ['qidian', '起点', 'qd', '起点中文网'],
     bundleId: 'm.qidian.QDReaderAppStore',
     category: '小说阅读',
-    // Cross-checked: iOS-app-info records QDReader:// against exactly this
-    // bundle id, and the bundle's own last segment reduces to the same string —
-    // two independent hints, still nobody's phone.
-    candidates: [fromAppInfo('QDReader://')],
+    // Promoted out of `listed` on 2026-08-31 on the same device as xhs. Before
+    // that: iOS-app-info recorded QDReader:// against exactly this bundle id and
+    // the bundle's own last segment reduced to the same string — two independent
+    // hints, still nobody's phone.
+    candidates: [
+      verified('QDReader://', '2026-08-31', '作者的 iPhone 上从呼吸页点「继续」跳转成功', [APP_INFO]),
+    ],
   },
   {
     name: '番茄小说',

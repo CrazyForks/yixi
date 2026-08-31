@@ -408,8 +408,19 @@ function candidateRow(
 ): string {
   const i = jumps.schemes.push(c.scheme) - 1
   const tier = TIER[c.confidence]
+  const evidence =
+    c.confidence === 'verified' && c.verifiedNote
+      ? `<p class="evidence">${escapeHtml(c.verifiedNote)}</p>`
+      : ''
 
   const tags = [`<span class="tag ${tier.cls}">${tier.text}</span>`]
+  // A verified badge with nothing behind it is just a louder 「清单收录」. One
+  // phone on one iOS version is real evidence and a limited one, so the reader
+  // gets the date and the circumstances and can weigh it — a scheme that worked
+  // once can be dropped in the app's next release.
+  if (c.confidence === 'verified' && c.verifiedOn) {
+    tags.push(`<span class="tag when">${escapeHtml(c.verifiedOn)}</span>`)
+  }
   if (isCorroborated(c)) tags.push('<span class="tag">两份清单一致</span>')
   for (const s of c.sources) {
     tags.push(`<a class="src" href="${escapeHtml(s.url)}" rel="noreferrer">${escapeHtml(s.label)}</a>`)
@@ -428,6 +439,7 @@ function candidateRow(
   return `<form class="cand" method="post" action="/lookup">
   <code class="mono cand-scheme">${escapeHtml(c.scheme)}</code>
   <div class="tags">${tags.join('\n    ')}</div>
+  ${evidence}
   ${c.caveat === undefined ? '' : `<p class="caveat">${escapeHtml(c.caveat)}</p>`}
   <button class="try" type="button" data-i="${i}">试着跳到「${escapeHtml(appName)}」</button>
   <input type="hidden" name="op" value="use">
@@ -467,6 +479,8 @@ const LOOKUP_CSS = `
 .tag.verified{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
 .tag.mine{border-style:dashed}
 .src{color:var(--faint);font-size:11px;text-decoration:underline;text-underline-offset:3px}
+.evidence{margin:5px 0 0;font-size:.78rem;color:var(--dim);line-height:1.6}
+.tag.when{font-variant-numeric:tabular-nums;letter-spacing:.04em}
 .caveat{font-size:12px;line-height:1.75;color:var(--dim);margin:0 0 10px}
 .try{width:100%;background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
   border-radius:12px;padding:14px 18px;font-size:15px;font-weight:600;min-height:52px}
