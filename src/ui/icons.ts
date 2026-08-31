@@ -160,20 +160,20 @@ export function hl(iconName: IconName, inner: string): string {
  * works on a page background and not, say, inside the dark 「试跳」 button.
  */
 export const ICON_CSS = `
-.ic{width:16px;height:16px;flex:none;display:inline-block;vertical-align:-.2em;
+.ic{width:17px;height:17px;flex:none;display:inline-block;vertical-align:-.2em;
   fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
-.ic.lg{width:21px;height:21px}
+.ic.lg{width:22px;height:22px}
 .ic .fillmark{fill:currentColor;stroke:none}
 .ic .knock{stroke:var(--bg);stroke-width:2.6}
 details{margin:7px 0 0}
 summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;
-  font-size:11.5px;letter-spacing:.04em;color:var(--faint)}
+  font-size:13px;letter-spacing:.04em;color:var(--faint)}
 summary::-webkit-details-marker{display:none}
 summary::marker{content:""}
 details[open] > summary{color:var(--dim)}
-summary .ic.chev{width:12px;height:12px;transition:transform .18s ease}
+summary .ic.chev{width:13px;height:13px;transition:transform .18s ease}
 details[open] > summary .ic.chev{transform:rotate(90deg)}
-details > p{margin:8px 0 0;font-size:12.5px;line-height:1.85;color:var(--dim)}
+details > p{margin:8px 0 0;font-size:14px;line-height:1.85;color:var(--dim)}
 details > p:last-child{margin-bottom:9px}
 details > p b{color:var(--fg)}
 .hl{display:flex;gap:8px;align-items:flex-start;margin:0}

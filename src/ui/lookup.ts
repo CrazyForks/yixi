@@ -596,13 +596,13 @@ const LOOKUP_CSS = `
 .find button{flex:0 0 auto;background:transparent;color:var(--fg);border:1px solid var(--rule);
   border-radius:10px;padding:0 20px;display:inline-flex;align-items:center;justify-content:center}
 .find button:active{opacity:.72}
-.find button .ic{width:18px;height:18px}
+.find button .ic{width:19px;height:19px}
 
 /* the two "read this before you trust the list" strips */
 .strip{border:1px solid var(--rule);border-radius:7px;padding:10px 12px;margin:0 0 16px;
-  font-size:12.5px;line-height:1.7;color:var(--dim)}
+  font-size:14px;line-height:1.7;color:var(--dim)}
 .strip b{color:var(--fg)}
-details > ul{margin:8px 0 9px;padding-left:1.15em;font-size:12.5px;line-height:1.85;color:var(--dim)}
+details > ul{margin:8px 0 9px;padding-left:1.15em;font-size:14px;line-height:1.85;color:var(--dim)}
 details > ul b{color:var(--fg)}
 details > ul li{margin:3px 0}
 
@@ -611,8 +611,8 @@ details > ul li{margin:3px 0}
 .tiers li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--rule)}
 .tiers li:first-child{border-top:0;padding-top:2px}
 .sigbig{display:inline-flex;flex:none;color:var(--dim)}
-.tiers b{flex:none;min-width:4.4em;font-size:13px;font-weight:600;color:var(--fg)}
-.tiers .tm{font-size:11.5px;line-height:1.6;color:var(--faint)}
+.tiers b{flex:none;min-width:4.4em;font-size:14px;font-weight:600;color:var(--fg)}
+.tiers .tm{font-size:13px;line-height:1.6;color:var(--faint)}
 .t-verified .sigbig{color:var(--fg)}
 .t-derived .sigbig{color:var(--danger)}
 .t-derived b{color:var(--danger)}
@@ -621,35 +621,35 @@ details > ul li{margin:3px 0}
 .cand{border-top:1px solid var(--rule);padding:14px 0 2px;margin:0}
 .cand:first-of-type{border-top:0;padding-top:4px}
 .c2-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 8px}
-.cand-scheme{word-break:break-all;font-size:13.5px;-webkit-user-select:all;user-select:all}
-.sig{display:inline-flex;align-items:center;gap:5px;font-size:11px;letter-spacing:.06em;
+.cand-scheme{word-break:break-all;font-size:15px;-webkit-user-select:all;user-select:all}
+.sig{display:inline-flex;align-items:center;gap:5px;font-size:12px;letter-spacing:.06em;
   white-space:nowrap;color:var(--dim)}
 .sig.verified{color:var(--fg)}
 .sig.derived{color:var(--danger)}
 .marks{display:flex;flex-wrap:wrap;gap:6px;margin:0}
-.mk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);
+.mk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--dim);
   text-decoration:none;border:1px solid var(--rule);border-radius:4px;padding:1.5px 9px;white-space:nowrap}
 .mk.mine{border-style:dashed;color:var(--faint)}
 .mk.when{font-variant-numeric:tabular-nums;letter-spacing:.04em}
-.evidence{margin:7px 0 0;font-size:.78rem;color:var(--dim);line-height:1.6}
-.bid{font-size:11.5px;color:var(--faint);margin:6px 0 0;-webkit-user-select:all;user-select:all}
+.evidence{margin:7px 0 0;font-size:.85rem;color:var(--dim);line-height:1.6}
+.bid{font-size:13px;color:var(--faint);margin:6px 0 0;-webkit-user-select:all;user-select:all}
 
 /* ① try, ② save — the ordinals are the ordering rule, not decoration */
 .try{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;
   background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
-  border-radius:6px;padding:13px 16px;font-size:15px;font-weight:600;min-height:50px;margin-top:12px}
+  border-radius:6px;padding:14px 16px;font-size:16px;font-weight:600;min-height:52px;margin-top:12px}
 .try:active{opacity:.72}
 .acts{display:flex;justify-content:center;margin:0}
-.use2{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:13px;
+.use2{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:14px;
   padding:12px 0 2px;min-height:44px}
-.use2 .mono{font-size:12.5px}
+.use2 .mono{font-size:13.5px}
 .ord{display:inline-flex;align-items:center;justify-content:center;flex:none;
-  width:17px;height:17px;border-radius:3px;border:1px solid currentColor;
-  font-family:var(--num);font-size:10.5px;font-weight:400;opacity:.72}
+  width:18px;height:18px;border-radius:3px;border:1px solid currentColor;
+  font-family:var(--num);font-size:12px;font-weight:400;opacity:.72}
 h2{margin:22px 0 12px}
 
 /* the probe region */
-.probe h3{margin:20px 0 12px;font-size:12px;font-weight:400;color:var(--faint);letter-spacing:.14em}
+.probe h3{margin:20px 0 12px;font-size:13px;font-weight:400;color:var(--faint);letter-spacing:.14em}
 .probe .scheme{display:block;color:var(--dim);word-break:break-all;margin:0 0 4px}
 .manual{display:flex;gap:8px;align-items:stretch;margin:12px 0 0}
 .manual input{flex:1;min-width:0}

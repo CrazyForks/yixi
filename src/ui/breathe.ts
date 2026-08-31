@@ -255,7 +255,7 @@ body[data-state="wait"] .actions{visibility:hidden}
 .stop:active{opacity:.82}
 .go{
   margin-top:1.6rem;padding:.7rem 1.2rem;color:var(--go-fg);
-  font-size:.8rem;letter-spacing:.22em;text-indent:.22em;
+  font-size:.88rem;letter-spacing:.22em;text-indent:.22em;
   text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1px;
   text-decoration-color:var(--rule);
 }

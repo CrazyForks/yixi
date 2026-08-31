@@ -69,7 +69,7 @@ h1{
 }
 .lede{margin:0 0 3.2rem;color:var(--dim);font-size:.98rem;letter-spacing:.06em}
 h2{
-  margin:3rem 0 .9rem;font-size:.78rem;font-weight:400;color:var(--faint);
+  margin:3rem 0 .9rem;font-size:.84rem;font-weight:400;color:var(--faint);
   letter-spacing:.3em;text-indent:.3em;
 }
 h2::before{
@@ -89,6 +89,6 @@ li::marker{color:var(--faint)}
    wearing the breathing page's own button. */
 .looks.go a{margin:0 .8rem 0 0;padding:.5rem 1.6rem;font-size:.95rem;min-height:44px;color:var(--fg)}
 .looks.go a:first-child{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
-.foot{margin-top:4rem;color:var(--faint);font-size:.82rem;line-height:1.9}
+.foot{margin-top:4rem;color:var(--faint);font-size:.87rem;line-height:1.9}
 .foot a{color:var(--dim);text-underline-offset:3px}
 `

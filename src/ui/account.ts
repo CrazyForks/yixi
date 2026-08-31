@@ -821,10 +821,10 @@ main.gate h1{margin:0 0 .5rem;font-size:1.25rem;font-weight:400;letter-spacing:.
 .deal li{margin-bottom:.5rem;line-height:1.75}
 .deal li::marker{color:var(--faint)}
 .deal a,.foot a,.note a{color:var(--dim);text-underline-offset:3px}
-.foot{margin-top:26px;color:var(--faint);font-size:12px;line-height:1.9}
+.foot{margin-top:26px;color:var(--faint);font-size:13px;line-height:1.9}
 .none{color:var(--faint)}
 .tok{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:16px;
   word-break:break-all;background:var(--rule);border-radius:10px;
   padding:12px 14px;margin:0 0 10px;-webkit-user-select:all;user-select:all;
 }

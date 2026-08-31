@@ -26,6 +26,7 @@ import {
   type ReviewStats,
 } from '../stats'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
+import { CONSOLE_CSS, consoleHeader } from './console'
 
 export async function renderReview(
   // No query parameters; `request` is part of the route handler contract in
@@ -38,8 +39,8 @@ export async function renderReview(
   return page({
     title: `回顾 · ${user.name}`,
     theme: DEFAULT_THEME,
-    css: CSS,
-    body: header(user) + '<main>' + (stats.firstDate === null ? emptyState() : sections(stats)) + '</main>',
+    css: CONSOLE_CSS + CSS,
+    body: consoleHeader(user, 'review') + '<main>' + (stats.firstDate === null ? emptyState() : sections(stats)) + '</main>',
   })
 }
 
@@ -212,55 +213,47 @@ function prettyDate(date: string): string {
 
 // --- styles ---------------------------------------------------------------
 //
-// Builds on the theme tokens layout.ts already emitted (--bg/--fg/--dim/
-// --faint/--rule/--font), so /review wears whichever face the owner picks at
-// /mock. Three things are added here:
-//   - the outcome hues, which the breathing page has no use for;
-//   - `--num`, a UI font for figures only. The 「墨」 skin sets a serif for
-//     prose, and 宋体 digits are proportional and hard to scan in a column of
-//     counts; prose stays in the theme font, numerals do not.
+// Appended to CONSOLE_CSS, which carries the shell, the nav and the type
+// scale this page shares with /settings, /lookup, /setup and /account. What is
+// added here is only what the other pages have no use for: the outcome hues,
+// and the chart/tile geometry. `--num` (a UI font for figures, since 宋体
+// digits are proportional and hard to scan in a column of counts) also comes
+// from CONSOLE_CSS now.
 const CSS = `
 :root{
   --hold:#2f7d57; --idle:rgba(31,28,24,.28); --go:#a8543c;
-  --num:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
 }
 @media (prefers-color-scheme:dark){
   :root{ --hold:#4faa80; --idle:rgba(238,235,228,.26); --go:#c9795c; }
 }
-body{font-size:15px;line-height:1.7}
-.num{font-family:var(--num);font-variant-numeric:tabular-nums}
-header,main{max-width:520px;margin:0 auto;padding:0 18px}
-header{display:flex;align-items:baseline;gap:10px;padding-top:26px;padding-bottom:14px}
-.brand{font-size:19px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
-.who{font-size:12px;color:var(--faint)}
-header nav{margin-left:auto;display:flex;gap:15px;font-size:13px}
-header nav a{color:var(--dim);text-decoration:none}
-header nav a.on{color:var(--fg)}
-main{padding-bottom:40px}
-.card{border:1px solid var(--rule);border-radius:14px;padding:16px 16px 18px;margin-bottom:14px}
-h2{margin:0 0 12px;font-size:13px;font-weight:400;color:var(--dim);letter-spacing:.12em}
+/* Three narrow overrides on the shared chrome. This page stacks self-contained
+   blocks rather than running prose, so a paragraph carries no bottom margin,
+   and its section headings and footnotes sit slightly further from what they
+   label. Everything else — shell, nav, cards, type scale — comes from
+   CONSOLE_CSS, because /review having its own copy is what let its nav drift
+   into a different, smaller, three-tab thing nobody could get back out of. */
 p{margin:0}
-.sub{font-size:13px;color:var(--dim);margin-bottom:14px}
-.quiet{font-size:14px;color:var(--dim)}
-.note{margin-top:14px;font-size:12px;line-height:1.75;color:var(--faint)}
-.note a{color:var(--dim)}
+h2{margin:0 0 12px}
+.note{margin-top:14px}
+.sub{font-size:14px;color:var(--dim);margin-bottom:14px}
+.quiet{font-size:15px;color:var(--dim)}
 .hero{display:flex;align-items:baseline;gap:9px;margin-bottom:14px}
-.hero b{font-size:42px;font-weight:600;line-height:1}
-.hero span{font-size:13px;color:var(--dim)}
-.split{height:9px;border-radius:99px;overflow:hidden;background:var(--ring-track);display:flex}
+.hero b{font-size:44px;font-weight:600;line-height:1}
+.hero span{font-size:14px;color:var(--dim)}
+.split{height:10px;border-radius:99px;overflow:hidden;background:var(--ring-track);display:flex}
 .seg{display:block}
 .seg.hold{background:var(--hold)}
 .seg.idle{background:var(--idle)}
 .seg.go{background:var(--go)}
-ul.legend{list-style:none;display:flex;flex-wrap:wrap;gap:16px;margin:13px 0 0;padding:0;font-size:13px;color:var(--dim)}
+ul.legend{list-style:none;display:flex;flex-wrap:wrap;gap:16px;margin:13px 0 0;padding:0;font-size:14px;color:var(--dim)}
 ul.legend b{color:var(--fg)}
-.sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
 .sw.hold{background:var(--hold)}.sw.idle{background:var(--idle)}.sw.go{background:var(--go)}
 .chart{display:flex;align-items:flex-end;gap:6px}
 .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
-.col .n{font-size:11.5px;color:var(--dim);line-height:1}
+.col .n{font-size:12.5px;color:var(--dim);line-height:1}
 .col .n.zero{color:var(--faint);opacity:.55}
-.col .d{font-size:11.5px;color:var(--faint);white-space:nowrap;line-height:1}
+.col .d{font-size:12.5px;color:var(--faint);white-space:nowrap;line-height:1}
 .col.now .d{color:var(--fg)}
 .plot{width:100%;height:92px;display:flex;align-items:flex-end}
 .bar{width:100%;border-radius:5px;overflow:hidden;display:flex;flex-direction:column;min-height:4px}
@@ -269,25 +262,18 @@ ol.apps{list-style:none;margin:0;padding:0}
 ol.apps li{padding:14px 0;border-top:1px solid var(--rule)}
 ol.apps li:first-child{border-top:0;padding-top:0}
 .line{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.line.sub2{margin-top:7px;font-size:12px;color:var(--faint)}
-.name{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cnt{font-size:12px;color:var(--dim);white-space:nowrap}
-.cnt b{font-size:17px;color:var(--fg)}
+.line.sub2{margin-top:7px;font-size:13px;color:var(--faint)}
+.name{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cnt{font-size:13px;color:var(--dim);white-space:nowrap}
+.cnt b{font-size:19px;color:var(--fg)}
 .rate{white-space:nowrap}
-.track{margin-top:9px;height:8px;background:var(--ring-track);border-radius:99px;overflow:hidden}
+.track{margin-top:9px;height:9px;background:var(--ring-track);border-radius:99px;overflow:hidden}
 .fill{display:flex;height:100%;border-radius:99px;overflow:hidden}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.tile{border:1px solid var(--rule);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:3px}
-.tile b{font-size:22px;font-weight:600;line-height:1.1}
-.tile span{font-size:11.5px;color:var(--faint)}
-.foot{font-size:11.5px;line-height:1.9;color:var(--faint);padding:4px 2px 0}
+.tile{border:1px solid var(--rule);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.tile b{font-size:25px;font-weight:600;line-height:1.1}
+.tile span{font-size:12.5px;color:var(--faint)}
+.foot{font-size:13px;line-height:1.9;color:var(--faint);padding:4px 2px 0}
 @media (min-width:430px){.tiles{grid-template-columns:repeat(4,1fr)}}
 `
 
-function header(user: User): string {
-  return `<header>
-  <span class="brand">一息</span>
-  <span class="who">${escapeHtml(user.name)}</span>
-  <nav><a class="on" href="/review">回顾</a><a href="/settings">设置</a><a href="/lookup">候选</a></nav>
-</header>`
-}

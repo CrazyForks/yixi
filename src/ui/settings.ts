@@ -347,8 +347,8 @@ function fieldId(ns: string, name: string): string {
  * text run and its <b> get pulled apart by the row gap.
  */
 const SETTINGS_CSS = `
-.field label .ic{width:14px;height:14px;color:var(--faint);margin-right:5px}
-.hint{font-size:12.5px;line-height:1.75;color:var(--dim);margin:0 0 15px}
+.field label .ic{width:15px;height:15px;color:var(--faint);margin-right:5px}
+.hint{font-size:14px;line-height:1.75;color:var(--dim);margin:0 0 15px}
 .hint b{color:var(--fg)}
 .hint .ic{color:var(--dim)}
 a.linky.go{display:inline-flex;align-items:center;gap:6px}

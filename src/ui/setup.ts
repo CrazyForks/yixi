@@ -350,7 +350,7 @@ const SETUP_CSS = `
 .doc h1{margin:0 0 .6rem;font-size:1.5rem;font-weight:400;letter-spacing:.2em}
 .doc .lede{margin:0 0 2rem;color:var(--dim);font-size:.92rem;line-height:1.8}
 .doc h2{
-  margin:2.8rem 0 1rem;font-size:.76rem;font-weight:400;color:var(--faint);
+  margin:2.8rem 0 1rem;font-size:.84rem;font-weight:400;color:var(--faint);
   letter-spacing:.3em;text-indent:.3em;
 }
 .doc h2::before{content:"";display:block;width:22px;height:1px;background:var(--rule);margin-bottom:1.2rem}
@@ -364,7 +364,7 @@ const SETUP_CSS = `
   background:var(--rule);border-radius:4px;padding:.1em .38em;
 }
 pre.copy,pre.shape{
-  font-family:var(--num);font-size:.8rem;line-height:1.7;
+  font-family:var(--num);font-size:.88rem;line-height:1.7;
   background:var(--rule);border-radius:10px;
   padding:12px 14px;margin:0 0 1rem;
   overflow-x:auto;white-space:pre;-webkit-user-select:all;user-select:all;
@@ -381,22 +381,22 @@ p.warn{
 }
 table.apps{width:100%;border-collapse:collapse;margin:0 0 1.2rem;font-size:.88rem}
 table.apps th{
-  text-align:left;font-weight:400;color:var(--faint);font-size:.76rem;
+  text-align:left;font-weight:400;color:var(--faint);font-size:.82rem;
   letter-spacing:.16em;padding:0 8px 6px 0;border-bottom:1px solid var(--rule);
 }
 table.apps td{padding:8px 8px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
 table.apps .off{color:var(--faint)}
 table.apps .none{color:var(--dim);text-align:center;padding:18px 0}
 .doc a{color:var(--fg);text-underline-offset:3px}
-pre.copy.tight{margin:0;padding:8px 10px;font-size:.72rem}
+pre.copy.tight{margin:0;padding:8px 10px;font-size:.82rem}
 table.paste td{vertical-align:middle}
 button.try{
-  display:inline-block;margin-top:6px;font-size:.78rem;color:var(--dim);
+  display:inline-block;margin-top:6px;font-size:.86rem;color:var(--dim);
   background:none;border:0;padding:0;font-family:inherit;
   text-decoration:underline;text-underline-offset:3px;cursor:pointer;
 }
 button.try[disabled]{opacity:.5}
-.try-out{display:block;margin-top:5px;font-size:.76rem;color:var(--dim);line-height:1.6}
+.try-out{display:block;margin-top:5px;font-size:.84rem;color:var(--dim);line-height:1.6}
 table.paste td:first-child{white-space:nowrap;padding-right:12px}
 p.masked{
   font-family:var(--num);letter-spacing:.18em;color:var(--faint);
@@ -405,7 +405,7 @@ p.masked{
 p.masked .linky{margin-left:.6rem;font-family:var(--font);letter-spacing:0}
 p.masked .hint{
   display:block;margin-top:.5rem;font-family:var(--font);
-  font-size:.8rem;letter-spacing:0;color:var(--dim);
+  font-size:.86rem;letter-spacing:0;color:var(--dim);
 }
 
 /* The three actions, as a rail. What used to be two or three sentences of prose
@@ -422,16 +422,16 @@ p.masked .hint{
    and its .9 opacity. */
 .doc ol.steps{list-style:none;margin:0 0 1.2rem;padding:0;opacity:1}
 .doc ol.steps > li{display:flex;gap:10px;margin:0;padding:0 0 1rem}
-.doc ol.steps .no{flex:none;width:20px;height:20px;border-radius:4px;border:1px solid var(--rule);
+.doc ol.steps .no{flex:none;width:22px;height:22px;border-radius:4px;border:1px solid var(--rule);
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--num);font-size:11px;color:var(--dim);margin-top:4px}
+  font-family:var(--num);font-size:12px;color:var(--dim);margin-top:4px}
 .doc .sbody{flex:1;min-width:0}
 .doc .sbody > p{margin:0 0 .7rem}
 .doc .sbody pre{margin:0 0 .7rem}
 .doc p.shead{display:flex;align-items:center;gap:7px;margin:0 0 .5rem;
   font-size:.95rem;line-height:1.5;opacity:1}
 .doc p.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;opacity:1}
-.doc .chip{font-size:10.5px;color:var(--dim);border:1px solid var(--rule);border-radius:3px;
+.doc .chip{font-size:12px;color:var(--dim);border:1px solid var(--rule);border-radius:3px;
   padding:2px 9px;white-space:nowrap;font-family:var(--num);letter-spacing:.04em}
 
 /* The one passage on this page that hurts if it is read wrong, so it is the one
@@ -447,7 +447,7 @@ p.masked .hint{
 .doc .hard code{background:transparent;padding:0}
 
 /* Six symptoms, none of which anyone reads until one of them is theirs. */
-.doc details > summary{font-size:.8rem}
+.doc details > summary{font-size:.86rem}
 .doc details.tr{margin:0;border-top:1px solid var(--rule)}
 .doc details.tr:last-of-type{border-bottom:1px solid var(--rule)}
 .doc details.tr > summary{font-size:.9rem;color:var(--dim);letter-spacing:0;padding:.72rem 0}
