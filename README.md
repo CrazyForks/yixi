@@ -14,7 +14,14 @@ You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone
 
 <p align="center"><sub>The countdown has finished, so both choices are showing. 「算了」 (give up) is a filled pill; 「继续打开」 (open anyway) is a small underlined link. That asymmetry is deliberate — the default path should be putting the phone down. Light mode is not the dark theme brightened; it inverts into ink on paper.</sub></p>
 
-**Who this is for:** one person, or a handful of friends, who want a nudge rather than a wall — and who would rather run it themselves than trust an app store with a minute-by-minute log of their worst impulses. It is friction, not enforcement: the automation is one toggle away from off, on purpose.
+<p align="center">
+  <b><a href="https://yixi-psh.pages.dev">Try it now →</a></b><br>
+  <sub>An open instance, free, nothing to deploy. Or <a href="#deploy-your-own-15-min">run your own</a> in fifteen minutes.</sub>
+</p>
+
+**Who this is for:** anyone who wants a nudge rather than a wall. It is friction, not enforcement — the automation is one toggle away from off, on purpose.
+
+The open instance is the quickest way in. If you would rather not keep a minute-by-minute log of your worst impulses on someone else's server, deploy your own in fifteen minutes; it is the same code either way.
 
 ```
 you tap 小红书
@@ -370,7 +377,11 @@ Before changing anything, read [CONTRIBUTING.md](CONTRIBUTING.md). It is short, 
 - [docs/architecture.md](docs/architecture.md) — request lifecycle, D1 tables, accounting semantics
 - [shortcut/README.md](shortcut/README.md) — the reasoning behind the Shortcut's shape (Chinese)
 
-The author runs a private instance at `yixi-psh.pages.dev`. It is a personal deployment with a personal log in it, not a demo — deploy your own.
+The author runs an open instance at **<https://yixi-psh.pages.dev>**. Sign up there and you can be breathing before your apps in about ten minutes, with nothing to deploy.
+
+**What the operator can and cannot see.** Your records are yours: the admin page returns a per-account count of how many times you were stopped, and nothing else — no timestamps, no app names, no give-up rate, not even your email address. That is enforced in the SQL rather than in the template, and a test fails if it ever regresses. But be clear-eyed about the shape of the guarantee: whoever runs an instance holds its database, and a database can be queried directly. That is true of this instance and of every other self-hosted service you sign up for.
+
+So: use the shared one if you want to try it without work, and run your own if you would rather that sentence not apply to you. Deploying takes about fifteen minutes and the instructions are below.
 
 ## License
 
