@@ -94,7 +94,7 @@ One codebase, two Cloudflare deployments, sharing one D1 database:
 
 This is worth reading even if you are nowhere near China, because it is a real and reusable piece of operational knowledge about Cloudflare's shared hostnames.
 
-**`*.workers.dev` is DNS-poisoned inside mainland China.** Measured, not assumed: `yixi.defiabell.workers.dev` resolves to three mutually different addresses from the three big domestic public resolvers (223.5.5.5, 119.29.29.29, 114.114.114.114), none of them matching what the rest of the world sees. That is the signature of domain-level interference, not of Cloudflare being blocked — `cloudflare.com` and `*.pages.dev` resolve byte-for-byte identically inside and outside. The shared `workers.dev` suffix is being singled out.
+**`*.workers.dev` is DNS-poisoned inside mainland China.** Measured, not assumed: a `*.workers.dev` hostname resolves to three mutually different addresses from the three big domestic public resolvers (223.5.5.5, 119.29.29.29, 114.114.114.114), none of them matching what the rest of the world sees. That is the signature of domain-level interference, not of Cloudflare being blocked — `cloudflare.com` and `*.pages.dev` resolve byte-for-byte identically inside and outside. The shared `workers.dev` suffix is being singled out.
 
 `*.pages.dev` is currently clean, so Pages gets the human-facing hostname. Same edge, same runtime, same code, same database; only the hostname differs. `pages/functions/[[path]].ts` is one line that forwards every request into the same Worker `fetch` handler.
 

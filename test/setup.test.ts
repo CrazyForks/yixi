@@ -180,6 +180,33 @@ describe('/setup', () => {
     expect(stepOne).toContain(`${BASE}/gate?app=xhs&amp;k=deadbeef00112233&amp;fmt=text`)
   })
 
+  it('never puts the token anywhere a tap would navigate to', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // The tester used to be an `<a href>` carrying the token. Tapping it was a
+    // real top-level navigation, so the URL went into Safari History and
+    // address-bar autocomplete — retrievable afterwards with no further taps,
+    // which quietly undid the `?show=1` gate. Revealing the token once is a
+    // deliberate act; having it sit in History forever is not.
+    const hrefs = html.match(/href="[^"]*"/g) ?? []
+    for (const href of hrefs) expect(href).not.toContain('deadbeef00112233')
+    expect(html).not.toMatch(/<a[^>]*\bhref="[^"]*\bk=/)
+  })
+
+  it('tests a gate URL by fetching it, not by leaving the page', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // fetch is also the more faithful test: the Shortcut's 「获取 URL 的内容」 is
+    // a background HTTP call, not a WebKit navigation.
+    expect(html).toContain('data-test=')
+    expect(html).toContain('fetch(')
+    expect(html).not.toContain('location.href')
+  })
+
   it('never caches, since the page can carry a token', async () => {
     const user = await seedUser()
     const res = await renderSetup(new Request(`${BASE}/setup?k=secret123`), env, user)

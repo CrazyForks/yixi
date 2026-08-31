@@ -71,7 +71,8 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
     <pre class="copy tight">${lineFor(escapeHtml(a.app))}</pre>
     ${
       token
-        ? `<a class="linky try" href="${escapeHtml(rawLineFor(a.app))}">在 Safari 里试一下这条</a>`
+        ? `<button class="linky try" type="button" data-test="${escapeHtml(rawLineFor(a.app))}">试一下这条通不通</button>
+           <span class="try-out" hidden></span>`
         : ''
     }
   </td>
@@ -94,6 +95,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
     theme: DEFAULT_THEME,
     css: CONSOLE_CSS + SETUP_CSS,
     cacheControl: 'no-store',
+    script: token ? TEST_SCRIPT : undefined,
     body: `${consoleHeader(user, 'setup')}
 <main class="wrap doc">
 
@@ -166,10 +168,10 @@ ${pasteRows}
 </tbody>
 </table>
 <p class="warn">整条复制，末尾的 <code>&amp;fmt=text</code> 少了就不工作。
-<b>粘完先点「在 Safari 里试一下这条」</b>——看到 <code>pass</code> 或一条
-<code>https://…</code> 网址就说明地址没问题；Safari 要是打不开，那就是地址本身缺了一截
-或混进了奇怪字符，这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，
-看不出原因。</p>
+<b>粘完先点「试一下这条通不通」</b>——结果就显示在按钮旁边，不跳走。
+看到 <code>pass</code> 或一条 <code>https://…</code> 网址就说明这条地址是通的；
+要是显示连不上，那就是地址本身缺了一截或混进了奇怪字符，
+这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，看不出原因。</p>
 
 <div class="box">
 <h3>每个 App 都要来一遍，这是 iOS 的限制</h3>
@@ -270,6 +272,47 @@ scheme 对，问题在别处；没反应就在那页顶部的输入框里换候�
   })
 }
 
+/**
+ * Tests a gate URL without navigating to it.
+ *
+ * This used to be an `<a href>` containing the token. Tapping it was a real
+ * top-level navigation, so the URL — token and all — went into Safari History
+ * and address-bar autocomplete, where it is retrievable with no further taps.
+ * That quietly undid the `?show=1` gate: revealing the token once is a
+ * deliberate act, having it sit in History forever is not.
+ *
+ * `fetch` is also the more faithful test. The Shortcut's 「获取 URL 的内容」 is a
+ * background HTTP call, not a WebKit navigation — so this now exercises the same
+ * kind of request the automation will actually make.
+ */
+const TEST_SCRIPT = `
+(function () {
+  var buttons = document.querySelectorAll('button[data-test]');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].addEventListener('click', function () {
+      var btn = this;
+      var out = btn.nextElementSibling;
+      if (!out) return;
+      out.hidden = false;
+      out.textContent = '试着连…';
+      btn.disabled = true;
+      fetch(btn.getAttribute('data-test'), { cache: 'no-store' })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+        .then(function (r) {
+          var body = (r.t || '').trim().slice(0, 120);
+          if (!r.ok) { out.textContent = '服务器拒绝了：' + body; return; }
+          out.textContent = body.indexOf('https') === 0
+            ? '通了 · 这条会拦你，返回了呼吸页地址'
+            : '通了 · 返回「' + body + '」，现在不拦（免打扰窗口里或者这个 App 没启用）';
+        })
+        .catch(function () {
+          out.textContent = '连不上 —— 地址大概缺了一截或者混进了奇怪字符';
+        })
+        .then(function () { btn.disabled = false; });
+    });
+  }
+})();`
+
 const SETUP_CSS = `
 .doc{max-width:38rem}
 .doc h1{margin:0 0 .6rem;font-size:1.5rem;font-weight:400;letter-spacing:.2em}
@@ -315,7 +358,13 @@ table.apps .none{color:var(--dim);text-align:center;padding:18px 0}
 .doc a{color:var(--fg);text-underline-offset:3px}
 pre.copy.tight{margin:0;padding:8px 10px;font-size:.72rem}
 table.paste td{vertical-align:middle}
-a.try{display:inline-block;margin-top:6px;font-size:.78rem;color:var(--dim)}
+button.try{
+  display:inline-block;margin-top:6px;font-size:.78rem;color:var(--dim);
+  background:none;border:0;padding:0;font-family:inherit;
+  text-decoration:underline;text-underline-offset:3px;cursor:pointer;
+}
+button.try[disabled]{opacity:.5}
+.try-out{display:block;margin-top:5px;font-size:.76rem;color:var(--dim);line-height:1.6}
 table.paste td:first-child{white-space:nowrap;padding-right:12px}
 p.masked{
   font-family:var(--num);letter-spacing:.18em;color:var(--faint);

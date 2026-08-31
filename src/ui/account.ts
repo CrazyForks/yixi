@@ -147,7 +147,7 @@ ${banner(o.error, 'bad', o.action)}
 
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   const q = new URL(request.url).searchParams
-  const next = safeNext(q.get('next'))
+  const next = safeNext(q.get('next'), request.url)
 
   if (request.method === 'GET') {
     // Arriving either from the "already registered" banner with the address
@@ -620,13 +620,33 @@ ${o.body}
 /**
  * Only a same-site path survives. An absolute URL forwarded from `?next=` would
  * make the sign-in page an open redirect — the classic way a phishing link
- * borrows a real login screen — and `//host` is an absolute URL wearing a
- * relative disguise.
+ * borrows a real login screen to collect real credentials.
+ *
+ * The check resolves the value instead of matching its shape, because matching
+ * its shape is what got this wrong the first time: the guard here used to be
+ * `startsWith('/') && !startsWith('//')`, and `/\evil.example.com/` sails
+ * through it. Browsers treat a backslash as a slash in the authority position
+ * of an http(s) URL, so that value redirects off-site from a link that lives on
+ * the real domain. Letting the URL parser decide leaves no shapes left to
+ * enumerate — and the parser is the same one the browser will use.
  */
-function safeNext(raw: string | null): string | undefined {
+function safeNext(raw: string | null, base: string): string | undefined {
   if (!raw) return undefined
-  if (!raw.startsWith('/') || raw.startsWith('//')) return undefined
-  return raw
+  try {
+    const resolved = new URL(raw, base)
+    if (resolved.origin !== new URL(base).origin) return undefined
+
+    // Resolving is not enough on its own: `/..//evil.example.com/` normalises to
+    // a same-origin URL whose *pathname* is `//evil.example.com/`, and handing
+    // that back as a Location header is protocol-relative all over again. Parse
+    // to normalise, then check the normalised form — the order matters, because
+    // this check is only trustworthy on output the parser produced.
+    const path = resolved.pathname + resolved.search
+    if (!path.startsWith('/') || path.startsWith('//')) return undefined
+    return path
+  } catch {
+    return undefined
+  }
 }
 
 const MISMATCH = '两次输入的密码不一样，再来一次。'

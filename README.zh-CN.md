@@ -93,7 +93,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | **Pages** | `pages/wrangler.toml` | 人访问的那个地址 |
 | **Worker** | `wrangler.toml` | 只跑每日清理的 cron |
 
-**`*.workers.dev` 在中国大陆被 DNS 污染。**这是实测出来的，不是猜的：`yixi.defiabell.workers.dev` 在国内三家公共 DNS（223.5.5.5 / 119.29.29.29 / 114.114.114.114）各自返回一个互不相同的地址，而且都不等于境外解析值。这是典型的域名级污染，不是 Cloudflare 被封——`cloudflare.com` 和 `*.pages.dev` 在国内外解析逐字节一致。被单独针对的是 `workers.dev` 这个共享后缀。
+**`*.workers.dev` 在中国大陆被 DNS 污染。**这是实测出来的，不是猜的：任取一个 `*.workers.dev` 主机名，在国内三家公共 DNS（223.5.5.5 / 119.29.29.29 / 114.114.114.114）各自返回一个互不相同的地址，而且都不等于境外解析值。这是典型的域名级污染，不是 Cloudflare 被封——`cloudflare.com` 和 `*.pages.dev` 在国内外解析逐字节一致。被单独针对的是 `workers.dev` 这个共享后缀。
 
 `*.pages.dev` 目前干净，所以人访问的地址交给 Pages。同一个边缘、同一个运行时、同一份代码、同一个数据库，只有主机名不同。`pages/functions/[[path]].ts` 里只有一行，把请求转进同一个 Worker `fetch` 处理函数。
 

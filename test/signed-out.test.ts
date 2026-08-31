@@ -62,18 +62,42 @@ describe('signed-out visitors', () => {
     expect(res.headers.get('location')).toBe('/setup')
   })
 
-  it('refuses to forward anywhere but this site', async () => {
-    // `?next=` becomes a redirect target, so an absolute URL here would turn the
-    // sign-in page into an open redirect for a phishing link to borrow. `//host`
-    // is an absolute URL wearing a relative disguise.
+  it('never forwards to another origin, whatever shape the input takes', async () => {
     await register(env, { email: 'b@example.com', password: 'correct-horse-1' })
 
-    for (const hostile of ['https://evil.example.com/', '//evil.example.com/', 'javascript:alert(1)']) {
-      const res = await post(`/login?next=${encodeURIComponent(hostile)}`, {
+    // The assertion is the invariant, not a list of blocked strings. An audit
+    // found `/\host` sailing past the previous guard — `startsWith('/') &&
+    // !startsWith('//')` — because browsers read a backslash as a slash in the
+    // authority position of an http(s) URL. This suite stayed green over it,
+    // since it only tried the shapes whoever wrote the guard had thought of.
+    //
+    // Enumerating shapes is the losing move. What matters is that the emitted
+    // Location, resolved the way a browser resolves it, stays on this origin —
+    // several of these inputs legitimately resolve to a same-site path, and
+    // forwarding there is fine.
+    const shapes = [
+      'https://evil.example.com/',
+      '//evil.example.com/',
+      'javascript:alert(1)',
+      '/\\evil.example.com/',
+      '/\\/evil.example.com/',
+      '\\evil.example.com/',
+      '\\\\evil.example.com/',
+      'https:/evil.example.com/',
+      '/%5Cevil.example.com/',
+      'http://evil.example.com\\@yixi.example.workers.dev/',
+      'https://evil.example.com\\.yixi.example.workers.dev/',
+      '/..//evil.example.com/',
+    ]
+
+    for (const shape of shapes) {
+      const res = await post(`/login?next=${encodeURIComponent(shape)}`, {
         email: 'b@example.com',
         password: 'correct-horse-1',
       })
-      expect(res.headers.get('location'), hostile).toBe('/review')
+      const location = res.headers.get('location')
+      expect(location, shape).not.toBeNull()
+      expect(new URL(location!, BASE).origin, shape).toBe(new URL(BASE).origin)
     }
   })
 
