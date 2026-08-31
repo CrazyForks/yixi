@@ -133,6 +133,38 @@ describe('/setup', () => {
     expect(html).toContain('锁在自己手机外面')
   })
 
+  it('never tells the reader to pick a magic variable', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // Twice now a step written against remembered Shortcuts chrome has failed on
+    // a real phone: 「如果」 would not offer a dictionary value, and the URL field
+    // would not offer 「快捷指令输入」 (that one only exists once a shortcut is set
+    // to accept input, which a new one is not). The instructions must not depend
+    // on any variable the reader has to go find — the URL is pasted literally.
+    expect(html).not.toContain('获取词典值')
+    expect(html).not.toContain('词典值')
+
+    // 「快捷指令输入」 may appear exactly once, and only to tell the reader not
+    // to go looking for it — that warning is worth keeping, since this is the
+    // step they got stuck on.
+    const mentions = html.split('快捷指令输入').length - 1
+    expect(mentions).toBeLessThanOrEqual(1)
+    if (mentions === 1) expect(html).toContain('不要去找')
+  })
+
+  it('puts a complete, pasteable URL in step one', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // Inline, not only in the table further down: the reader is standing in the
+    // Shortcuts app with the URL field open.
+    const stepOne = html.slice(0, html.indexOf('第二步'))
+    expect(stepOne).toContain(`${BASE}/gate?app=xhs&amp;k=deadbeef00112233&amp;fmt=text`)
+  })
+
   it('never caches, since the page can carry a token', async () => {
     const user = await seedUser()
     const res = await renderSetup(new Request(`${BASE}/setup?k=secret123`), env, user)

@@ -51,6 +51,14 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   const lineFor = (appKey: string): string =>
     `${origin}/gate?app=${appKey}&amp;k=${token ?? '&lt;先点上面的「显示」&gt;'}&amp;fmt=text`
 
+  // The first app's line, shown inline in step one so the reader can paste
+  // without scrolling. Everything else lives in the table below.
+  const firstPasteLine = firstApp
+    ? `<pre class="copy">${lineFor(escapeHtml(firstApp.app))}</pre>`
+    : `<pre class="copy">${escapeHtml(origin)}/gate?app=&lt;先去设置加一个 App&gt;&amp;k=${
+        token ? escapeHtml(token) : '&lt;先点上面的「显示」&gt;'
+      }&amp;fmt=text</pre>`
+
   // One finished line per configured app. Step two is then literally "paste
   // this", which is the only part that repeats per app and the only part iOS
   // will not let anyone automate away.
@@ -104,69 +112,69 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
 或者想核对时能拿到：</p>
 ${tokenLine}
 
-<h2>第一步 · 建一个快捷指令，只建这一次</h2>
+<h2>第一步 · 给一个 App 建快捷指令</h2>
 
-<p>它跟你的 token 无关、跟具体哪个 App 也无关，所以<b>一辈子只用建一次</b>，
-以后加多少个 App 都用它。三个动作。</p>
+<div class="box">
+<h3>一个变量都不用挑</h3>
+<p>网址直接整条粘进去，不要去找「快捷指令输入」那个变量——它只有在快捷指令被设成
+「接收输入」时才会出现，新建的默认没有。整条链路只有三个动作，全部照抄即可。</p>
+</div>
 
 <h3>① 「获取 URL 的内容」</h3>
 <p>动作搜索框里搜 <code>URL</code>，选「获取 URL 的内容」。
-URL 那一栏<b>不要手打网址</b>——点一下它，在键盘上方的变量里选<b>「快捷指令输入」</b>。</p>
-<p>展开「显示更多」，确认方法是 <code>GET</code>。</p>
+把下面这一整条<b>粘进 URL 那一栏</b>（已经是你的真实地址和 token）：</p>
+${firstPasteLine}
+<p>展开「显示更多」，确认方法是 <code>GET</code>。请求头和请求体留空。</p>
 
 <h3>② 「如果」</h3>
 <pre class="shape">如果   「URL 的内容」   包含   https</pre>
-<p>中间选<b>「包含」</b>，右边手打 <code>https</code>。左边那栏一般会自动填好「URL 的内容」；
-要是空的，点开选上一个动作的结果。</p>
+<p>中间选<b>「包含」</b>，右边手打 <code>https</code> 五个字母。
+左边那栏会自动接上一步的结果，不用动。</p>
 
-<h3>③ 「打开 URL」，放在「如果」里面</h3>
-<p>URL 那一栏同样选「URL 的内容」。</p>
+<h3>③ 「打开 URL」，拖到「如果」里面</h3>
+<p>URL 那一栏同样自动接「URL 的内容」，不用动。</p>
 
-<h3>建完是这样，一共三行</h3>
-<pre class="shape">获取 URL 的内容    「快捷指令输入」        GET
+<h3>建完是这三行</h3>
+<pre class="shape">获取 URL 的内容    （粘好的整条网址）        GET
 如果   「URL 的内容」   包含   https
     打开 URL   「URL 的内容」
 结束如果</pre>
 
-<p>起名叫 <b>一息</b>，存好。<b>之后再也不用动它。</b></p>
+<p>起个名字，比如 <b>一息 小红书</b>，存好。</p>
 
-<div class="box">
-<h3>建好之后可以送给别人</h3>
-<p>这个快捷指令里没有你的 token、没有你拦哪些 App，纯粹是个空壳。
-所以在快捷指令列表里长按它 → 共享 → <b>拷贝 iCloud 链接</b>，
-把链接发给谁，对方点一下就装好了，一个动作都不用拼。</p>
-</div>
-
-<h2>第二步 · 每个 App 一条自动化</h2>
+<h2>第二步 · 让它在打开 App 时自动跑</h2>
 
 <p>「快捷指令」App → 底部 <b>自动化</b> → 右上角 <b>+</b>：</p>
 
 <ol>
-<li>触发条件选 <b>App</b>，点进去勾选<b>要拦的那一个</b>（一次一个）</li>
-<li>选 <b>已打开</b>，下一步</li>
-<li>加动作 <b>「文本」</b>，把下面表里对应那一整行粘进去</li>
-<li>加动作 <b>「运行快捷指令」</b>，选 <b>一息</b>，展开「显示更多」，<b>输入</b>选上一步的「文本」</li>
+<li>触发条件选 <b>App</b>，点进去勾选<b>要拦的那一个</b></li>
+<li>选 <b>已打开</b>（不是「已关闭」），下一步</li>
+<li>让你选运行什么时，直接选刚建的 <b>「一息 小红书」</b>——不用加动作、不用传输入</li>
 <li><b>关掉「运行前询问」</b>，弹出确认时选「不询问」</li>
 <li>把「运行时通知我」也关掉，不然每次开 App 都弹横幅</li>
 </ol>
 
-<h3>粘贴用的整行（已经是你的真实值）</h3>
+<h3>再加一个 App</h3>
+<p>不用重头来。快捷指令列表里<b>长按「一息 小红书」→ 拷贝</b>，
+在副本里把网址中的 <code>app=</code> 后面那个词换成新 App 的键，改个名字，
+再照第二步建一条自动化。<b>只有那一个词要改。</b></p>
+
+<h3>各个 App 对应的整条网址</h3>
 <table class="apps paste">
 <tbody>
 ${pasteRows}
 </tbody>
 </table>
-<p class="warn">整行复制，不要只复制一半，末尾的 <code>&amp;fmt=text</code> 少了就不工作。</p>
-<p class="warn"><b>粘完先点一下「在 Safari 里试一下这条」。</b>
-看到 <code>pass</code> 或者一条 <code>https://…</code> 网址，说明这条地址是通的；
-如果 Safari 报错打不开，那就是地址本身有问题（多半是复制时缺了一截，或者混进了省略号之类的字符），
-这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，看不出原因。</p>
+<p class="warn">整条复制，末尾的 <code>&amp;fmt=text</code> 少了就不工作。
+<b>粘完先点「在 Safari 里试一下这条」</b>——看到 <code>pass</code> 或一条
+<code>https://…</code> 网址就说明地址没问题；Safari 要是打不开，那就是地址本身缺了一截
+或混进了奇怪字符，这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，
+看不出原因。</p>
 
 <div class="box">
 <h3>每个 App 都要来一遍，这是 iOS 的限制</h3>
 <p>「打开 App 时」的自动化<b>必须一个 App 建一条</b>，不能批量、不能一条选多个。
 拦 5 个 App 就是 5 条。One Sec 和所有同类工具都这样，iOS 没给别的口子。</p>
-<p>好在每条只有两个动作，其中一个是粘贴。</p>
 </div>
 
 <div class="box">
