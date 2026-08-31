@@ -89,8 +89,8 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/register` `/login` `/claim` `/recover` | anyone | sign up, sign in, bind an old token, reset a password with a token |
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
-| `/lookup` | you | type an app name, get candidate URL schemes with sources |
-| `/probe` | — | kept as a 302 to `/lookup`; the two pages were merged, and old links and bookmarks still work |
+| `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings`; not a page |
+| `/lookup` `/probe` | — | kept as 302s to `/settings`. Both were pages once; finding and testing a scheme is now part of the field that needs it, so old links and bookmarks still land somewhere useful |
 | `/setup` | you | the Shortcut walkthrough, with your own host and token filled in |
 | `/account` | you | read your gate token back, change your password, sign out |
 | `/mock?v=1\|2` | anyone | the two candidate visual skins, side by side |
@@ -235,8 +235,8 @@ npx wrangler d1 execute yixi --remote --command \
 ### 8. Set up your first app
 
 1. `/settings` — add an app. The **app key** (e.g. `xhs`) is the string you will retype inside the iOS automation, and it must match exactly. Lowercase letters, digits, `-` and `_` only.
-2. `/lookup` — type the app's name to get candidate URL schemes, each labelled with where it came from. **None of them is verified.**
-3. `/lookup` — open this on the iPhone and tap each candidate under 「实测」. Only the one that actually jumps counts.
+2. In the same form, the **URL scheme** field carries everything you need for it: a worked example above the box, a **试跳** button beside it, and a folded 「不知道填什么？按 App 名字找」 that lists candidates inline, each labelled with where it came from. **None of them is verified.**
+3. Do this on the iPhone. Tap **试跳** on a candidate — only the one that actually opens the app counts. Then 「用这个」 writes it into the box and you save. Your half-filled form survives the jump.
 4. `/setup` — the Shortcut walkthrough, with your real host and token already pasted into the lines you need.
 
 ## Wiring up the iOS Shortcut
@@ -311,9 +311,9 @@ Read these before deploying. Some of them cannot be fixed in code.
 
 - **One iOS automation per app.** "When app is opened" takes exactly one app; there is no bulk mode and no multi-select. Five apps means five automations, built by hand. One Sec and every tool like it has the same constraint. This cannot be worked around from the server.
 - **The three iOS risks are settled.** Measured on a real device on 2026-08-31: the "when app is opened" automation runs with no confirmation prompt once 「运行前询问」 is off, the network round-trip per launch is unobtrusive, and tapping 继续 does hand control back to the target app. `xhsdiscover://` and `QDReader://` are the two schemes this project has actually observed working; everything else in the table is transcribed, not tested.
-- **Some apps have removed their URL scheme entirely.** Nothing under `/lookup`'s 「实测」 section will jump for them, no matter which candidate you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
+- **Some apps have removed their URL scheme entirely.** No candidate will jump for them, no matter which one you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
 - **One network round trip on every app open.** No client cache, no offline fallback. On a weak signal it is perceptible. If it ever becomes intolerable, that is a signal to change the architecture, not the configuration.
-- **The App Store fallback in `/lookup` does not work from the Cloudflare edge.** When an app is not in the bundled table, `/lookup` tries `itunes.apple.com` to confirm the app exists and get its bundle id. That call fails from the Worker runtime while working fine from a laptop. Known, not yet fixed. The page reports "could not check" and refuses to invent a scheme, so nothing is silently wrong; the main path is unaffected.
+- **The App Store fallback does not work from the Cloudflare edge.** When an app is not in the bundled table, `/api/candidates` tries `itunes.apple.com` to confirm the app exists and get its bundle id. Apple answers Cloudflare's egress addresses with HTTP 429, so this fails in production while working fine from a laptop. Known, not yet fixed. The picker reports "could not check" — never "no such app" — and refuses to invent a scheme, so nothing is silently wrong; the main path is unaffected.
 - **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
 - **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
 - **A breathing page left open for hours can still be resolved.** `/resolve` deliberately has no freshness check: refusing a stale resolve means no grace window opens, so jumping back to the app gets you intercepted instantly and you are in the loop. `/b` does refuse to *render* a session older than ten minutes, so this only applies to a page that was already loaded.

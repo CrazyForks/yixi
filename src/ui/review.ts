@@ -214,7 +214,7 @@ function prettyDate(date: string): string {
 // --- styles ---------------------------------------------------------------
 //
 // Appended to CONSOLE_CSS, which carries the shell, the nav and the type
-// scale this page shares with /settings, /lookup, /setup and /account. What is
+// scale this page shares with /settings, /setup and /account. What is
 // added here is only what the other pages have no use for: the outcome hues,
 // and the chart/tile geometry. `--num` (a UI font for figures, since 宋体
 // digits are proportional and hard to scan in a column of counts) also comes

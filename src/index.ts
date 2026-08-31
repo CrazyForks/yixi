@@ -4,9 +4,8 @@ import { handleGate, handleResolve } from './gate'
 import { renderBreathe } from './ui/breathe'
 import { renderMock } from './ui/mock'
 import { renderReview } from './ui/review'
-import { renderProbe } from './ui/probe'
 import { renderSetup } from './ui/setup'
-import { handleLookup } from './ui/lookup'
+import { handleCandidates } from './api/candidates'
 import {
   handleAccount,
   handleClaim,
@@ -87,9 +86,15 @@ export default {
 
       let res: Response
       if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
-      else if (path === '/probe' && method === 'GET') res = await renderProbe(env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
-      else if (path === '/lookup') res = await handleLookup(request, env, user)
+      else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request)
+      // /lookup and /probe were pages; both are now the URL scheme field on
+      // /settings. 302 rather than 301 because Safari caches a 301 more or less
+      // forever, and this costs one round trip on a path nobody navigates
+      // deliberately any more — it exists for bookmarks and address-bar
+      // autocomplete on the phone this was built for, where a 404 would read as
+      // "the tool broke".
+      else if (path === '/lookup' || path === '/probe') res = seeOtherTo('/settings')
       else if (path === '/setup' && method === 'GET') res = await renderSetup(request, env, user)
       else if (path === '/settings') res = await handleSettings(request, env, user)
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)
@@ -178,6 +183,10 @@ function toLogin(url: URL): Response {
     status: 303,
     headers: { location: `/login?next=${encodeURIComponent(safe)}`, 'cache-control': 'no-store' },
   })
+}
+
+function seeOtherTo(location: string): Response {
+  return new Response(null, { status: 302, headers: { location, 'cache-control': 'no-store' } })
 }
 
 function notFound(): Response {

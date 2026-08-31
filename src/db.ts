@@ -327,7 +327,7 @@ export async function listUserApps(db: D1Database, userId: number): Promise<User
   const res = await db
     .prepare(
       `SELECT user_id, app, label, scheme, wait_seconds, grace_seconds, enabled
-       FROM user_apps WHERE user_id = ?1 ORDER BY app`,
+       FROM user_apps WHERE user_id = ?1 ORDER BY enabled DESC, app`,
     )
     .bind(userId)
     .all<UserApp>()

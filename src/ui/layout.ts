@@ -154,7 +154,7 @@ export function themeParam(name: ThemeName): '1' | '2' {
  * Turnstile is configured: `pageOptions.turnstile` is what widens the policy,
  * and only src/ui/account.ts's /register handler ever sets it — and only when
  * both keys are present. Every other page (the breathing page, /review,
- * /setup, /settings, /probe, /lookup, /login, /claim, /recover, the landing
+ * /setup, /settings, /login, /claim, /recover, the landing
  * page) is served with the byte-identical `default-src 'none'` policy it had
  * before Turnstile existed, so none of them can reach any external host. That
  * is a property of the code rather than a promise: the flag that relaxes the

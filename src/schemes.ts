@@ -2,7 +2,7 @@
  * A frozen snapshot of two public URL-scheme collections, plus the rules for
  * guessing when neither of them has heard of an app.
  *
- * Why this file exists at all: /probe can tell you whether a scheme works, but
+ * Why this file exists at all: 「试跳」 can tell you whether a scheme works, but
  * it cannot tell you what to type into it, and the honest answer to "what is
  * 起点读书's scheme" is that nobody on the server knows. Twice already this
  * project has had an unverified string read as an answer — the `someapp://`
@@ -15,7 +15,7 @@
  *
  *   verified — a scheme that made a real iPhone jump. Nothing in this file is
  *              ever this tier; only the phone in the reader's hand can promote
- *              a candidate, by jumping on /probe. The tier exists in the type
+ *              a candidate, by jumping from /settings. The tier exists in the type
  *              so the UI has a name for the thing these candidates are not.
  *   listed   — copied out of a public collection. Traceable, and stale the
  *              moment an app ships a change nobody logged.
@@ -132,7 +132,7 @@ export function isCorroborated(c: Candidate): boolean {
  *
  * Bundle ids come from iOS-app-info; iOS-URL-Scheme records no bundle ids, so
  * rows sourced only from it have none. A missing bundle id costs nothing except
- * that /lookup cannot offer derived fallbacks for that row.
+ * that the picker cannot offer derived fallbacks for that row.
  */
 export const APPS: AppEntry[] = [
   // --- 短视频 --------------------------------------------------------------

@@ -373,9 +373,9 @@ Also set on every page: `referrer-policy: no-referrer`, `x-content-type-options:
 
 **`jsonScript(id, value)`** is how user-supplied data reaches an inline script: an inert `<script type="application/json">` island with `<`, U+2028 and U+2029 escaped, so a label or a URL scheme can never become code.
 
-`src/ui/console.ts` holds the shared chrome for the tabbed pages (`/review`, `/settings`, `/lookup`, `/setup`, `/account`, `/admin`) so they read as one surface rather than six designs. It lives in its own module rather than inside one of those pages, because a page module that doubles as the shared library for its siblings is a dependency direction that only gets worse.
+`src/ui/console.ts` holds the shared chrome for the tabbed pages (`/review`, `/settings`, `/setup`, `/account`, `/admin`) so they read as one surface rather than five designs. It lives in its own module rather than inside one of those pages, because a page module that doubles as the shared library for its siblings is a dependency direction that only gets worse.
 
-All writes are plain HTML forms with POST/redirect/GET — no fetch, no client validation the server does not repeat. Only the breathing page, `/probe` and `/lookup` carry any script at all, and each has a specific reason.
+All writes are plain HTML forms with POST/redirect/GET — no fetch, no client validation the server does not repeat. Only the breathing page and `/settings` carry any script at all, and each has a specific reason. `/settings` is the one place that fetches: the candidate picker calls `GET /api/candidates` so the reader never leaves the half-filled form the answer is for.
 
 ## URL schemes
 
@@ -384,12 +384,14 @@ Three layers, and they are not redundant:
 | where | what it does |
 | --- | --- |
 | `src/schemes.ts` | a frozen, build-time snapshot of two public collections — 60 apps, 64 candidates, **every one tagged `listed`, none `verified`**. Compiled in rather than fetched, because the pages may make no external request. |
-| `src/scheme.ts` | `safeScheme()` — the one authority on what must never reach `location.href`. Called by `/settings` at write time, by `/lookup` in the browser, and by `breathe.ts` at the sink. The sink call is the only one a scheme inserted straight into D1 still has to pass. |
-| `/lookup` 「实测」 | the only thing that can actually settle the question, because it runs on the phone. `location.href` inside a click handler — the same mechanism 「继续」 uses, asserted by test. |
+| `src/scheme.ts` | `safeScheme()` — the one authority on what must never reach `location.href`. Called by `/settings` at write time, by the picker in the browser, and by `breathe.ts` at the sink. The sink call is the only one a scheme inserted straight into D1 still has to pass. |
+| `/settings` 「试跳」 | the only thing that can actually settle the question, because it runs on the phone. `location.href` inside a click handler — the same mechanism 「继续」 uses, asserted by test. One button covers a candidate just picked, a scheme saved months ago and a line pasted from a forum. |
 
-`/lookup` searches the table by Chinese name, English name, pinyin and abbreviation, and when it finds nothing falls back to the iTunes Search API to confirm the app exists and get its bundle id, from which it *derives* pattern guesses labelled `derived`. That fallback currently fails from the Cloudflare edge (works from a laptop) — known, unfixed; the page reports "could not check" and never invents a scheme.
+`GET /api/candidates` searches the table by Chinese name, English name, pinyin and abbreviation, and when it finds nothing falls back to the iTunes Search API to confirm the app exists and get its bundle id, from which it *derives* pattern guesses labelled `derived`. That fallback currently fails from the Cloudflare edge — Apple answers HTTP 429 to Cloudflare's egress addresses, and it works from a laptop — known, unfixed; the answer says "could not check", never "no such app", and never invents a scheme.
 
-The button hierarchy on `/lookup` is deliberate: 「试一下」 (try it) is the wide dark obvious one, 「就用这个」 (use this one) is a quiet line of text underneath. Testing first is not advice there, it is the visual hierarchy — the same reason the breathing page shows 算了 first and louder than 继续.
+It used to be a page, `/lookup`, with `/probe` as a second page for testing. Both are gone and 302 to `/settings`. The reason is worth recording: they were destinations for a *step*, not for a task. Nobody wants to look at a list of candidates — they want to fill in one field, and being sent to another page to do it discarded the half-typed form the answer was for. Everything both pages did is now on that field: the worked example above the box, 「试跳」 beside it, and a folded inline picker whose 「用这个」 writes into the input with no navigation and no server round trip. Because 「试跳」 still has to leave the page, the form is written to `localStorage` synchronously before the jump and restored once on the way back.
+
+The button hierarchy on a candidate is deliberate: 「试跳」 is the filled dark one and carries the ordinal ①, 「用这个」 is outlined and carries ②. Testing first is not advice, it is the visual order — the same reason the breathing page shows 算了 first and louder than 继续. The ordinals are asserted by test, in the renderer rather than in the markup, because the rows are built client-side now.
 
 ## Tests
 
@@ -401,7 +403,9 @@ The files worth knowing about before you change something:
 | --- | --- |
 | `test/gate.test.ts` | the four decision branches, and that `grace_pass` never contaminates an attempt count |
 | `test/breathe.test.ts` | the Safari gesture-stack contract, the deliberate button asymmetry, and the no-external-requests rule |
-| `test/lookup.test.ts` | that every `verified` claim carries its evidence, that the table never guesses, that every candidate is traceable, and that the page holds exactly one `jump()` and one synchronous `location.href` assignment |
+| `test/candidates.test.ts` | that every `verified` claim carries its evidence, that the table never guesses, that every candidate is traceable, and that the three App Store failure causes stay distinguishable |
+| `test/settings.test.ts` | that the page holds exactly one `jump()` and one synchronous `location.href` assignment, and that the whole click-to-jump path contains no `await`, `fetch`, `setTimeout` or `.then` — the picker's own `fetch` lives only in the search path. Also that adding a key that already exists refuses instead of overwriting the row's tuned intervals |
+| `test/chrome.test.ts` | that every signed-in page emits the same nav, diffed against its siblings, and that nothing renders below 11px in px or rem |
 | `test/admin.test.ts` | the privacy line, using sentinel values that cannot appear by coincidence |
 | `test/stats.test.ts` | the accounting semantics, including the midnight boundary |
 | `test/ratelimit.test.ts` | concurrency, which is how the original limiter was found to be useless |

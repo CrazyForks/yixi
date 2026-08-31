@@ -1,6 +1,6 @@
-// Shared chrome for every signed-in page — /review, /settings, /lookup, /setup,
+// Shared chrome for every signed-in page — /review, /settings, /setup,
 // /account, /admin. They must read as one surface that people tab between, not
-// six separate designs.
+// five separate designs.
 //
 // /review used to render its own header, and that is exactly the failure this
 // module now prevents: its private copy had drifted to three text-only tabs, so
@@ -24,20 +24,22 @@ import { ICON_CSS, icon, type IconName } from './icons'
  */
 export type ConsolePage = Extract<
   IconName,
-  'review' | 'settings' | 'lookup' | 'setup' | 'account' | 'admin'
+  'review' | 'settings' | 'setup' | 'account' | 'admin'
 >
 
 /**
- * Five tabs, six for the owner. It was seven, and on a 375px phone the last two
- * were off-screen behind a scrollbar that is deliberately hidden — so nothing on
- * the page suggested they existed.
+ * Four tabs, five for the owner. It was seven.
  *
- * Two changes fixed that. 「实测」 merged into 「候选」, because finding a string
- * and trying it are two steps of one job and splitting them meant tabbing back
- * and forth; and the labels shrank under their icons instead of sitting beside
- * them. Every tab keeps its word: 「回顾」 and 「怎么配」 have no icon anyone
- * would guess, and an icon-only nav here would trade a scroll nobody can see for
- * a guess nobody can make. The current tab additionally sits on a pale ink disc.
+ * The three that left were all the same mistake: a step of one job given a
+ * destination of its own. 「实测」 merged into 「候选」 (finding a string and
+ * trying it are two halves of one task), and then 「候选」 itself merged into
+ * the URL scheme field on /settings — nobody ever wanted to go look at a list
+ * of candidates; they wanted to fill in that one box, and being sent away from
+ * a half-typed form to do it lost the form.
+ *
+ * Every remaining tab keeps its word: 「回顾」 and 「怎么配」 have no icon
+ * anyone would guess, and an icon-only nav would trade a scroll nobody can see
+ * for a guess nobody can make. The current tab sits on a pale ink disc.
  */
 export function consoleHeader(user: User, active: ConsolePage): string {
   const tab = (href: string, name: ConsolePage, text: string): string =>
@@ -48,7 +50,6 @@ export function consoleHeader(user: User, active: ConsolePage): string {
   <nav aria-label="导航">
     ${tab('/review', 'review', '回顾')}
     ${tab('/settings', 'settings', '设置')}
-    ${tab('/lookup', 'lookup', '候选')}
     ${tab('/setup', 'setup', '怎么配')}
     ${tab('/account', 'account', '账号')}
     ${user.is_owner ? tab('/admin', 'admin', '发号') : ''}

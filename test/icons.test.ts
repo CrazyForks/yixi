@@ -19,7 +19,6 @@
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { handleLookup } from '../src/ui/lookup'
 import { renderSetup } from '../src/ui/setup'
 import { handleSettings } from '../src/ui/settings'
 import { upsertUserApp } from '../src/db'
@@ -53,12 +52,6 @@ const noNetwork: typeof fetch = (async () => {
   throw new Error('no page in this file should need the App Store')
 }) as unknown as typeof fetch
 
-async function lookup(query = '?q=小红书'): Promise<string> {
-  const res = await handleLookup(new Request(`${BASE}/lookup${query}`), env, user, {
-    fetchImpl: noNetwork,
-  })
-  return await res.text()
-}
 async function setup(): Promise<string> {
   return await (await renderSetup(new Request(`${BASE}/setup?k=deadbeef00112233`), env, user)).text()
 }
@@ -69,8 +62,6 @@ async function settings(): Promise<string> {
 /** Every icon-bearing page, keyed for readable failure messages. */
 async function allPages(): Promise<Record<string, string>> {
   return {
-    '/lookup': await lookup(),
-    '/lookup (empty)': await lookup(''),
     '/setup': await setup(),
     '/settings': await settings(),
   }
@@ -139,21 +130,25 @@ describe('the nav the merge shrank', () => {
     return m![1]!
   }
 
-  it('is five tabs for a normal user and six for the owner', async () => {
+  it('is four tabs for a normal user and five for the owner', async () => {
     const nav = navOf(await settings())
-    expect(nav.match(/<a /g)).toHaveLength(5)
+    expect(nav.match(/<a /g)).toHaveLength(4)
 
     const ownerNav = navOf(
       await (await handleSettings(new Request(`${BASE}/settings`), env, owner)).text(),
     )
-    expect(ownerNav.match(/<a /g)).toHaveLength(6)
+    expect(ownerNav.match(/<a /g)).toHaveLength(5)
     expect(ownerNav).toContain('/admin')
   })
 
-  it('no longer offers 实测 as its own tab, and every tab keeps its word', async () => {
-    const nav = navOf(await lookup())
+  it('no longer offers 实测 or 候选 as their own tabs, and every tab keeps its word', async () => {
+    const nav = navOf(await settings())
+    // Three tabs left, all the same mistake: a step of one job given a
+    // destination of its own. 「候选」 was the last to go — it is the URL scheme
+    // field on /settings now.
     expect(nav).not.toContain('/probe')
-    for (const label of ['回顾', '设置', '候选', '怎么配', '账号']) {
+    expect(nav).not.toContain('/lookup')
+    for (const label of ['回顾', '设置', '怎么配', '账号']) {
       expect(nav, label).toContain(`<span class="lb">${label}</span>`)
     }
     // The current tab is marked for assistive tech, not only with a background.
@@ -181,12 +176,33 @@ describe('the three warnings that may be folded but never deleted', () => {
   })
 
   it('2. these are candidates; only a real jump counts', async () => {
-    const visible = visibleOnly(await lookup())
-    expect(visible).toContain('没验证过')
-    expect(visible).toContain('试跳')
-    // The ordering rule lives on the buttons now, so it survives the fold too.
-    expect(visible).toMatch(/<span class="ord">1<\/span>/)
-    expect(visible).toMatch(/<span class="ord">2<\/span>/)
+    // This warning used to live on a page of its own. Folding the picker into
+    // the scheme field put it at risk of folding with it — so the claim sits on
+    // the field, above the fold, where somebody who never opens the picker
+    // still reads it before typing a string they copied from somewhere.
+    const page = await settings()
+
+    // `visibleOnly` cannot express this any more: the scheme field itself lives
+    // inside the add block's <details>, so stripping every fold strips the
+    // field too. What the warning has to survive is the fold it could plausibly
+    // have been tucked into — the picker. So: it must appear in the form BEFORE
+    // the picker's <details> opens, which is exactly "you read it without
+    // going looking for candidates".
+    const fieldStart = page.indexOf('class="field scheme"')
+    const pickerStart = page.indexOf('<details class="pickwrap"')
+    expect(fieldStart, 'scheme field missing').toBeGreaterThan(-1)
+    expect(pickerStart, 'picker missing').toBeGreaterThan(fieldStart)
+    const beforeThePicker = page.slice(fieldStart, pickerStart)
+
+    expect(beforeThePicker).toContain('没验证过')
+    expect(beforeThePicker).toContain('试跳')
+
+    // The ordering rule — try it, THEN save it — is on the buttons, which are
+    // rendered client-side now. It has to survive in the renderer.
+    const script = page.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
+    expect(script).toContain('<span class="ord">1</span>')
+    expect(script).toContain('<span class="ord">2</span>')
+    expect(script.indexOf("class=\"ctry\"")).toBeLessThan(script.indexOf("class=\"cuse\""))
   })
 
   it('3. too short a grace window intercepts you the moment you land', async () => {

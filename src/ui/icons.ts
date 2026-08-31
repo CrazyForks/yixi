@@ -41,6 +41,7 @@ export type IconName =
   | 'setup'
   | 'account'
   | 'admin'
+  | 'plus'
 
 const ICONS: Record<IconName, string> = {
   caveat: '<path d="M12 4.9l8.1 14.2H3.9z"/><path d="M12 9.9v4.4"/><path d="M12 16.7h.01"/>',
@@ -74,9 +75,12 @@ const ICONS: Record<IconName, string> = {
   // A key rather than a person: this account IS a token.
   account: '<circle cx="8.8" cy="12" r="3.4"/><path d="M12.2 12h7.4"/><path d="M16.6 12v2.8M19.2 12v2"/>',
   admin: '<path d="M4.8 11.2l6.4-6.4h7.6v7.6l-6.4 6.4z"/><circle cx="15.4" cy="8.6" r="1.3"/>',
+  // A plain cross. It rotates 45° when its <details> opens, so the same mark is
+  // both 「加一个」 and 「收起来」 without a second icon to learn.
+  plus: '<path d="M12 5.4v13.2M5.4 12h13.2"/>',
 }
 
-/** The three confidence tiers /lookup labels a candidate with. */
+/** The three confidence tiers the /settings picker labels a candidate with. */
 export type Tier = 'verified' | 'listed' | 'derived'
 
 /**

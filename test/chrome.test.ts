@@ -6,10 +6,9 @@
 // 「账号」 or 「发号」 at all. Tabbing to 回顾 changed the furniture and took
 // three destinations away, with no way back except the browser's back button.
 //
-// test/icons.test.ts already asserted the nav had five tabs and that 回顾 was
-// one of them. It stayed green through all of it, because it only ever rendered
-// /settings and /lookup — the pages that shared the nav. The bug lived in the
-// page the test never asked about.
+// test/icons.test.ts already asserted the nav had 回顾 among its tabs. It stayed
+// green through all of it, because it only ever rendered pages that shared the
+// nav. The bug lived in the page the test never asked about.
 //
 // So the assertion here is not "the nav is right on some page". It is that
 // every signed-in page emits the SAME nav, diffed against every other, with the
@@ -18,7 +17,6 @@
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { handleLookup } from '../src/ui/lookup'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
 import { renderSetup } from '../src/ui/setup'
@@ -34,10 +32,6 @@ import type { User } from '../src/types'
 const BASE = 'https://yixi.test'
 const user: User = { id: 1, name: '张三', is_owner: 0, created_at: Date.now() }
 const owner: User = { ...user, is_owner: 1 }
-
-const noNetwork: typeof fetch = (async () => {
-  throw new Error('no page in this file should need the App Store')
-}) as unknown as typeof fetch
 
 async function reset(): Promise<void> {
   await env.DB.batch([
@@ -69,7 +63,6 @@ beforeEach(reset)
 const PAGES: Record<string, (u: User) => Promise<Response>> = {
   review: (u) => renderReview(new Request(`${BASE}/review`), env, u),
   settings: (u) => handleSettings(new Request(`${BASE}/settings`), env, u),
-  lookup: (u) => handleLookup(new Request(`${BASE}/lookup`), env, u, { fetchImpl: noNetwork }),
   setup: (u) => renderSetup(new Request(`${BASE}/setup`), env, u),
   account: (u) => handleAccount(new Request(`${BASE}/account`), env, u),
 }
@@ -104,14 +97,14 @@ describe('one nav, on every signed-in page', () => {
     }
   })
 
-  it('offers all five destinations from every page, /review included', async () => {
+  it('offers all four destinations from every page, /review included', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name), name)
-      for (const href of ['/review', '/settings', '/lookup', '/setup', '/account']) {
+      for (const href of ['/review', '/settings', '/setup', '/account']) {
         // The failure this replaces: from /review these three did not exist.
         expect(nav, `${name} has no link to ${href}`).toContain(`href="${href}"`)
       }
-      expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(5)
+      expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(4)
     }
   })
 
@@ -124,21 +117,21 @@ describe('one nav, on every signed-in page', () => {
     }
   })
 
-  it('gives the owner a sixth tab, on every page including /review', async () => {
+  it('gives the owner a fifth tab, on every page including /review', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name, owner), `${name} (owner)`)
-      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(6)
+      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(5)
       expect(nav, `${name} owner`).toContain('/admin')
     }
     const adminNav = navOf(await (await handleAdmin(new Request(`${BASE}/admin`), env, owner)).text(), 'admin')
-    expect(adminNav.match(/<a /g)).toHaveLength(6)
+    expect(adminNav.match(/<a /g)).toHaveLength(5)
   })
 
   it('draws an icon in every tab — a text-only nav is the old /review', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name), name)
-      expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(5)
-      expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(5)
+      expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(4)
+      expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(4)
     }
   })
 
