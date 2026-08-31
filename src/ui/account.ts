@@ -31,6 +31,7 @@ import {
   claimAccount,
   login,
   logout,
+  rotateToken,
   register,
   resetPasswordWithToken,
   revealToken,
@@ -347,6 +348,19 @@ export async function handleAccount(request: Request, env: Env, user: User): Pro
     return seeOther('/', await logout(env, sessionIdFrom(request)))
   }
 
+  if (op === 'rotate') {
+    const res = await rotateToken(env, { user, currentPassword: secret(form, 'current') })
+    if (!res.ok) {
+      const msg =
+        res.error === 'invalid_credentials' ? '当前密码不对。' : accountErrorMessage(res.error)
+      return await accountPage(env, user, { error: msg, status: 400 })
+    }
+    // Rendered, not redirected: a 303 would drop the plaintext, and putting it
+    // in the redirect's query string would write the new credential straight
+    // into browser history — the thing rotation was called on to fix.
+    return await accountPage(env, user, { rotated: res.token })
+  }
+
   if (op !== 'password') {
     return await accountPage(env, user, { error: '不认识这个操作。', status: 400 })
   }
@@ -379,8 +393,44 @@ function passwordChangeMessage(error: AccountError): string {
 
 type Welcome = 'new' | 'claimed' | 'reset' | 'saved' | null
 
+/**
+ * The only remedy for a leaked token, and the only place it is offered.
+ *
+ * Deliberately not one tap: rotating invalidates the credential every automation
+ * on the phone is using, so an accidental rotation means the tool silently stops
+ * working until every Shortcut is edited. The password requirement is both an
+ * authorisation check and a speed bump.
+ */
+function rotateCard(): string {
+  return `<section class="card">
+  <h2 class="card-title">换一把新 token</h2>
+  <p class="note">泄漏了才需要这么做。<b>旧 token 立刻失效</b>，你手机上每一条用到它的快捷指令都得把网址里的
+  <span class="mono">k=</span> 换成新的，改完之前那些 App 不会再被拦。改密码不会换 token，两者互不影响。</p>
+  <form method="post" action="/account">
+    <div class="field">
+      <label for="f-rot">当前密码</label>
+      <input id="f-rot" type="password" name="current" required autocomplete="current-password">
+    </div>
+    <button class="danger" type="submit" name="op" value="rotate">换一把</button>
+  </form>
+</section>`
+}
+
+/** Printed once. The plaintext exists only inside this one response. */
+function rotatedCard(token: string): string {
+  return `<section class="card">
+  <h2 class="card-title">新 token</h2>
+  <p class="note"><b>只显示这一次。</b>现在就存进密码管理器，然后去把快捷指令里的网址换掉。</p>
+  <p class="reveal"><span class="mono tok" id="tok">${escapeHtml(token)}</span>
+    <button class="linky" type="button" id="cp">复制</button></p>
+  <p class="note">旧的那把已经不认了。去<a href="/setup?show=1">怎么配</a>拿现成的整行网址。</p>
+</section>`
+}
+
 interface AccountOptions {
   reveal?: boolean
+  /** The freshly issued token, printed once and never retrievable this way again. */
+  rotated?: string
   welcome?: Welcome
   error?: string
   status?: number
@@ -414,8 +464,9 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
     <p class="note">加入于 <span class="num">${escapeHtml(shanghaiDate(user.created_at))}</span></p>
   </section>
 
-  ${tokenCard(o.reveal === true, token)}
+  ${o.rotated ? rotatedCard(o.rotated) : tokenCard(o.reveal === true, token)}
   ${summary.hasPassword ? passwordCard() : bindCard()}
+  ${summary.hasPassword && !o.rotated ? rotateCard() : ''}
 
   <hr class="sep">
   <form method="post" action="/account">
@@ -423,7 +474,7 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
   </form>
   <p class="note">退出只清掉这台设备上的登录状态。快捷指令照常拦你——它认的是 token，不是这个登录。</p>
 </main>`,
-    script: o.reveal === true && token !== null ? COPY_SCRIPT : undefined,
+    script: (o.reveal === true && token !== null) || o.rotated ? COPY_SCRIPT : undefined,
   })
 }
 

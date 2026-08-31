@@ -9,6 +9,7 @@ import {
   getSealedToken,
   isEmailTakenError,
   updateUserPassword,
+  rotateUserToken,
 } from './db'
 import type { AccountRecord } from './db'
 import { PBKDF2_ITERATIONS, hashPassword, openToken, randomHex, sealToken, verifyPassword } from './crypto'
@@ -362,6 +363,36 @@ export async function revealToken(env: Env, user: User): Promise<string | null> 
 export async function accountSummary(env: Env, user: User): Promise<AccountSummary> {
   const account = await findAccountById(env.DB, user.id)
   return { email: account?.email ?? null, hasPassword: credentialsOf(account) !== null }
+}
+
+/**
+ * Issues a fresh gate token and returns the plaintext once.
+ *
+ * This is the only remedy for a leaked token. `?k=` is a bearer credential that
+ * rides in a Shortcut's URL and in Safari history, so it spreads further than a
+ * password ever does — and changing the password does not touch it. Without
+ * rotation the answer to "my token got out" would be "abandon the account and
+ * lose the history", which is no answer at all.
+ *
+ * The current password is required. A session alone should not be enough: the
+ * realistic threat is an unattended phone, and rotating from one silently breaks
+ * every automation the real owner has set up.
+ */
+export async function rotateToken(
+  env: Env,
+  input: { user: User; currentPassword: string },
+): Promise<{ ok: true; token: string } | { ok: false; error: AccountError }> {
+  const account = await findAccountById(env.DB, input.user.id)
+  const stored = credentialsOf(account)
+  if (!account?.email || !stored) return fail('no_account')
+  if (!(await verifyPassword(input.currentPassword, stored))) return fail('invalid_credentials')
+
+  const token = randomHex(16)
+  await rotateUserToken(env.DB, input.user.id, {
+    tokenHash: await sha256Hex(token),
+    sealed: await sealToken(env.TOKEN_KEY, token),
+  })
+  return { ok: true, token }
 }
 
 // --- helpers ---------------------------------------------------------------

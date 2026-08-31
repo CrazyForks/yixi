@@ -84,15 +84,26 @@ export default {
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)
       else return notFound()
 
-      // First visit arrived with ?k=<token>; swap it for a cookie so the token
-      // stops living in browser history and bookmarks.
+      // First visit arrived with ?k=<token>. Set the cookie and bounce to the
+      // same path without it, rather than rendering the page at a URL that has
+      // the user's whole identity in it — that URL is one screenshot, one shared
+      // link or one glance at the address bar away from handing over every
+      // record the account holds.
       if (seededFromToken) {
-        res = new Response(res.body, res)
-        res.headers.append('Set-Cookie', await issueCookie(env, user))
+        const clean = new URL(url)
+        clean.searchParams.delete('k')
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: clean.pathname + (clean.search || ''),
+            'set-cookie': await issueCookie(env, user),
+            'cache-control': 'no-store',
+          },
+        })
       }
       return res
     } catch (err) {
-      console.error('unhandled', err)
+      console.error('unhandled', redact(err))
       return new Response('internal error', { status: 500 })
     }
   },
@@ -115,6 +126,20 @@ export default {
 const SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 /** Comfortably past the longest window in LIMITS, so nothing live is dropped. */
 const RATE_WINDOW_RETENTION_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Strips anything shaped like a gate token before it reaches a log line.
+ *
+ * Nothing deliberately logs a token, but the catch-all logs whatever was
+ * thrown, and a thrown value that happens to carry a request URL would put a
+ * live credential into Cloudflare's log stream — where it outlives the request
+ * and is readable by anyone with dashboard access. Cheap insurance against a
+ * class of accident rather than a known bug.
+ */
+function redact(err: unknown): string {
+  const text = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err)
+  return text.replace(/([?&](?:k|token)=)[^&\s"']+/gi, '$1[redacted]').replace(/\b[0-9a-f]{32}\b/gi, '[redacted]')
+}
 
 function tooManyRequests(retryAfterSeconds: number): Response {
   return new Response('慢一点。稍后再试。', {

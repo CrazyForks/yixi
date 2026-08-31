@@ -352,6 +352,35 @@ export async function deleteUserApp(db: D1Database, userId: number, app: string)
   await db.prepare('DELETE FROM user_apps WHERE user_id = ?1 AND app = ?2').bind(userId, app).run()
 }
 
+/**
+ * Replaces both stored copies of the gate token at once.
+ *
+ * The hash is what /gate verifies and the ciphertext is what the account page
+ * shows; a rotation that updated one and not the other would leave an account
+ * that either cannot authenticate or cannot show its holder the credential that
+ * does work. One batch, so a failure leaves the old token intact and working —
+ * the safe half of that pair, since the user can simply rotate again.
+ *
+ * Web sessions are deliberately left alone. Rotating is how someone reacts to a
+ * leaked token, and signing them out of the browser they are standing in while
+ * they still have Shortcuts to update would punish exactly the right instinct.
+ */
+export async function rotateUserToken(
+  db: D1Database,
+  userId: number,
+  next: { tokenHash: string; sealed: { cipher: string; iv: string } },
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare('UPDATE users SET token_hash = ?2, token_cipher = ?3, token_iv = ?4 WHERE id = ?1')
+      .bind(userId, next.tokenHash, next.sealed.cipher, next.sealed.iv),
+    // Any breathing page opened under the old token is now unreachable anyway:
+    // its sid still resolves, but the automation that would have honoured the
+    // grace window is about to start sending a token the server rejects.
+    db.prepare('DELETE FROM grace WHERE user_id = ?1').bind(userId),
+  ])
+}
+
 // --- sessions -------------------------------------------------------------
 
 export async function createSession(
