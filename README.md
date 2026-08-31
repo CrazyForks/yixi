@@ -30,9 +30,26 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，每周都�
 
 跳回小红书的那一瞬间，「打开 App 时」自动化会**再次触发**——这是这个方案最容易死掉的地方。解法是把免打扰窗口放在服务端：那次触发会被判定为机器噪音（`grace_pass`），直接放行，而且**不进统计**。否则每次「继续」都会给自己刷一笔假的冲动记录，放弃率会完全失真。
 
-## 部署（约 10 分钟）
+## 部署（约 15 分钟）
 
 需要一个 Cloudflare 账号和 Node 18+。
+
+### 为什么要部署两次
+
+一份代码，两处部署，共用同一个 D1：
+
+| 部署 | 配置 | 作用 |
+|---|---|---|
+| **Pages** | `pages/wrangler.toml` | 人访问的那个地址 |
+| **Worker** | `wrangler.toml` | 只跑每日清理的 cron |
+
+原因是 `*.workers.dev` 在中国大陆被 DNS 污染（三家国内公共 DNS 各自返回一个不同的错误地址），而 `*.pages.dev` 解析和境外完全一致。两者跑的是同一个运行时、同一份代码，只有主机名不同。
+
+Cloudflare 官方其实推荐用 Workers 而不是 Pages——这里反着来纯粹是为了那个能访问的域名。**如果你有自己的域名，更好的做法是把它绑到 Worker 上**（Custom Domain），域名和 cron 两个问题一起解决，`pages/` 整个目录都可以删掉。
+
+Worker 那份必须留着，因为 **Pages 不支持 Cron Trigger**。清理任务由 Cloudflare 自己触发，不需要从国内访问，所以它的主机名被污染无所谓。
+
+### 步骤
 
 ```bash
 cd personal-projects/yixi
@@ -41,21 +58,34 @@ npx wrangler login
 
 # 1. 建 D1 数据库（名字必须和 wrangler.toml 里的 database_name 一致）
 npx wrangler d1 create yixi
-# 把返回的 database_id 填进 wrangler.toml，替换掉占位的
-# database_id = "PLACEHOLDER_RUN_wrangler_d1_create_yixi"
+# 把返回的 database_id 填进 wrangler.toml 和 pages/wrangler.toml 两处
 
 # 2. 建表
 npx wrangler d1 migrations apply yixi --remote
 
-# 3. 设 cookie 签名密钥（回顾页登录态用的，随便一串长随机）
-openssl rand -hex 32
-npx wrangler secret put COOKIE_SECRET
+# 3. 两个密钥
+#    COOKIE_SECRET —— 浏览器会话用
+#    TOKEN_KEY     —— gate token 的 AES-GCM 主密钥
+#    TOKEN_KEY 丢了 = 所有人的 token 永远解不开，务必自己另存一份
+openssl rand -base64 48 | npx wrangler secret put COOKIE_SECRET
+openssl rand -base64 48 | npx wrangler secret put TOKEN_KEY
 
-# 4. 部署
-npm run deploy
+# 4. 部署 Worker（cron）
+npm run deploy   # 会先自动 apply migration 再发布
+
+# 5. 部署 Pages（人访问的地址）
+cd pages
+npx wrangler pages project create yixi --production-branch main
+#    TOKEN_KEY 必须和上面 Worker 那份【完全一致】，否则 Pages 解不开已封存的 token
+npx wrangler pages secret put TOKEN_KEY --project-name yixi
+npx wrangler pages secret put COOKIE_SECRET --project-name yixi
+npx wrangler pages deploy --branch main
 ```
 
-部署完拿到 `https://yixi.<你的子域>.workers.dev`。如果还没有 workers.dev 子域，去 Cloudflare 面板 Workers & Pages 开一次（一次性的）。
+Pages 部署完会给你一个 `https://<项目名>.pages.dev`。注意 `*.pages.dev` 的子域名是**全局唯一**的，名字被占用时 Cloudflare 会自动加后缀。
+
+> `wrangler pages deploy` 不支持 `-c` 指定配置文件路径，所以 Pages 的配置只能放在自己的目录里（`pages/wrangler.toml`），不能和 Worker 共用一份。
+
 
 ### 种下第一个 owner
 
@@ -141,7 +171,8 @@ npm run migrate:local  # 本地库建表
 - **iOS 的「打开 App 时」自动化必须一个 App 建一条**，无法批量。拦 5 个 App 就要手动建 5 条。这是 iOS 的限制，One Sec 也一样，代码层面消不掉。
 - **有些 App 已经彻底移除了自己的 URL scheme**，`/probe` 里怎么点都不动。这种只能对它放弃拦截，或者接受「点完继续自己再手动点一次 App 图标」。
 - **每次开 App 都要等一次网络往返**。信号差的时候有感知。
-- **没有客户端缓存、没有离线兜底**。Worker 挂了就等于不拦。这个方向的失败是安全的（放你进去），而不是把你锁在门外——但这个性质**不在服务端，在快捷指令里**：那个「如果」必须写成「等于 `block` 才打开 URL」。写成「不等于 `pass` 就打开」的话，服务一挂，你的几个 App 就全废了。理由和写法见 [`shortcut/README.md`](shortcut/README.md) 的「坏掉的时候必须放你进去」。
+- **没有客户端缓存、没有离线兜底**。服务挂了就等于不拦。这个方向的失败是安全的（放你进去），而不是把你锁在门外。这个性质一半靠服务端、一半靠快捷指令：`/gate?fmt=text` 只回一条 `https://…` 网址或者 `pass` 这个词，快捷指令的条件写成「**包含 `https`**」——于是服务挂了、token 错了、网络断了、返回空白，结果里都没有 `https`，什么都不会发生。写成「不包含 `pass` 就打开」的话，服务一挂你的几个 App 就全废了。
+- **中国大陆访问要用 Pages 那个地址**。`*.workers.dev` 被 DNS 污染，`*.pages.dev` 目前干净。但 `pages.dev` 同样是共享域名，今天干净不代表永远——真正一劳永逸的是绑一个自己的域名。
 - **呼吸页放很久之后仍然可以点「继续」**，`/resolve` 故意不做时效校验。拒绝它就开不出免打扰窗口，跳回 App 会被自动化立刻再拦，转进死循环。只有页面被刷新、需要重新渲染时才会认过期。
 
 ## 说人话

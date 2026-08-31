@@ -72,7 +72,16 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
   }
 
   const res = await register(env, { email: draft.email, password, name: draft.name || undefined })
-  if (!res.ok) return registerPage({ draft, error: accountErrorMessage(res.error), status: 400 })
+  if (!res.ok) {
+    // Being told the address is taken is useless without a way to act on it,
+    // and retyping it into a form the user has to go find is the friction that
+    // makes people register a second throwaway account instead.
+    const action =
+      res.error === 'email_taken'
+        ? { href: `/login?email=${encodeURIComponent(draft.email)}`, label: '去登录 →' }
+        : undefined
+    return registerPage({ draft, error: accountErrorMessage(res.error), status: 400, action })
+  }
 
   // 303 rather than rendering the account page from this POST: a phone that
   // pull-to-refreshes on the result would otherwise re-submit a registration.
@@ -88,6 +97,7 @@ interface RegisterOptions {
   draft?: SignupDraft
   error?: string
   status?: number
+  action?: { href: string; label: string }
 }
 
 function registerPage(o: RegisterOptions): Response {
@@ -97,7 +107,7 @@ function registerPage(o: RegisterOptions): Response {
     status: o.status,
     body: `<h1>注册</h1>
 <p class="lede">注册之后你会拿到一把 <b>token</b>。iPhone 的「快捷指令」拿它认出你，你被拦下的每一条记录也都记在它名下。它就是这个账号本身。</p>
-${banner(o.error)}
+${banner(o.error, 'bad', o.action)}
 
 <section class="card deal">
   <h2>先说清楚代价</h2>
@@ -135,7 +145,16 @@ ${banner(o.error)}
 // --- /login -----------------------------------------------------------------
 
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
-  if (request.method === 'GET') return loginPage({})
+  const q = new URL(request.url).searchParams
+  const next = safeNext(q.get('next'))
+
+  if (request.method === 'GET') {
+    // Arriving either from the "already registered" banner with the address
+    // already typed once, or from a signed-out tap on a console link. Both
+    // deserve to land where they were going.
+    const prefill = q.get('email') ?? ''
+    return loginPage({ ...(prefill ? { email: prefill } : {}), next })
+  }
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
@@ -151,12 +170,13 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   // person use 一息" is itself worth hiding, so the failed response — message,
   // status, and every byte of markup — is identical for a stranger and for a
   // real account with a typo'd password.
-  if (!res.ok) return loginPage({ email, error: accountErrorMessage(res.error), status: 401 })
-  return seeOther('/review', res.setCookie)
+  if (!res.ok) return loginPage({ email, error: accountErrorMessage(res.error), status: 401, next })
+  return seeOther(next ?? '/review', res.setCookie)
 }
 
 interface LoginOptions {
   email?: string
+  next?: string
   error?: string
   status?: number
 }
@@ -170,7 +190,7 @@ function loginPage(o: LoginOptions): Response {
 ${banner(o.error)}
 
 <section class="card">
-  <form method="post" action="/login">
+  <form method="post" action="${o.next ? `/login?next=${encodeURIComponent(o.next)}` : '/login'}">
     ${emailField('f-in-email', o.email ?? '', 'username')}
     ${passwordField('f-in-pw', 'password', '密码', 'current-password')}
     <div class="actions">
@@ -546,12 +566,39 @@ ${o.body}
 
 // --- form pieces ------------------------------------------------------------
 
+/**
+ * Only a same-site path survives. An absolute URL forwarded from `?next=` would
+ * make the sign-in page an open redirect — the classic way a phishing link
+ * borrows a real login screen — and `//host` is an absolute URL wearing a
+ * relative disguise.
+ */
+function safeNext(raw: string | null): string | undefined {
+  if (!raw) return undefined
+  if (!raw.startsWith('/') || raw.startsWith('//')) return undefined
+  return raw
+}
+
 const MISMATCH = '两次输入的密码不一样，再来一次。'
 
-function banner(text: string | undefined, kind: 'bad' | 'good' = 'bad'): string {
-  // Always escaped, with no exception for "our own" strings: the moment one
-  // message is allowed to carry markup, the next one carries a user's email.
-  return text ? `<p class="banner ${kind}">${escapeHtml(text)}</p>` : ''
+/**
+ * `action` is the way out of the problem the banner just described — "this
+ * address is already registered" is only half an answer without a link to the
+ * sign-in page.
+ *
+ * Both the message and the link are escaped, with no exception for "our own"
+ * strings: the moment one message is allowed to carry markup, the next one
+ * carries a user's email.
+ */
+function banner(
+  text: string | undefined,
+  kind: 'bad' | 'good' = 'bad',
+  action?: { href: string; label: string },
+): string {
+  if (!text) return ''
+  const cta = action
+    ? ` <a class="banner-go" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`
+    : ''
+  return `<p class="banner ${kind}">${escapeHtml(text)}${cta}</p>`
 }
 
 function emailField(id: string, value: string, autocomplete: string): string {

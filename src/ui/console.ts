@@ -99,6 +99,7 @@ a.linky{color:var(--dim);font-size:13px}
 .banner{border:1px solid var(--rule);border-radius:12px;padding:11px 14px;font-size:13px;line-height:1.7;margin:0 0 16px}
 .banner.bad{border-color:var(--danger);color:var(--danger)}
 .banner.good{color:var(--dim)}
+.banner-go{margin-left:.5rem;white-space:nowrap;text-underline-offset:3px;color:inherit}
 .empty{border:1px dashed var(--rule);border-radius:14px;padding:24px 16px;text-align:center;color:var(--dim);font-size:14px;margin-bottom:16px}
 hr.sep{border:0;border-top:1px solid var(--rule);margin:28px 0 18px}
 .note-tight{margin-bottom:14px}

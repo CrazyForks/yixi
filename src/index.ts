@@ -68,7 +68,7 @@ export default {
 
       // --- cookie-authenticated pages below ---
       const auth = await authenticate(request, env)
-      if (!auth) return unauthorized()
+      if (!auth) return toLogin(url)
       const { user, seededFromToken } = auth
 
       let res: Response
@@ -119,8 +119,25 @@ function tooManyRequests(retryAfterSeconds: number): Response {
   })
 }
 
-function unauthorized(): Response {
-  return new Response('unauthorized', { status: 401 })
+/**
+ * Signed-out visitors get the sign-in page, not a bare 401.
+ *
+ * A plain-text "unauthorized" is indistinguishable from a broken site — the
+ * nav links to /setup and /review are the first thing anyone taps, and landing
+ * on an unstyled error reads as "this thing is down", not "log in first".
+ *
+ * `next` carries the intended destination so signing in finishes the trip
+ * rather than dumping everyone on the same landing page. Only a same-site path
+ * is ever forwarded: an absolute URL here would turn the login page into an
+ * open redirect that phishing can borrow.
+ */
+function toLogin(url: URL): Response {
+  const next = url.pathname + url.search
+  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/review'
+  return new Response(null, {
+    status: 303,
+    headers: { location: `/login?next=${encodeURIComponent(safe)}`, 'cache-control': 'no-store' },
+  })
 }
 
 function notFound(): Response {

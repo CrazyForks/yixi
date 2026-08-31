@@ -1,0 +1,8 @@
+name = "yixi"
+pages_build_output_dir = "public"
+compatibility_date = "2026-07-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yixi"
+database_id = "64215db6-0a05-4ae9-a583-19c8790bef06"
