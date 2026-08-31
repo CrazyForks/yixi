@@ -6,6 +6,14 @@ Breathe for ten seconds before the app opens. A self-hosted stand-in for [One Se
 
 You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone jumps to a page that asks you to watch a circle and breathe. Ten seconds later you may go in, or you may put the phone down. Either way it keeps the receipt, so a week later you can see how many times you were stopped and how many of those you let go.
 
+<p align="center">
+  <img src="docs/images/breathing-paper.png" width="300" alt="The breathing page in light mode: an ink blot on paper, 「算了」 as a filled pill, 「继续打开」 as a small underlined link">
+  &nbsp;&nbsp;
+  <img src="docs/images/breathing-ink.png" width="300" alt="The same page in dark mode: pale ink on near-black">
+</p>
+
+<p align="center"><sub>The countdown has finished, so both choices are showing. 「算了」 (give up) is a filled pill; 「继续打开」 (open anyway) is a small underlined link. That asymmetry is deliberate — the default path should be putting the phone down. Light mode is not the dark theme brightened; it inverts into ink on paper.</sub></p>
+
 **Who this is for:** one person, or a handful of friends, who want a nudge rather than a wall — and who would rather run it themselves than trust an app store with a minute-by-minute log of their worst impulses. It is friction, not enforcement: the automation is one toggle away from off, on purpose.
 
 ```
