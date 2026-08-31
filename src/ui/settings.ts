@@ -196,7 +196,7 @@ async function renderSettings(env: Env, user: User, o: RenderOptions): Promise<R
   ${apps.length === 0 ? emptyState() : cards}
   <hr class="sep">
   <h2>加一个</h2>
-  <p class="note">还不知道 URL scheme 也没关系：先随便填一个候选存下来，再去<a href="/probe">实测</a>页面挨个点，跳得动的才算数。候选清单在仓库的 <span class="mono">shortcut/README.md</span> 里，全部未验证。</p>
+  <p class="note">还不知道 URL scheme 也没关系：去<a href="/lookup">候选</a>页输入 App 名字，那里会列出可试的候选并标明来源；点一下就能试跳，跳通了直接写进这里。</p>
   ${addCard(draftMatchesRow ? undefined : draft)}
 </main>`
 

@@ -1,0 +1,20 @@
+# 复制成 .dev.vars 后填入真实值，供 `npm run dev` 使用。
+# .dev.vars 已被 .gitignore 忽略，不要提交它。
+#
+# 生产环境不读这个文件 —— 那边用 `wrangler secret put`（Worker）
+# 和 `wrangler pages secret put`（Pages）。
+
+# gate token 的 AES-GCM 主密钥。
+# 登录后能看回自己的 token，靠的就是它；它从不进数据库。
+#
+# 丢了它并不会让拦截停止工作（/gate 验的是 token_hash，从不碰密文），
+# 但没人能再读回自己的 token —— 换手机时配不了快捷指令，/recover 也失效。
+# 生产环境务必自己另存一份。
+#
+#   openssl rand -base64 48
+TOKEN_KEY=dev-only-not-a-real-key
+
+# 历史遗留，当前代码没有一处读它。
+# 浏览器会话现在是 sessions_web 表里的行，cookie 只带一个不可猜的 id，
+# 没有任何东西需要签名。全新部署可以不设。
+COOKIE_SECRET=unused

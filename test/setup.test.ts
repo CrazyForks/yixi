@@ -120,17 +120,32 @@ describe('/setup', () => {
     expect(html).toContain('&lt;img src=x')
   })
 
-  it('states the fail-open rule, the one thing that must not be改错', async () => {
+  it('states the fail-open rule in terms of the protocol actually in use', async () => {
     const user = await seedUser()
     const html = await render(user)
 
     // A reader who inverts this condition locks themselves out of their own
-    // phone when the Worker is down. It must survive any future trim of this
-    // page.
-    expect(html).toContain('等于')
-    expect(html).toContain('block')
-    expect(html).toContain('不等于')
+    // phone when the service is down, so the section must survive any future
+    // trim of this page.
+    expect(html).toContain('包含')
+    expect(html).toContain('https')
+    expect(html).toContain('不包含')
     expect(html).toContain('锁在自己手机外面')
+  })
+
+  it('does not describe the retired JSON protocol anywhere', async () => {
+    const user = await seedUser()
+    const html = await render(user)
+
+    // This section went stale for several releases: the steps above it had
+    // moved to `fmt=text` while it still told the reader to compare against
+    // `block`, a word /gate no longer emits. Following it produced a condition
+    // that can never be true — no interception, and no error either. Nothing
+    // caught it because no test asserted the page agreed with the protocol.
+    const body = html.slice(0, html.indexOf('const ') === -1 ? html.length : html.indexOf('const '))
+    expect(body).not.toMatch(/等于\s*<code>block/)
+    expect(body).not.toMatch(/不等于\s*<code>pass/)
+    expect(body).not.toContain('获取词典值')
   })
 
   it('never tells the reader to pick a magic variable', async () => {

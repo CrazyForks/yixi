@@ -3,6 +3,7 @@ import { authenticate, issueCookie } from './auth'
 import { handleGate, handleResolve } from './gate'
 import { renderBreathe } from './ui/breathe'
 import { renderMock } from './ui/mock'
+import { renderUiMock } from './ui/uimock'
 import { renderReview } from './ui/review'
 import { renderProbe } from './ui/probe'
 import { renderSetup } from './ui/setup'
@@ -46,6 +47,7 @@ export default {
       if (path === '/resolve' && method === 'POST') return await handleResolve(request, env)
       if (path === '/b' && method === 'GET') return await renderBreathe(request, env)
       if (path === '/mock' && method === 'GET') return renderMock(url)
+      if (path === '/mock-ui' && method === 'GET') return renderUiMock(url)
       if (path === '/' && method === 'GET') return renderLanding()
 
       // Sign-up and sign-in must answer before authenticate(), or the only way

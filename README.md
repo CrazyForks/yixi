@@ -1,180 +1,337 @@
-# 一息
+English | [简体中文](README.zh-CN.md)
 
-打开小红书之前，先喘一口气。
+# yixi (一息)
 
-一个自建的 [One Sec](https://one-sec.app/) 替代品：你在 iPhone 上点开某个干扰类 App，手机先跳到一个网页让你看着圆圈呼吸十秒；十秒后你可以选「继续」进去，也可以选「算了」放下手机。它会把每一次都记下来，过一阵你能看到自己一周被拦了多少次、其中多少次忍住了。
+Breathe for ten seconds before the app opens. A self-hosted stand-in for [One Sec](https://one-sec.app/), built as a web page instead of an iPhone app, running entirely on Cloudflare's free tier.
 
-整个东西是**一个 Cloudflare Worker 加一个 D1 数据库**，跑在免费额度里，成本约等于零。
+You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone jumps to a page that asks you to watch a circle and breathe. Ten seconds later you may go in, or you may put the phone down. Either way it keeps the receipt, so a week later you can see how many times you were stopped and how many of those you let go.
 
----
-
-## 为什么是网页，不是 App
-
-iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，每周都要连电脑重签一次；不想重签就得买 Apple Developer，$99/年，大概率比 One Sec 本身还贵。
-
-所以走网页路线：iOS「快捷指令」的自动化在你打开 App 时触发 → 问服务端该不该拦 → 该拦就跳 Safari 呼吸页 → 结束后用 URL scheme 跳回目标 App。零签名成本、永不过期、不需要 Xcode。
-
-代价是动画不如原生顺滑，Safari 冷启动有一点感知延迟。可以接受。
-
-## 它是怎么转起来的
+**Who this is for:** one person, or a handful of friends, who want a nudge rather than a wall — and who would rather run it themselves than trust an app store with a minute-by-minute log of their worst impulses. It is friction, not enforcement: the automation is one toggle away from off, on purpose.
 
 ```
-打开小红书 → iOS「打开 App 时」自动化触发
-   → 快捷指令 GET /gate?app=xhs&k=<token>
-      ├─ {action:"pass"}        → 快捷指令直接结束，你无感进 App
-      └─ {action:"block", url}  → 打开那个 url
-            → Safari 呼吸页，倒计时
-            → 点「算了」→ 记一笔，你自己退出去
-            → 点「继续」→ 记一笔，开一个 90 秒的免打扰窗口 → 跳回小红书
+you tap 小红书
+   │
+   ▼
+iOS "When <app> is Opened" automation fires
+   │
+   ▼
+Shortcut: GET /gate?app=xhs&k=<token>&fmt=text
+   │
+   ├── body is "pass"            → Shortcut ends, the app opens normally
+   │                               (not watching this app / inside a grace window
+   │                                / the server is down — see "fails open" below)
+   │
+   └── body is "https://…/b?s=…" → Shortcut opens that URL
+                                     │
+                                     ▼
+                         Safari: the breathing page, counting down
+                            no buttons at all during the wait
+                                     │
+                          ┌──────────┴──────────┐
+                          ▼                     ▼
+                    「算了」 (drop it)      「继续」 (go in)
+                    shown first, loud     shown 800ms later, quiet
+                          │                     │
+                    logged, you exit      logged, grace window opens,
+                    the page yourself     jump back to the app
+                                                │
+                                                ▼
+                                   the automation fires AGAIN on arrival
+                                   → inside the grace window → "pass"
+                                   → recorded as machine noise, never
+                                     as an impulse
 ```
 
-跳回小红书的那一瞬间，「打开 App 时」自动化会**再次触发**——这是这个方案最容易死掉的地方。解法是把免打扰窗口放在服务端：那次触发会被判定为机器噪音（`grace_pass`），直接放行，而且**不进统计**。否则每次「继续」都会给自己刷一笔假的冲动记录，放弃率会完全失真。
+That last box is the whole reason this project is more than fifty lines of code. Handing control back to the app re-triggers the same automation, and a naive implementation loops forever. See [Why the grace window lives on the server](#why-the-grace-window-lives-on-the-server).
 
-## 部署（约 15 分钟）
+## Why a web page and not an app
 
-需要一个 Cloudflare 账号和 Node 18+。
+Sideloading your own app onto an iPhone with a free Apple ID gets you seven days before the signature expires. Then you plug into a Mac and re-sign it. Every week. Forever.
 
-### 为什么要部署两次
+The way out is an Apple Developer account at $99/year — which, for a tool whose entire job is a ten-second delay, very likely costs more than the paid app you were trying to avoid buying.
 
-一份代码，两处部署，共用同一个 D1：
+So: no app. iOS Shortcuts already has an "app was opened" trigger, Safari can already open a page, and a page can already hand control back to an app through its URL scheme. Zero signing cost, nothing to renew, no Xcode.
 
-| 部署 | 配置 | 作用 |
-|---|---|---|
-| **Pages** | `pages/wrangler.toml` | 人访问的那个地址 |
-| **Worker** | `wrangler.toml` | 只跑每日清理的 cron |
+The price is that the animation is not as smooth as native, and a Safari cold start is perceptible. For a screen that exists to slow you down, that is an acceptable trade — arguably a feature.
 
-原因是 `*.workers.dev` 在中国大陆被 DNS 污染（三家国内公共 DNS 各自返回一个不同的错误地址），而 `*.pages.dev` 解析和境外完全一致。两者跑的是同一个运行时、同一份代码，只有主机名不同。
+## What it is
 
-Cloudflare 官方其实推荐用 Workers 而不是 Pages——这里反着来纯粹是为了那个能访问的域名。**如果你有自己的域名，更好的做法是把它绑到 Worker 上**（Custom Domain），域名和 cron 两个问题一起解决，`pages/` 整个目录都可以删掉。
+One Cloudflare Worker and one D1 database. The whole app is a single `fetch` handler plus a nightly cron.
 
-Worker 那份必须留着，因为 **Pages 不支持 Cron Trigger**。清理任务由 Cloudflare 自己触发，不需要从国内访问，所以它的主机名被污染无所谓。
+- Every page is server-rendered, with CSS and JavaScript inlined. **Zero external requests** — no CDN, no web font, not even a favicon fetch. This is enforced by a `default-src 'none'` CSP, not just intended: the moment these pages open is the moment someone is reaching for a distraction on a bad connection, and one blocking round trip would end the product.
+- No client framework, no runtime dependencies. The `package.json` has five devDependencies and nothing else.
+- The interception log is never deleted. Sessions, logins and rate-limit windows are trimmed nightly; `events` is the product and stays forever.
+- Accounts are email + password, and the password is only ever a convenience. The real credential is a 128-bit random **gate token** that the Shortcut carries.
 
-### 步骤
+### Pages
+
+| Route | Who | What |
+| --- | --- | --- |
+| `/` | anyone | landing page, links to register / sign in |
+| `/gate?app=&k=` | gate token | the decision endpoint the Shortcut calls; answers `pass` or a URL |
+| `/b?s=<sid>` | sid | the breathing page |
+| `POST /resolve` | sid | records proceed / abandon, opens the grace window |
+| `/register` `/login` `/claim` `/recover` | anyone | sign up, sign in, bind an old token, reset a password with a token |
+| `/review` | you | today, the last seven days, which app costs you most |
+| `/settings` | you | which apps to intercept, and how long |
+| `/lookup` | you | type an app name, get candidate URL schemes with sources |
+| `/probe` | you | tap-test each URL scheme on the actual phone |
+| `/setup` | you | the Shortcut walkthrough, with your own host and token filled in |
+| `/account` | you | read your gate token back, change your password, sign out |
+| `/mock?v=1\|2` | anyone | the two candidate visual skins, side by side |
+| `/admin` | owner | mint a token for someone offline; see per-user attempt counts |
+
+Anything else is a 404. There is no detail endpoint under `/admin` to guess at — see [SECURITY.md](SECURITY.md).
+
+## Why it deploys twice
+
+One codebase, two Cloudflare deployments, sharing one D1 database:
+
+| Deployment | Config | Job |
+| --- | --- | --- |
+| **Pages** | `pages/wrangler.toml` | the hostname people actually open |
+| **Worker** | `wrangler.toml` | the nightly cleanup cron |
+
+This is worth reading even if you are nowhere near China, because it is a real and reusable piece of operational knowledge about Cloudflare's shared hostnames.
+
+**`*.workers.dev` is DNS-poisoned inside mainland China.** Measured, not assumed: `yixi.defiabell.workers.dev` resolves to three mutually different addresses from the three big domestic public resolvers (223.5.5.5, 119.29.29.29, 114.114.114.114), none of them matching what the rest of the world sees. That is the signature of domain-level interference, not of Cloudflare being blocked — `cloudflare.com` and `*.pages.dev` resolve byte-for-byte identically inside and outside. The shared `workers.dev` suffix is being singled out.
+
+`*.pages.dev` is currently clean, so Pages gets the human-facing hostname. Same edge, same runtime, same code, same database; only the hostname differs. `pages/functions/[[path]].ts` is one line that forwards every request into the same Worker `fetch` handler.
+
+**The Worker deployment stays because Pages has no Cron Triggers.** The nightly cleanup is fired by Cloudflare itself, so it does not care that its own hostname is unreachable from China.
+
+Two things to know before copying this pattern:
+
+- Cloudflare's own tooling recommends Workers over Pages for new projects. Deploying to Pages here is going *against* that advice, purely to get a usable hostname.
+- **If you have your own domain, do that instead.** Attach it to the Worker as a Custom Domain and both problems disappear at once — you get a clean hostname *and* Cron Triggers, and the entire `pages/` directory can be deleted. `pages.dev` is a shared suffix too; clean today is not a guarantee.
+
+Also worth knowing: `wrangler pages deploy` does not accept a `-c` config path, which is why the Pages config has to live in its own directory rather than sharing the Worker's `wrangler.toml`.
+
+## Deploy your own (~15 min)
+
+Prerequisites: a Cloudflare account and Node 18+.
+
+### 1. Install and sign in
 
 ```bash
-cd personal-projects/yixi
+cd yixi
 npm install
 npx wrangler login
+```
 
-# 1. 建 D1 数据库（名字必须和 wrangler.toml 里的 database_name 一致）
+### 2. Create the D1 database
+
+```bash
 npx wrangler d1 create yixi
-# 把返回的 database_id 填进 wrangler.toml 和 pages/wrangler.toml 两处
+```
 
-# 2. 建表
-npx wrangler d1 migrations apply yixi --remote
+Put the returned `database_id` into **both** `wrangler.toml` and `pages/wrangler.toml`. Both files must point at the same database — that is what makes the two deployments one app. (The `database_name` must stay `yixi`, or change it in both files and in `package.json`'s scripts.)
 
-# 3. 两个密钥
-#    COOKIE_SECRET —— 浏览器会话用
-#    TOKEN_KEY     —— gate token 的 AES-GCM 主密钥
-#    TOKEN_KEY 丢了 = 所有人的 token 永远解不开，务必自己另存一份
-openssl rand -base64 48 | npx wrangler secret put COOKIE_SECRET
-openssl rand -base64 48 | npx wrangler secret put TOKEN_KEY
+### 3. Generate the secrets — and keep a copy
 
-# 4. 部署 Worker（cron）
-npm run deploy   # 会先自动 apply migration 再发布
+```bash
+openssl rand -base64 48    # this is your TOKEN_KEY
+openssl rand -base64 48    # this is your COOKIE_SECRET
+```
 
-# 5. 部署 Pages（人访问的地址）
+Do not pipe these straight into `wrangler secret put`. You need to type the *same* `TOKEN_KEY` into two deployments, and there is no way to read a Cloudflare secret back out.
+
+> ### ⚠️ Lose `TOKEN_KEY` and nobody can ever read their gate token again.
+>
+> `TOKEN_KEY` is the AES-GCM key that the gate tokens are sealed under so a signed-in person can look their own token up. It is never written to D1 — a stolen database on its own opens nothing.
+>
+> Interception keeps working without it: `/gate` verifies against a SHA-256 hash and never touches the ciphertext. What breaks is recovery. Anyone who forgot their token can no longer read it back, which also means they can no longer set up a new phone, and `/recover` (reset a password using the token) becomes unusable for them. There is no reset path and no way to re-derive it. **Save it in a password manager before you continue.**
+
+Then set them on the Worker:
+
+```bash
+npx wrangler secret put TOKEN_KEY        # paste the first value
+npx wrangler secret put COOKIE_SECRET    # paste the second value
+```
+
+`COOKIE_SECRET` is legacy. Browser sessions used to be a signed cookie; they are now rows in `sessions_web` and the cookie carries only an opaque id, so nothing signs anything any more. No code reads it. It is documented here because existing deployments still have it set and because dropping a secret is a nuisance — a fresh deployment can leave it out.
+
+### 4. Apply the schema and deploy the Worker
+
+```bash
+npm run deploy    # applies migrations against the remote D1, then deploys
+```
+
+Migrations only need to run once; the Pages deployment shares the same database.
+
+### 5. Deploy Pages
+
+```bash
 cd pages
 npx wrangler pages project create yixi --production-branch main
-#    TOKEN_KEY 必须和上面 Worker 那份【完全一致】，否则 Pages 解不开已封存的 token
+
+# TOKEN_KEY must be byte-for-byte the SAME value as the Worker's, or Pages
+# cannot open tokens that were sealed on the Worker side (and vice versa).
 npx wrangler pages secret put TOKEN_KEY --project-name yixi
 npx wrangler pages secret put COOKIE_SECRET --project-name yixi
+
 npx wrangler pages deploy --branch main
 ```
 
-Pages 部署完会给你一个 `https://<项目名>.pages.dev`。注意 `*.pages.dev` 的子域名是**全局唯一**的，名字被占用时 Cloudflare 会自动加后缀。
+You get a `https://<project>.pages.dev`. Note that `*.pages.dev` subdomains are globally unique — if the name is taken, Cloudflare appends a suffix, and that suffixed hostname is the one to use everywhere below.
 
-> `wrangler pages deploy` 不支持 `-c` 指定配置文件路径，所以 Pages 的配置只能放在自己的目录里（`pages/wrangler.toml`），不能和 Worker 共用一份。
+### 6. Register, then make yourself owner
 
+Open `https://<your-host>/register` and sign up with an email and a password. That is all a normal user ever needs; registration is open.
 
-### 种下第一个 owner
-
-系统里没有注册流程——**token 就是身份**，由 owner 在 `/admin` 手动发。但第一个 owner 得自己塞进去：
+Owner is a separate thing, and there is deliberately no UI to grant it. If you want `/admin` (minting tokens for people offline), flip the flag directly:
 
 ```bash
-TOKEN=$(openssl rand -hex 16)
-HASH=$(printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1)
-echo "你的 token（只有这一次机会，现在就存进密码管理器）：$TOKEN"
-
 npx wrangler d1 execute yixi --remote --command \
-  "INSERT INTO users (name, token_hash, is_owner, created_at) VALUES ('你的名字', '$HASH', 1, $(($(date +%s) * 1000)));"
+  "UPDATE users SET is_owner = 1 WHERE email = 'you@example.com';"
 ```
 
-`token_hash` 的约定是**明文 token 的 UTF-8 字节做 SHA-256，取小写十六进制**，和 `/admin` 发号时用的是同一套（`src/auth.ts` 的 `sha256Hex`）。
+`/admin` is entirely optional. Since registration is open, its only remaining job is handing a token to someone who would rather not create an account.
 
-然后浏览器打开 `https://<你的地址>/settings?k=<你的token>`。第一次带 `?k=` 访问会种下一个 HttpOnly cookie，之后网址里就不用再带 token 了——回顾页是很私密的东西，token 不该长期躺在浏览器历史和书签里。
+### 7. Set up your first app
 
-## 回来之后要亲自做的三件事
+1. `/settings` — add an app. The **app key** (e.g. `xhs`) is the string you will retype inside the iOS automation, and it must match exactly. Lowercase letters, digits, `-` and `_` only.
+2. `/lookup` — type the app's name to get candidate URL schemes, each labelled with where it came from. **None of them is verified.**
+3. `/probe` — open this on the iPhone and tap each candidate. Only the one that actually jumps counts.
+4. `/setup` — the Shortcut walkthrough, with your real host and token already pasted into the lines you need.
 
-有三件事机器替不了，而且任何一件不成立，方案都得改。
+## Wiring up the iOS Shortcut
 
-1. **在 iPhone 上逐个实测 URL scheme。** 打开 `/probe`，把你配的每个 App 挨个点一遍，跳得动的才算数。**这个项目里没有任何一个 scheme 是写死的**，网上流传的清单大量过期，凭记忆写死会让你在点了「继续」之后卡在 Safari 里哪也去不了。
-2. **在「快捷指令」里为每个要拦的 App 建一条「打开 App 时」自动化。** 步骤见 [`shortcut/README.md`](shortcut/README.md)。iOS 不支持批量，拦几个 App 就得建几条。
-3. **在 `/mock` 页对比两版呼吸页视觉，挑一版。** v1「墨」是水墨晕圈加衬线中文，v2「息」是极简细圆环。选完改 `src/ui/layout.ts` 里的 `DEFAULT_THEME`。
+**Do the real setup from `/setup` in the app, not from a document.** That page knows your hostname, your token and your configured apps, so it prints finished strings you can long-press and copy. Any document can only print `<your-host>` and `<your-token>` and hope you substitute correctly — and mis-substitution is the single most common way this setup fails. What follows is the shape, so you know what you are aiming at.
 
-第 1 件和第 2 件跑通之后，把实测出来的 scheme 填回 `shortcut/README.md` 末尾那张表——那张表现在是空的，等着你填。
+### One shortcut, three actions, zero variables to pick
 
-## 页面
+**① Get Contents of URL.** Paste the whole line into the URL field:
 
-| 地址 | 谁能看 | 干什么 |
-|---|---|---|
-| `/` | 所有人 | 落地说明 |
-| `/gate?app=&k=` | token | 闸门决策，快捷指令打的就是它，返回 pass / block |
-| `/b?s=<sid>` | sid | 呼吸页 |
-| `/review` | 本人 | 回顾：今天、七天、哪个 App 最消耗你 |
-| `/settings` | 本人 | 增删改自己要拦的 App |
-| `/probe` | 本人 | 逐个实测 URL scheme |
-| `/mock?v=1\|2` | 所有人 | 两版呼吸页视觉对比 |
-| `/admin` | owner | 发号，看聚合计数 |
+```
+https://<your-host>/gate?app=xhs&k=<your-token>&fmt=text
+```
 
-## 配置一个要拦的 App
+Expand "Show More" and confirm the method is `GET`. Leave headers and body empty.
 
-`/settings` 里一条配置有这几项：
+**② If** — `Contents of URL` **contains** `https`
 
-| 字段 | 说明 |
-|---|---|
-| **App 键** | 短键，比如 `xhs`。只能用小写字母、数字、`-`、`_`。**这就是你在 iOS 自动化里手打的那行文本，必须一字不差**，对不上的表现是「自动化跑了但从来没拦过你」 |
-| **显示名** | 呼吸页上显示的名字，比如「小红书」 |
-| **URL scheme** | 点「继续」时用它跳回 App。**先去 `/probe` 实测再填** |
-| **等待** | 呼吸多少秒，默认 10 |
-| **免打扰** | 点「继续」之后多久内不再拦你，默认 90 秒。这段时间同时挡掉了「跳回 App 又触发自动化」的死循环 |
-| **启用** | 关掉就不拦了，但已有的记录还在 |
+**③ Open URL** — `Contents of URL`, dragged *inside* the If.
 
-90 秒这个默认值是有讲究的：够覆盖跳转和误触，又短到「放下手机一分半后再拿起来会被重新拦」——这正是想要的行为。
+```
+Get Contents of URL   (the pasted line)        GET
+If   「Contents of URL」   contains   https
+    Open URL   「Contents of URL」
+End If
+```
 
-## 多用户和隐私
+Both the If and the Open URL auto-fill their left side with the previous result. You never open the variable picker. Name it something like `一息 小红书` and save.
 
-这个 App 没有社交、没有共享、没有协作，一个人的数据和另一个人完全不相干。所以「多用户」就等于**一个 token 一套数据**：不需要注册、密码、邮箱。owner 在 `/admin` 手动建人、生成 token，线下发给对方。
+This is what `&fmt=text` is for. In JSON mode the same logic needs a Get Dictionary Value, an If comparing a dictionary value, and a second Get Dictionary Value — six actions and three magic variables, and the If editor does not reliably offer a dictionary value as something to compare against. Real users got stuck there. Moving the parsing to the server turned six actions into three.
 
-不做公开注册是想清楚的：注册流意味着验证码、滥用防护、隐私条款、成本兜底、客服，而这个 App 没有网络效应，这些换不来什么。
+### Then one automation per app
 
-隐私上有三条硬规矩：
+Shortcuts app → **Automation** → **+**:
 
-- **token 只存 SHA-256，不存明文**，生成时只显示一次。库被拖走也变不回可用的凭据。
-- **owner 的 `/admin` 只能看到聚合计数**（某人最近 7 天被拦了几次），**读不到任何人的 events 明细**。这条不是靠自觉：`/admin` 里唯一碰 `events` 表的查询是一个 `GROUP BY` 计数，结果立刻被收窄成 `{id, name, attempts}` 三个字段才交给渲染层，`/admin` 下也只有一个 GET 路由，猜不出别的地址。`test/admin.test.ts` 用真实种下的 events 守着这条线。
-  理由很实际：`/review` 是一个人「几点几分没忍住刷了小红书」的完整记录。朋友只要怀疑你能翻他的记录，这个 App 他就不会真用。
-- **`/review` 首次带 `?k=` 访问后种 HttpOnly cookie**，之后网址不带 token，减少书签、历史、截图里的泄漏面。
+1. Trigger: **App**, then tick **the one app** you want intercepted.
+2. Choose **Is Opened** (not Is Closed).
+3. When asked what to run, pick the shortcut you just made. Do not add actions, do not pass input.
+4. **Turn off "Ask Before Running."**
+5. Turn off "Notify When Run" too, or every app launch throws a banner.
 
-## 开发
+To add a second app: long-press the shortcut → Duplicate, change the one word after `app=` in the URL, rename it, and make a second automation. `/setup` prints the finished line for every app you have configured.
+
+### Why the condition is "contains `https`" — and why you must not invert it
+
+This one line does two jobs: it opens the breathing page when it should, and **it fails open on absolutely everything else.**
+
+`/gate` has plenty of ways to not answer properly: the token was rotated, the Worker is down, the network timed out, the response was blank, DNS was poisoned. **Not one of those replies contains `https`.** So the If is false, the Shortcut does nothing, and the app you actually wanted opens normally. Worst case: it did not stop you today.
+
+Write it the other way round — *"if it does not contain `pass`, open it"* — and the day the service goes down, every one of your watched apps starts jumping to a page that will not load. You are locked out of your own phone by your own tool, and almost certainly at a moment when you needed it.
+
+These two failure modes are not remotely symmetrical: one missed interception versus several apps bricked. So the default has to be *when in doubt, let them through.*
+
+Two corollaries:
+
+- **Do not add error handling to Get Contents of URL.** When the network fails, iOS aborts the whole shortcut — which means Open URL never runs and the app opens normally. That is exactly what you want.
+- **Do not add an Otherwise branch that opens anything.** "Otherwise" means "the server did not say to stop you," and the correct response to that is nothing at all.
+
+## Why the grace window lives on the server
+
+Tapping 「继续」 hands control to the app's URL scheme — which trips the same "when this app is opened" automation all over again. Native One Sec dodges this from inside its own process, jumping away with no user gesture. Safari cannot: it only follows a custom scheme from inside the synchronous call stack of a real tap.
+
+So the state has to live outside the page. `/resolve` writes a **grace** row (`user_id`, `app`, `until`), and the next `/gate` call inside that window answers `pass`. The user taps nothing extra and the loop terminates.
+
+The second half matters just as much. That re-fire is machine noise, not an impulse, so it is recorded as a **`grace_pass`** event and never as an `attempt`. Every ratio on `/review` uses `attempt` as its sole denominator. Count the noise and every 「继续」 quietly manufactures a fake impulse for you, and the abandon rate becomes meaningless.
+
+The default window is **90 seconds**, adjustable per app (floor 30, ceiling 3600). Long enough to cover the hand-off, the app's cold start and a mistap; short enough that picking the phone back up two minutes later gets you stopped again — which is the point.
+
+## Known limits
+
+Read these before deploying. Some of them cannot be fixed in code.
+
+- **One iOS automation per app.** "When app is opened" takes exactly one app; there is no bulk mode and no multi-select. Five apps means five automations, built by hand. One Sec and every tool like it has the same constraint. This cannot be worked around from the server.
+- **Some apps have removed their URL scheme entirely.** Nothing in `/probe` will jump for them, no matter which candidate you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
+- **One network round trip on every app open.** No client cache, no offline fallback. On a weak signal it is perceptible. If it ever becomes intolerable, that is a signal to change the architecture, not the configuration.
+- **The App Store fallback in `/lookup` does not work from the Cloudflare edge.** When an app is not in the bundled table, `/lookup` tries `itunes.apple.com` to confirm the app exists and get its bundle id. That call fails from the Worker runtime while working fine from a laptop. Known, not yet fixed. The page reports "could not check" and refuses to invent a scheme, so nothing is silently wrong; the main path is unaffected.
+- **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
+- **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
+- **A breathing page left open for hours can still be resolved.** `/resolve` deliberately has no freshness check: refusing a stale resolve means no grace window opens, so jumping back to the app gets you intercepted instantly and you are in the loop. `/b` does refuse to *render* a session older than ten minutes, so this only applies to a page that was already loaded.
+- **JavaScript is required** on the breathing page (there is a `<noscript>` telling you to go back to the home screen).
+- **The two visual skins are still unresolved.** `/mock?v=1` is 「墨」 (ink washes on near-black, serif) and `?v=2` is 「息」 (a hairline ring and one dot). `DEFAULT_THEME` in `src/ui/layout.ts` is `ink`. Flip that one constant to change the product's face.
+- **This is a nudge, not a blocker.** Anyone can disable the automation in two taps. That is by design — see the fail-open discussion above — and it means the tool only works for someone who wants it to.
+
+## Stack
+
+| | |
+| --- | --- |
+| Runtime | Cloudflare Workers (also deployed as a Pages Function) |
+| Storage | Cloudflare D1 (SQLite) |
+| Language | TypeScript, strict, no runtime dependencies |
+| Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) |
+| Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
+| Client | iOS Shortcuts + Safari |
+| Tests | 281 tests over 13 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Cost | fits inside Cloudflare's free tier |
+
+## Project layout
+
+```
+src/index.ts        route table, three auth shapes, nightly cron
+src/gate.ts         /gate and /resolve — the only machine-facing routes
+src/auth.ts         ?k= token, cookie session, constant-time compares
+src/account.ts      register / login / claim / recover; the closed recovery loop
+src/crypto.ts       PBKDF2 passwords, AES-GCM token sealing, random hex
+src/db.ts           every D1 statement in the app, and nothing else
+src/stats.ts        /review aggregation; the grace_pass exclusion lives here
+src/ratelimit.ts    per-IP fixed-window throttle for the open endpoints
+src/scheme.ts       the URL-scheme denylist — one authority, three call sites
+src/schemes.ts      frozen snapshot of two public scheme collections (60 apps)
+src/types.ts        Env, User, event kinds, the shared constants
+src/ui/*.ts         one module per page, all server-rendered
+src/api/admin.ts    the owner's ticket window, and the privacy line
+migrations/*.sql    D1 schema, three migrations
+pages/              Pages entry point (one line) + its own wrangler.toml
+shortcut/README.md  why the Shortcut is shaped the way it is
+docs/architecture.md  request lifecycle, tables, accounting semantics
+```
+
+## Development
 
 ```bash
-npm run dev            # 本地起 Worker
-npm test               # vitest + @cloudflare/vitest-pool-workers
-npm run typecheck      # tsc --noEmit（src 和 test 各一遍）
-npm run migrate:local  # 本地库建表
+npm test               # vitest run — the full suite
+npm run typecheck      # tsc --noEmit (src) + tsc -p test --noEmit
+npm run dev            # wrangler dev — local server
+npm run migrate:local  # apply migrations to the local D1
+npm run deploy         # remote migrations, then deploy the Worker
 ```
 
-页面全部服务端渲染，CSS 和 JS 内联，**零外部依赖**——没有 CDN、没有网络字体、连 favicon 都是 `data:`。理由不是洁癖：打开这些页面的时刻，人正伸手去够一个干扰源，网络还经常不好，多一次阻塞请求这个产品就废了。CSP 把这条从承诺变成了强制。
+Before changing anything, read [CONTRIBUTING.md](CONTRIBUTING.md). It is short, and every rule in it comes from something that actually broke.
 
-## 已知的限制
+## Docs
 
-- **iOS 的「打开 App 时」自动化必须一个 App 建一条**，无法批量。拦 5 个 App 就要手动建 5 条。这是 iOS 的限制，One Sec 也一样，代码层面消不掉。
-- **有些 App 已经彻底移除了自己的 URL scheme**，`/probe` 里怎么点都不动。这种只能对它放弃拦截，或者接受「点完继续自己再手动点一次 App 图标」。
-- **每次开 App 都要等一次网络往返**。信号差的时候有感知。
-- **没有客户端缓存、没有离线兜底**。服务挂了就等于不拦。这个方向的失败是安全的（放你进去），而不是把你锁在门外。这个性质一半靠服务端、一半靠快捷指令：`/gate?fmt=text` 只回一条 `https://…` 网址或者 `pass` 这个词，快捷指令的条件写成「**包含 `https`**」——于是服务挂了、token 错了、网络断了、返回空白，结果里都没有 `https`，什么都不会发生。写成「不包含 `pass` 就打开」的话，服务一挂你的几个 App 就全废了。
-- **中国大陆访问要用 Pages 那个地址**。`*.workers.dev` 被 DNS 污染，`*.pages.dev` 目前干净。但 `pages.dev` 同样是共享域名，今天干净不代表永远——真正一劳永逸的是绑一个自己的域名。
-- **呼吸页放很久之后仍然可以点「继续」**，`/resolve` 故意不做时效校验。拒绝它就开不出免打扰窗口，跳回 App 会被自动化立刻再拦，转进死循环。只有页面被刷新、需要重新渲染时才会认过期。
+- [SECURITY.md](SECURITY.md) — threat model, the token-storage trade-off, self-hosting caveats
+- [CONTRIBUTING.md](CONTRIBUTING.md) — the five constraints that must not be refactored away
+- [docs/architecture.md](docs/architecture.md) — request lifecycle, D1 tables, accounting semantics
+- [shortcut/README.md](shortcut/README.md) — the reasoning behind the Shortcut's shape (Chinese)
 
-## 说人话
+The author runs a private instance at `yixi-psh.pages.dev`. It is a personal deployment with a personal log in it, not a demo — deploy your own.
 
-给自己做一个「刷手机之前先喘口气」的小工具。你一点小红书，手机先跳到一个网页让你看着圆圈呼吸十秒，十秒后你可以继续进去，也可以放弃。它会偷偷记账，过一阵你能看到自己一周被拦了多少次、其中多少次忍住了。做成网页而不是 App，是因为往 iPhone 上装自制 App 每周都要重装一次，太麻烦，还得花钱。
+## License
+
+[MIT](LICENSE)

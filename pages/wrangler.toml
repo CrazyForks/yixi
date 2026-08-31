@@ -2,6 +2,15 @@ name = "yixi"
 pages_build_output_dir = "public"
 compatibility_date = "2026-07-01"
 
+# NOTE for anyone cloning this: `database_id` below is the author's own
+# database. It is not a credential — using it requires an API token for that
+# account — but you MUST replace it with the id `wrangler d1 create yixi` prints
+# for you.
+#
+# Getting this wrong fails in an unhelpful way: migrations are applied by
+# database *name*, so they land on your database and appear to succeed, while
+# the deployed Worker binds by *id* and ends up pointed at a database your token
+# cannot read. Every request then 500s with nothing obviously misconfigured.
 [[d1_databases]]
 binding = "DB"
 database_name = "yixi"

@@ -1,0 +1,410 @@
+# Architecture
+
+For anyone about to change the code. Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for the five constraints that must not be refactored away; this document explains the machine those constraints protect.
+
+## Shape of the thing
+
+The entire application is one `fetch` handler and one `scheduled` handler in `src/index.ts`, backed by one D1 database. There is no router library, no framework, no build step beyond `wrangler`'s own bundling, and no runtime dependencies.
+
+```
+                iOS Shortcut                    a browser
+                      │                              │
+             GET /gate?app&k&fmt=text         GET /review, /settings, …
+                      │                              │
+                      ▼                              ▼
+        ┌─────────────────────────────────────────────────────────┐
+        │  src/index.ts — route table, three auth shapes, cron    │
+        └─────────────────────────────────────────────────────────┘
+              │                │                    │
+              ▼                ▼                    ▼
+        src/gate.ts       src/ui/*.ts          src/api/admin.ts
+        (machine)         (server-rendered)    (owner only)
+              │                │                    │
+              └────────────────┼────────────────────┘
+                               ▼
+                          src/db.ts
+                    every D1 statement, and only D1 statements
+                               │
+                               ▼
+                        D1 (SQLite)
+```
+
+`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else.
+
+## Request lifecycle
+
+### The hot path: `GET /gate`
+
+Called once for every launch of every watched app. Everything about it is shaped by a 10ms CPU budget.
+
+```
+1. app param present?              no  → 400
+2. k param present?                no  → 401
+3. userFromToken(k)                     one SHA-256, one indexed read on
+                                        token_hash, then a constant-time
+                                        re-compare
+   no match                            → 401
+4. getUserApp(user, app)                one indexed read
+   missing or enabled = 0              → PASS, and record NOTHING
+                                        (we are not watching this app; logging
+                                         it would be surveillance)
+5. getGraceUntil(user, app)             one indexed read
+   until > now                         → record grace_pass, PASS
+6. otherwise                            mint a 128-bit sid,
+                                        insert a `sessions` row,
+                                        record `attempt`,
+                                        → BLOCK with /b?s=<sid>
+```
+
+**Step 5 before step 6 is what makes the loop terminate.** Reversing them, or merging the two event kinds, inflates the denominator of every statistic with events the user never caused.
+
+Two response shapes:
+
+| | body when passing | body when blocking |
+| --- | --- | --- |
+| default | `{"action":"pass"}` | `{"action":"block","url":"https://…"}` |
+| `?fmt=text` | `pass` | `https://…/b?s=…` |
+
+`fmt=text` exists because parsing JSON in the Shortcuts app takes six actions and three magic variables, and its If editor does not reliably offer a dictionary value as something to compare. Moving the parsing server-side turned the whole Shortcut into three actions with no variable picking — and made fail-open structural rather than a matter of the user writing the condition correctly. Every response is `Cache-Control: no-store`: a cached `pass` would silently disable the tool, and a cached `block` would hand out a dead sid.
+
+The block URL carries **the sid only, never the token**. That URL is about to land in Safari's history and can be shared by accident; a sid is single-use and expires, a token is the user's whole identity.
+
+### The breathing page: `GET /b?s=<sid>`
+
+```
+sid missing                              → the same quiet "expired" page, 400
+session not found                        → 404
+session already resolved                 → 410
+session older than SESSION_TTL_MS (10m)  → 410
+```
+
+Every dead end renders the identical calm page. A 500 here means staring at an error message while an automation holds your phone hostage.
+
+The app row is looked up for its label, wait and scheme, and is allowed to be **gone** — someone may have deleted it from `/settings` while this page sat in a Safari tab. It falls back to the raw app key and an empty scheme rather than erroring.
+
+The page ships as one HTML response with inline CSS and one inline script. A single `requestAnimationFrame` loop drives the progress ring, the breath scale and the 吸气／呼气 word off one elapsed-time value, so the visual and the word cannot drift apart the way a CSS animation plus a JS timer eventually would. Inhale 4s, exhale 6s — the longer exhale is the part that settles you.
+
+Config reaches the script as an inert JSON island (`<script type="application/json">`), never as generated JavaScript, because the label and the scheme are user-supplied.
+
+### The decision: `POST /resolve`
+
+Body is `sid=<sid>&action=proceed|abandon`, parsed from raw text rather than `formData()` because `sendBeacon` picks its own Content-Type.
+
+```
+1. validate sid + action                       bad → 400
+2. getSession(sid)                        missing → 401
+3. if proceed: read grace_seconds BEFORE staking
+   the claim (nothing may fail between the claim
+   and the writes it authorises)
+4. resolveSessionAtomically() — one D1 batch:
+      INSERT event        … WHERE resolved_at IS NULL
+      INSERT/UPDATE grace … WHERE resolved_at IS NULL   (proceed only)
+      UPDATE sessions SET resolved_at … WHERE resolved_at IS NULL
+5. claim won  → 200 {ok:true}
+   claim lost → 200 {ok:true, duplicate:true}
+```
+
+Idempotent by construction: `sendBeacon` gets retried by the browser and a double-tap fires it twice, so the first claim records the decision and every later one is a no-op that still answers 200 — the user's decision *did* land, there is nothing to report as an error.
+
+Writes come first and the claim comes last, all in one transaction. An earlier version claimed the session first; a transient D1 failure on a following statement then left a session marked resolved with **no grace window**, and every retry short-circuited as a duplicate and never repaired it. The user tapped 「继续」, arrived in the app, and was intercepted again immediately — the exact loop grace exists to prevent.
+
+Each write guards on the *prior state* (`resolved_at IS NULL`) rather than on a timestamp this call staked, because two resolutions of one session can share a millisecond.
+
+Note there is deliberately **no freshness check** on `/resolve`. A breathing page left open for hours can still be resolved. Refusing a stale resolve means no grace window opens, which puts the user straight back into the loop. `/b` refuses to *render* a stale session, which is the right place for that rule.
+
+### The console pages
+
+```
+/register /login /claim /recover   answered BEFORE authenticate(), or the only
+                                   way to get an account would be to already
+                                   have one. POSTs are rate-limited per IP;
+                                   GETs are just pages and not worth a D1 write.
+
+everything else                    authenticate() → 303 to /login?next=… when
+                                   it fails (a bare 401 reads as "the site is
+                                   broken", and /setup and /review are the
+                                   first links anybody taps)
+```
+
+`next` only accepts a same-site path — an absolute URL, `//host` included, would turn the login page into an open redirect for phishing to borrow.
+
+When a request authenticated by `?k=`, the response gets a `Set-Cookie` appended on the way out, so the token drops out of the URL from that point on.
+
+### The cron: `scheduled`
+
+`0 4 * * *` UTC — noon in Shanghai, which is when nobody is mid-interception.
+
+```
+deleteStaleSessions(now − 7 days)      a `sessions` row older than a week can
+                                       only be a breathing page nobody resolved
+deleteExpiredWebSessions(now)          every ?k= visit mints a login session;
+                                       without this they only accumulate
+pruneRateLimits(now − 24h)             comfortably past the longest window
+```
+
+**`events` is never touched.** That history is the product.
+
+## The three auth shapes, and why each exists
+
+There are three, and they are not interchangeable. Collapsing them would each time cost something specific.
+
+```
+┌──────────────┬──────────────────────┬─────────────────────────────────────┐
+│ credential   │ where it is accepted │ why it cannot be one of the others  │
+├──────────────┼──────────────────────┼─────────────────────────────────────┤
+│ ?k=<token>   │ /gate, and once on   │ The Shortcuts app cannot            │
+│ 128-bit hex  │ any console page     │ conveniently set a request header,  │
+│              │                      │ so the credential has to ride in    │
+│              │                      │ the query string. On the console    │
+│              │                      │ pages it is swapped for a cookie    │
+│              │                      │ immediately so it stops living in   │
+│              │                      │ browser history.                    │
+├──────────────┼──────────────────────┼─────────────────────────────────────┤
+│ sid          │ /b, POST /resolve    │ /resolve is called by sendBeacon,   │
+│ 128-bit hex  │                      │ which cannot set headers either —   │
+│ single-use   │                      │ and putting the long-lived token in │
+│              │                      │ a beacon body would widen its       │
+│              │                      │ exposure for nothing. The sid is    │
+│              │                      │ already bound to one user and one   │
+│              │                      │ app, and expires.                   │
+├──────────────┼──────────────────────┼─────────────────────────────────────┤
+│ cookie       │ every console page   │ Must be revocable. A password       │
+│ = sessions_  │                      │ change has to sign the old sessions │
+│ web row id   │                      │ out, and with a stateless signed    │
+│              │                      │ cookie the only lever is rotating   │
+│              │                      │ the global secret — which evicts    │
+│              │                      │ everyone at once.                   │
+└──────────────┴──────────────────────┴─────────────────────────────────────┘
+```
+
+The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was cheaper — no read, no table. It bought revocation for the price of one indexed read per page view. Old-format cookies are rejected by a shape check before D1 is even consulted; honouring them would reopen the hole `sessions_web` was added to close.
+
+`authenticate()` tries the token **first**. A `?k=` that does not resolve fails the whole request rather than falling back to the cookie: somebody pasting a wrong or revoked token should be told so, not silently shown the previous user's log on a shared phone.
+
+`COOKIE_SECRET` survives in `Env` and in `wrangler.toml`'s comments but **no code reads it**. It is legacy from the signed-cookie era.
+
+## D1 tables
+
+Three migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary.
+
+### `users`
+
+| column | notes |
+| --- | --- |
+| `id` | |
+| `name` | display name; for a self-registered account it defaults to the local part of the email |
+| `token_hash` | SHA-256 hex of the gate token, `UNIQUE`. **This is the credential `/gate` verifies.** |
+| `is_owner` | gates `/admin`. There is deliberately no UI to grant it — flip it in D1. |
+| `created_at` | epoch ms |
+| `email` | added in 0002; stored lowercased; `UNIQUE` via a partial index `WHERE email IS NOT NULL` so pre-accounts rows (NULL email) do not collide with each other |
+| `password_hash` `password_salt` `password_iters` | base64 PBKDF2-SHA256, base64 16-byte salt, and the iteration count **recorded per row** so the cost can be raised later without invalidating old hashes |
+| `token_cipher` `token_iv` | added in 0002; AES-GCM ciphertext of the same token under `TOKEN_KEY`, plus a fresh 96-bit IV. Exists solely so a signed-in holder can read their own key back. See [SECURITY.md](../SECURITY.md#the-token-trade-off-read-this-one) — this is a deliberate downgrade from hash-only. |
+
+Every account column is nullable, because a token handed out before accounts existed is still a complete identity; it just cannot log in with a password until somebody `/claim`s it.
+
+### `user_apps`
+
+Primary key `(user_id, app)`.
+
+| column | notes |
+| --- | --- |
+| `app` | short key, e.g. `xhs`. **Lowercase, `[a-z0-9_-]{1,32}`, enforced.** This is the string retyped by hand inside an iOS automation, where a mismatch fails *silently* — the Shortcut runs, the gate says "not watching this one", and the user simply never gets intercepted. Rejecting `XHS` as a visible validation error is cheaper than that debugging session. |
+| `label` | display name shown on the breathing page |
+| `scheme` | e.g. `xhsdiscover://`. Must be probed on-device before it means anything. |
+| `wait_seconds` | default 10, range 1–120 (the breathing page clamps to 300 independently) |
+| `grace_seconds` | default 90, range **30**–3600. The floor is not cosmetic — see below. |
+| `enabled` | 0 disables interception; existing history is untouched |
+
+### `sessions` — one interception
+
+| column | notes |
+| --- | --- |
+| `sid` | 128-bit hex, primary key. Doubles as a one-shot bearer credential for `/b` and `/resolve`. |
+| `user_id` `app` | what was intercepted |
+| `created_at` | `/b` refuses to render a session older than 10 minutes |
+| `resolved_at` | `NULL` = still undecided. The claim target of `resolveSessionAtomically`. |
+
+Trimmed nightly at 7 days.
+
+### `events` — the product
+
+Append-only. Never deleted, never updated.
+
+| column | notes |
+| --- | --- |
+| `user_id` `app` `ts` | epoch ms |
+| `sid` | `NOT NULL`. **`''` is the sentinel for `grace_pass`**, which has no session behind it. |
+| `kind` | `attempt` \| `grace_pass` \| `proceeded` \| `abandoned` |
+| `date` | the **Asia/Shanghai** calendar day as `YYYY-MM-DD`, precomputed at insert |
+
+Three indexes: `(user_id, date)`, `(user_id, sid)`, `(user_id, app, ts)`.
+
+`date` is stored rather than derived because "which day was this" is a question about the user's life, not about UTC — a 00:30 relapse belongs to the night it happened, not the previous afternoon. `Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })` yields `YYYY-MM-DD`, which sorts and compares as a plain string, so no date library is needed. The zone is hard-coded; making it per-user would mean recomputing every stored `date`.
+
+There is deliberately **no `expired` kind**. Someone who opened the breathing page and swiped away is `attempt − proceeded − abandoned`, which `src/stats.ts` surfaces as `undecided`.
+
+### `grace` — the anti-loop state
+
+Primary key `(user_id, app)`, one column: `until` (epoch ms). One row per app per user, upserted on every proceed.
+
+### `sessions_web` — logged-in browsers
+
+`id` (128-bit hex, the entire cookie value), `user_id`, `created_at`, `expires_at`. Deleting a row signs that browser out; deleting a user's rows signs them out everywhere, which is the whole reason the table exists. Indexed on `user_id` so that second operation is cheap.
+
+Named apart from `sessions` on purpose. The two never mix.
+
+### `rate_limit` — fixed-window counters
+
+Primary key `(bucket, subject)`, plus `window_start` and `count`. `subject` is `CF-Connecting-IP`, which the edge sets and a client cannot forge; when it is absent (local dev, odd proxies) everything falls into one shared bucket, which fails closed for the group rather than handing everyone an unlimited allowance each.
+
+The counter is a single atomic statement:
+
+```sql
+INSERT INTO rate_limit (bucket, subject, window_start, count) VALUES (?1, ?2, ?3, 1)
+ON CONFLICT (bucket, subject) DO UPDATE SET
+  window_start = CASE WHEN rate_limit.window_start <= ?4 THEN ?3 ELSE rate_limit.window_start END,
+  count        = CASE WHEN rate_limit.window_start <= ?4 THEN 1  ELSE rate_limit.count + 1 END
+RETURNING count, window_start
+```
+
+The first version read the count and then incremented it. Under concurrency that does not leak a little — thirty simultaneous requests all read a count below the limit and all pass, which is the entire limiter gone. Since PBKDF2 is capped at 100k rounds *precisely because* this is meant to be the outer defense, that handed an attacker unlimited-concurrency password guessing. It was caught by a concurrency test, not by review.
+
+The upsert both resets a lapsed window and increments a live one, so the decision is made from a value that cannot have changed underneath. Requests past the limit still increment but do not extend `window_start`, so the window still closes on schedule.
+
+## The anti-loop mechanism
+
+The problem, in full:
+
+```
+tap 「继续」
+   → location.href = 'xhsdiscover://'
+      → iOS hands control to 小红书
+         → 小红书 opens
+            → the "When 小红书 is Opened" automation FIRES AGAIN
+               → GET /gate
+                  → block
+                     → Safari, breathing page
+                        → tap 「继续」
+                           → … forever
+```
+
+Native One Sec escapes this from inside its own process: it can navigate away with no user gesture. **Safari cannot** — it only follows a custom scheme from inside the synchronous call stack of a real tap. So the "we just let this through" state cannot live in the page. It has to live where the next `/gate` call can see it.
+
+Hence the `grace` table. `POST /resolve` with `action=proceed` writes `until = now + grace_seconds × 1000`, and step 5 of `/gate` answers `pass` for anything inside that window. The user taps nothing extra.
+
+The default is **90 seconds**, with a hard floor of **30**. The floor is load-bearing: tapping 「继续」 has to survive Safari handing off, the app cold-starting, and the automation firing again on the way in — several seconds of real time. Set below that and the user is intercepted again the moment they arrive, which reads as the tool being broken. The ceiling on usefulness is the other direction: 90 seconds is short enough that putting the phone down and picking it back up two minutes later gets you stopped again, which is the intended behaviour rather than a compromise.
+
+`/resolve` reads `grace_seconds` from `user_apps`, falling back to the default when the app was unconfigured or disabled between the block and this call — because without *any* grace window the Shortcut would intercept the return jump and loop.
+
+## Accounting semantics
+
+`src/stats.ts` is pure data; `src/ui/review.ts` owns rendering. Every number on `/review` is independently testable, and `test/stats.test.ts` is the largest single guard in the repo.
+
+**Rule 1 — `attempt` is the sole denominator.** `grace_pass` is machine noise. Every query starts from `kind = 'attempt'` rows only. Counting the noise would deflate the abandon rate silently.
+
+**Rule 2 — outcomes are attributed to the day of the attempt.** The daily query starts from attempt rows and `LEFT JOIN`s the resolutions onto them by sid:
+
+```sql
+SELECT sid, kind, MIN(ts) AS first_ts
+FROM events
+WHERE user_id = ?1 AND sid <> '' AND kind IN ('proceeded','abandoned')
+GROUP BY sid
+```
+
+`MIN(ts)` collapses to one resolution per sid, so a duplicate row cannot fan the join out and inflate `attempts`. SQLite guarantees bare columns selected alongside `MIN()` come from the row that produced the minimum, which makes this "the first decision wins."
+
+Anchoring on the attempt is what keeps `attempt − proceeded − abandoned` from going negative across midnight.
+
+**Rule 3 — `sid <> ''` is guarded twice.** The kind filter already excludes `grace_pass`, and the join condition carries `a.sid <> ''` anyway. Every `grace_pass` a user ever produced shares that one sid value, so an accidental match would multiply a day's attempts by the size of the noise pile. Belt and braces, on purpose.
+
+**Rule 4 — `undecided` is its own third number.** Opened the breathing page, swiped away. Those sessions did not enter the app, but they were not a deliberate 「算了」 either, so folding them into `abandoned` would flatter the reader with a rate they did not earn. It is clamped at zero: with attempt-anchored attribution it cannot go negative, but a resolve written against an unrecorded attempt should degrade to 0 rather than render "−1".
+
+**Rule 5 — the exclusion is visible.** `monthGracePasses` is reported once as a footnote. A number thrown away silently is a number nobody can audit.
+
+`abandonRate` is `null`, never `NaN`, when there were no attempts. Apps deleted from `user_apps` still appear in the per-app ranking under their raw key — the history happened, and hiding it would quietly shrink the totals.
+
+`getReviewStats` is four indexed queries over a 30-day window, run in parallel: daily buckets, per-app buckets, the grace_pass count, and the first-ever attempt date (which drives the empty state — a brand-new user gets a welcome, not a wall of zeroes). `now` is injectable so tests can pin the day boundary.
+
+## Two deployments, one database
+
+```
+                        ┌──────────────────────┐
+                        │  D1 database "yixi"  │
+                        └──────────┬───────────┘
+                     ┌─────────────┴─────────────┐
+                     │                           │
+        ┌────────────▼────────────┐   ┌──────────▼──────────────┐
+        │  Pages                  │   │  Worker                 │
+        │  pages/wrangler.toml    │   │  wrangler.toml          │
+        │                         │   │                         │
+        │  serves every request   │   │  runs the nightly cron   │
+        │  (the human hostname)   │   │  (Pages has no Cron      │
+        │                         │   │   Triggers)              │
+        │  pages/functions/       │   │  also serves the app on  │
+        │  [[path]].ts is ONE     │   │  its own hostname, which │
+        │  line forwarding into   │   │  is DNS-poisoned inside  │
+        │  the same fetch handler │   │  mainland China          │
+        └─────────────────────────┘   └─────────────────────────┘
+```
+
+The reasoning is in the [README](../README.md#why-it-deploys-twice). What matters when changing code: **`src/` is shared verbatim.** `pages/functions/[[path]].ts` does nothing but `worker.fetch(ctx.request, ctx.env)`, and both configs point at the same `database_id`. A change to `src/` needs both deployments pushed, and `TOKEN_KEY` must be byte-for-byte identical between them or one side cannot open tokens the other sealed.
+
+`pages/` exists as its own directory only because `wrangler pages deploy` refuses a custom config path, so the Pages project cannot share the Worker's `wrangler.toml`.
+
+If a custom domain is ever attached to the Worker, `pages/` can be deleted entirely.
+
+## Rendering conventions
+
+`src/ui/layout.ts` is the shell for every page and enforces the hard rules.
+
+**Zero external requests, enforced by CSP** rather than merely intended:
+
+```
+default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+connect-src 'self'; img-src data:; base-uri 'none'; form-action 'self';
+frame-ancestors 'none'
+```
+
+`connect-src 'self'` is load-bearing — `sendBeacon('/resolve')` is a `connect-src` fetch and would be blocked without it. Nothing here restricts the top-level `location.href = 'xhsdiscover://'` hand-off; `navigate-to` was never shipped by any browser.
+
+Also set on every page: `referrer-policy: no-referrer`, `x-content-type-options: nosniff`, and `cache-control: no-store` (the landing page is the one exception, at `public, max-age=60`).
+
+**Two visual skins** share all markup and all JavaScript; only the design tokens differ. `'ink'` (v1 「墨」) is ink washes drifting on near-black with a serif face; `'breath'` (v2 「息」) is a hairline ring and one dot. `DEFAULT_THEME` in `layout.ts` is the single constant that dresses the whole product, and `/mock?v=1|2` renders both through the *real* `breathePage` — not a copy — so what is being judged is exactly what `/b` will serve.
+
+**`jsonScript(id, value)`** is how user-supplied data reaches an inline script: an inert `<script type="application/json">` island with `<`, U+2028 and U+2029 escaped, so a label or a URL scheme can never become code.
+
+`src/ui/console.ts` holds the shared chrome for the tabbed pages (`/review`, `/settings`, `/lookup`, `/probe`, `/setup`, `/account`, `/admin`) so they read as one surface rather than seven designs. It lives in its own module rather than inside one of those pages, because a page module that doubles as the shared library for its siblings is a dependency direction that only gets worse.
+
+All writes are plain HTML forms with POST/redirect/GET — no fetch, no client validation the server does not repeat. Only the breathing page, `/probe` and `/lookup` carry any script at all, and each has a specific reason.
+
+## URL schemes
+
+Three layers, and they are not redundant:
+
+| where | what it does |
+| --- | --- |
+| `src/schemes.ts` | a frozen, build-time snapshot of two public collections — 60 apps, 64 candidates, **every one tagged `listed`, none `verified`**. Compiled in rather than fetched, because the pages may make no external request. |
+| `src/scheme.ts` | `safeScheme()` — the one authority on what must never reach `location.href`. Called by `/settings` at write time, by `/probe` and `/lookup` in the browser, and by `breathe.ts` at the sink. The sink call is the only one a scheme inserted straight into D1 still has to pass. |
+| `/probe` | the only thing that can actually settle the question, because it runs on the phone. `location.href` inside a click handler — the same mechanism 「继续」 uses, byte for byte, asserted by test. |
+
+`/lookup` searches the table by Chinese name, English name, pinyin and abbreviation, and when it finds nothing falls back to the iTunes Search API to confirm the app exists and get its bundle id, from which it *derives* pattern guesses labelled `derived`. That fallback currently fails from the Cloudflare edge (works from a laptop) — known, unfixed; the page reports "could not check" and never invents a scheme.
+
+The button hierarchy on `/lookup` is deliberate: 「试一下」 (try it) is the wide dark obvious one, 「就用这个」 (use this one) is a quiet line of text underneath. Testing first is not advice there, it is the visual hierarchy — the same reason the breathing page shows 算了 first and louder than 继续.
+
+## Tests
+
+281 tests over 13 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+
+The files worth knowing about before you change something:
+
+| file | what it is really guarding |
+| --- | --- |
+| `test/gate.test.ts` | the four decision branches, and that `grace_pass` never contaminates an attempt count |
+| `test/breathe.test.ts` | the Safari gesture-stack contract, the deliberate button asymmetry, and the no-external-requests rule |
+| `test/lookup.test.ts` | that the shipped scheme table claims nothing is verified, that every candidate is traceable, and that the jump is byte-identical to `/probe`'s |
+| `test/admin.test.ts` | the privacy line, using sentinel values that cannot appear by coincidence |
+| `test/stats.test.ts` | the accounting semantics, including the midnight boundary |
+| `test/ratelimit.test.ts` | concurrency, which is how the original limiter was found to be useless |
+| `test/signed-out.test.ts` | that the login redirect cannot be turned into an open redirect |
+
+Two of these strip comments from the rendered inline scripts before asserting on them, because the scripts *carry* comments containing the very words being searched for and a naive match would go green on the bug.
