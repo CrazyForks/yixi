@@ -291,13 +291,43 @@ describe('nothing is fetched from anywhere', () => {
   })
 })
 
+/**
+ * The rule is that the page makes no request of its own — not that no URL may
+ * appear in it.
+ *
+ * The blunt version banned every `https://` in the markup, which held only
+ * while no page had a reason to link anywhere. The landing page now points at
+ * the source repository, which is a link a reader may choose to follow, not a
+ * resource the browser fetches on load. `test/icons.test.ts` already drew this
+ * line correctly for provenance links; banning the substring here would have
+ * meant deleting the link rather than the guard, which is the wrong thing to
+ * delete.
+ *
+ * So: resource-loading attributes only, plus the CSS entry points. An <a href>
+ * is fine; a <script src>, a stylesheet <link>, an @import, an <img src> or a
+ * non-data url() is not.
+ */
 function assertSelfContained(html: string): void {
   expect(html).not.toMatch(/<script[^>]+\ssrc=/)
   expect(html).not.toMatch(/<link[^>]+stylesheet/)
   expect(html).not.toMatch(/@import/)
-  expect(html).not.toMatch(/https?:\/\//)
   // The only url() allowed would be a data: URI; today there are none at all.
   expect(html).not.toMatch(/url\((?!['"]?data:)/)
+
+  // Every attribute that makes the browser go and get something, and every
+  // <link> whatever its rel — a preload or prefetch is a request too.
+  for (const m of html.matchAll(/\b(?:src|srcset|xlink:href|poster|data)\s*=\s*"([^"]*)"/g)) {
+    expect(m[1], `loads ${m[0]}`).not.toMatch(/^(?:https?:)?\/\//)
+  }
+  for (const m of html.matchAll(/<link[^>]*\bhref\s*=\s*"([^"]*)"/g)) {
+    expect(m[1], `<link> to ${m[1]}`).not.toMatch(/^(?:https?:)?\/\//)
+  }
+
+  // And an <a> may only go somewhere a person chose to go: no javascript:, and
+  // nothing that could be mistaken for a resource.
+  for (const m of html.matchAll(/<a[^>]*\bhref\s*=\s*"([^"]*)"/g)) {
+    expect(m[1], `<a href> to ${m[1]}`).not.toMatch(/^javascript:/i)
+  }
 }
 
 describe('/mock previews both looks without a session', () => {

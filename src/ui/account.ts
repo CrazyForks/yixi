@@ -502,6 +502,9 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
     <button class="linky" type="submit" name="op" value="logout">退出登录</button>
   </form>
   <p class="note">退出只清掉这台设备上的登录状态。快捷指令照常拦你——它认的是 token，不是这个登录。</p>
+  <p class="note">不想把这些记录放在别人的服务器上？
+    <a href="https://github.com/Defiabell/yixi" rel="noreferrer">源码在这里</a>，
+    照 README 部署一份自己的，跑在 Cloudflare 免费额度里。</p>
 </main>`,
     script: (o.reveal === true && token !== null) || o.rotated ? COPY_SCRIPT : undefined,
   })

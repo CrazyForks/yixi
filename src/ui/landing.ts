@@ -43,6 +43,9 @@ export function renderLanding(): Response {
 这是为了「忘了也找得回来」换的，值不值得你自己判断。</p>
 <p>记录只有你自己看得到。发号的人只看得到聚合次数，看不到任何一条明细——
 不然这东西没人会真的用。</p>
+<p>上面这几句都可以自己核对：<a href="https://github.com/Defiabell/yixi" rel="noreferrer">代码是开源的</a>。
+不想把这类数据放在别人的服务器上，照 README 部署一份自己的，
+跑在 Cloudflare 免费额度里，不花钱。</p>
 
 <h2>长什么样</h2>
 <p class="looks">两版视觉，还没定：
@@ -53,7 +56,8 @@ export function renderLanding(): Response {
 
 <p class="foot">已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——
 重新注册会拿到一把新的，旧记录就找不回来了。<br>
-配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。</p>
+配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。<br>
+源码 · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a></p>
 </main>`,
   })
 }
