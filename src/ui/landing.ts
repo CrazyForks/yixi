@@ -22,6 +22,17 @@ export function renderLanding(): Response {
 <h1>一息</h1>
 <p class="lede">在你打开一个 App 之前，先呼吸十秒。</p>
 
+<div class="peek" role="img" aria-label="呼吸页示意：一团墨随呼吸涨落，外圈是倒计时">
+  <div class="orb">
+    <div class="ink" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i></div>
+    <svg class="ring" viewBox="0 0 240 240" aria-hidden="true" focusable="false">
+      <circle class="tr" cx="120" cy="120" r="112"></circle>
+      <circle class="pg" cx="120" cy="120" r="112"></circle>
+    </svg>
+  </div>
+  <p class="phase" aria-hidden="true"><span class="in">吸气</span><span class="out">呼气</span></p>
+</div>
+
 <p>十秒之后，页面先递给你「算了」，过一会儿才递给你「继续」。
 顺序是故意的——大多数时候你会发现，那一下其实只是手指的惯性。</p>
 
@@ -48,8 +59,8 @@ export function renderLanding(): Response {
 跑在 Cloudflare 免费额度里，不花钱。</p>
 
 <h2>长什么样</h2>
-<p class="looks">两版视觉，还没定：
-<a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></p>
+<p>上面那团就是。倒计时期间页面上没有任何按钮，十秒之后才先出现「算了」。
+<span class="looks">整页看看：<a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></span></p>
 
 <h2>开始用</h2>
 <p class="looks go"><a href="/register">注册</a><a href="/login">登录</a></p>
@@ -63,6 +74,65 @@ export function renderLanding(): Response {
 }
 
 const LANDING_CSS = `
+/* A live miniature of the breathing page, not a screenshot of one.
+ *
+ * The landing page is forbidden from making any request of its own (asserted
+ * in test/breathe.test.ts), so an image would have to be a base64 data: URI —
+ * a couple of hundred kilobytes of markup on a page that is otherwise 5KB, and
+ * it would be a still. The thing being sold is the motion, and the motion is
+ * already pure CSS on the real page, so it is cheaper AND more honest to run
+ * the real thing at 1/2 size.
+ *
+ * Same ink layers, same ring, same rhythm as /b — INHALE_MS 4s, EXHALE_MS 6s.
+ * The one difference is that the real page drives scale from JS via --level,
+ * because it has to stay in step with a countdown; here a keyframe does it.
+ */
+.peek{display:flex;flex-direction:column;align-items:center;gap:.9rem;margin:2.4rem 0 2.8rem}
+.peek .orb{position:relative;width:min(46vw,178px);height:min(46vw,178px);display:grid;place-items:center}
+.peek .ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.peek .ring circle{fill:none;stroke-width:1.3;stroke-linecap:round}
+.peek .ring .tr{stroke:var(--ring-track)}
+.peek .ring .pg{stroke:var(--ring-prog);stroke-dasharray:703.7;stroke-dashoffset:703.7;
+  animation:peek-ring 10s linear infinite}
+.peek .ink{position:absolute;width:100%;height:100%;will-change:transform,opacity;
+  animation:peek-breathe 10s ease-in-out infinite}
+.peek .ink i{position:absolute;display:block;border-radius:50%;filter:blur(calc(var(--ink-blur) * .62))}
+.peek .ink .l1{left:6%;top:8%;width:86%;height:84%;
+  background:radial-gradient(circle at 47% 45%,var(--ink-a) 0%,var(--ink-b) 44%,transparent 68%);
+  animation:d1 41s ease-in-out infinite}
+.peek .ink .l2{left:14%;top:3%;width:72%;height:78%;opacity:.74;
+  background:radial-gradient(circle at 58% 60%,var(--ink-a) 0%,var(--ink-b) 38%,transparent 63%);
+  animation:d2 59s ease-in-out infinite}
+.peek .ink .l3{left:1%;top:17%;width:80%;height:73%;opacity:.9;
+  background:radial-gradient(circle at 40% 56%,var(--ink-b) 0%,transparent 64%);
+  animation:d3 73s ease-in-out infinite}
+/* Two words cross-faded rather than one word animated: the content property
+   cannot be
+   animated on an element that already has text, so a keyframe swapping it
+   would have left this reading 吸气 while the ink was plainly shrinking. */
+.peek .phase{position:relative;margin:0;height:1.2em;width:4em;
+  font-size:.8rem;color:var(--faint);letter-spacing:.34em;text-indent:.34em}
+.peek .phase span{position:absolute;inset:0;animation:peek-word 10s steps(1,end) infinite}
+.peek .phase .out{animation-name:peek-word-out}
+@keyframes peek-breathe{
+  0%{transform:scale(.60);opacity:.50}
+  40%{transform:scale(1);opacity:1}
+  100%{transform:scale(.60);opacity:.50}
+}
+@keyframes peek-ring{from{stroke-dashoffset:703.7}to{stroke-dashoffset:0}}
+/* 吸 4s，呼 6s —— 和上面那团墨共用一条 10s 时间轴，所以字和形状不会各说各的。 */
+@keyframes peek-word{0%{opacity:1}40%{opacity:0}100%{opacity:0}}
+@keyframes peek-word-out{0%{opacity:0}40%{opacity:1}100%{opacity:1}}
+@keyframes d1{0%{transform:translate(0,0) rotate(0deg) scale(1)}50%{transform:translate(2.5%,-3%) rotate(180deg) scale(1.09)}100%{transform:translate(0,0) rotate(360deg) scale(1)}}
+@keyframes d2{0%{transform:translate(0,0) rotate(0deg) scale(1.04)}50%{transform:translate(-3%,3%) rotate(-180deg) scale(.94)}100%{transform:translate(0,0) rotate(-360deg) scale(1.04)}}
+@keyframes d3{0%{transform:translate(0,0) rotate(0deg) scale(.96)}50%{transform:translate(3%,3.5%) rotate(150deg) scale(1.07)}100%{transform:translate(0,0) rotate(300deg) scale(.96)}}
+@media (prefers-reduced-motion:reduce){
+  .peek .ink,.peek .ink i,.peek .ring .pg,.peek .phase span{animation:none}
+  .peek .phase .out{opacity:0}
+  .peek .ink{transform:scale(.86);opacity:.8}
+  .peek .ring .pg{stroke-dashoffset:246}
+}
+
 .doc{
   max-width:34rem;margin:0 auto;
   padding:calc(env(safe-area-inset-top) + 12vh) 28px calc(env(safe-area-inset-bottom) + 16vh);
