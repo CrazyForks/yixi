@@ -264,6 +264,8 @@ If   「Contents of URL」   contains   https
 End If
 ```
 
+**Why not just one Open URL?** Because `/gate` answers with *text*, not a redirect: the breathing page's URL when it should intercept, the literal word `pass` when it should not. Point Open URL straight at the gate and Safari opens the gate itself — a page containing one line of text, which you would then have to tap, and which appears on *every* launch including the ones meant to leave you alone. Fetching first is what lets "don't intercept" be *nothing at all*, and a single Open URL always opens something. It is also why this fails open: a dead server, a timeout or an error page all fail to contain `https`, the If is false, the shortcut ends silently and the app you wanted starts normally.
+
 Both the If and the Open URL auto-fill their left side with the previous result. You never open the variable picker. Name it something like `一息 小红书` and save.
 
 This is what `&fmt=text` is for. In JSON mode the same logic needs a Get Dictionary Value, an If comparing a dictionary value, and a second Get Dictionary Value — six actions and three magic variables, and the If editor does not reliably offer a dictionary value as something to compare against. Real users got stuck there. Moving the parsing to the server turned six actions into three.

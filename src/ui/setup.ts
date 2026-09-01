@@ -128,6 +128,9 @@ ${tokenLine}
 
 <h2>第一步 · 给一个 App 建快捷指令</h2>
 
+<p>装好之后整条是这个形状——三个动作，加一个自动补上的「结束如果」：</p>
+${shortcutDiagram(exampleApp)}
+
 <div class="box">
 <h3>一个变量都不用挑</h3>
 <p>网址直接整条粘进去，不要去找「快捷指令输入」那个变量——它只有在快捷指令被设成
@@ -355,7 +358,91 @@ const TEST_SCRIPT = `
   }
 })();`
 
+/**
+ * The finished shortcut, as a shape.
+ *
+ * The three steps below already describe each action in detail, one at a time.
+ * What no amount of that conveys is the assembled thing — in particular that
+ * the third action lives INSIDE the 「如果」, which is the one structural fact a
+ * reader cannot get from a numbered list and the one that silently breaks the
+ * whole chain when it is missed: a 「打开」 sitting after 「结束如果」 fires on
+ * every launch, including the ones the gate just said to leave alone.
+ *
+ * A diagram rather than a screenshot, deliberately. A screenshot of the
+ * Shortcuts editor would be a 200KB data: URI on a no-store page, would carry
+ * whoever took it's own token, and would go stale with the next iOS redesign.
+ * What the reader needs from it is the structure and the nesting, and those are
+ * cheaper to draw than to photograph.
+ *
+ * The URL is abbreviated on purpose: the full pasteable line is fifteen lines
+ * below this, and a card wide enough to hold a 32-character token is a card too
+ * wide to read the shape of.
+ */
+function shortcutDiagram(app: string): string {
+  const key = escapeHtml(app)
+  return `<div class="sc" role="img" aria-label="快捷指令的三个动作：获取 URL 的内容、如果内容包含 https、在如果里面打开 URL 的内容">
+  <div class="sc-a">
+    <span class="sc-i">${icon('fetch')}</span>
+    <span class="sc-t">获取 <code class="sc-u">…/gate?app=${key}&amp;k=…&amp;fmt=text</code> 内容</span>
+  </div>
+  <div class="sc-l"></div>
+  <div class="sc-a">
+    <span class="sc-i">${icon('branch')}</span>
+    <span class="sc-t">如果 <b class="sc-v">URL 的内容</b> 包含 <b class="sc-k">https</b></span>
+  </div>
+  <div class="sc-l in"></div>
+  <div class="sc-a nest">
+    <span class="sc-i">${icon('jump')}</span>
+    <span class="sc-t">打开 <b class="sc-v">URL 的内容</b></span>
+  </div>
+  <div class="sc-a">
+    <span class="sc-i">${icon('branch')}</span>
+    <span class="sc-t">结束如果 <span class="sc-note">（加完「如果」自己就有了）</span></span>
+  </div>
+</div>
+<p class="note note-tight">${hl(
+    'caveat',
+    '第三个动作必须在「如果」<b>里面</b>。拖到「结束如果」下面就等于每次都跳——包括服务端刚说了「这次别拦」的那些次。',
+  )}</p>
+${fold(
+    '为什么不能只用一个「打开 URL」',
+    `<p>因为 <code>/gate</code> 回的是<b>文本</b>，不是跳转。该拦你时回一条
+    <code>https://…</code>（呼吸页的地址），不该拦时回 <code>pass</code> 这个词。</p>
+    <p>所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，
+    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），
+    不该拦时是 <code>pass</code> 三个字母。<b>每次开 App 都会被丢到这个页面上</b>，
+    包括本该放你过去的那些次。</p>
+    <p>三个动作的结构是：先把答案<b>取回来</b>，答案本身就是「要打开的地址」，
+    「如果 包含 https」是在问「这次取回来的是个地址，还是 <code>pass</code>」。</p>
+    <p><b>「不拦」必须能表达成「什么都不做」，而一个「打开 URL」永远会打开点什么。</b>
+    这也是它同时成为 fail-open 开关的原因：服务挂了、超时、返回一整页错误 HTML，
+    结果里都没有 <code>https</code>，条件不成立，快捷指令静默结束，你的 App 正常打开。</p>`,
+  )}`
+}
+
 const SETUP_CSS = `
+/* The assembled shortcut. Laid out like the Shortcuts editor — stacked cards,
+   a connector between them, the nested action indented — but wearing this
+   page's own colours rather than imitating iOS chrome, because what has to
+   survive is the structure, and a half-convincing fake screenshot invites the
+   reader to compare pixels instead of reading it. */
+.sc{margin:0 0 1rem}
+.sc-a{display:flex;align-items:flex-start;gap:9px;
+  border:1px solid var(--rule);border-radius:10px;padding:11px 13px;background:var(--rule)}
+.sc-i{flex:0 0 auto;display:inline-flex;color:var(--dim);margin-top:2px}
+.sc-i .ic{width:16px;height:16px}
+.sc-t{flex:1;min-width:0;font-size:.92rem;line-height:1.6}
+.sc-u{font-family:var(--num);font-size:.86em;word-break:break-all;color:var(--dim)}
+.sc-v{font-weight:400;color:var(--fg);border:1px solid var(--rule);border-radius:5px;
+  padding:.5px 6px;background:var(--bg);white-space:nowrap}
+.sc-k{font-family:var(--num);font-weight:400;color:var(--fg)}
+.sc-note{color:var(--faint);font-size:.86em}
+.sc-l{width:1px;height:11px;margin-left:22px;background:var(--rule)}
+.sc-l.in{margin-left:40px}
+.sc-a.nest{margin-left:26px}
+.sc-a + .sc-a{margin-top:8px}
+.sc-a.nest + .sc-a{margin-top:8px}
+
 .doc{max-width:38rem}
 
 .doc h1{margin:0 0 .6rem;font-size:1.5rem;font-weight:400;letter-spacing:.2em}
