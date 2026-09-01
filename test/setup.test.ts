@@ -161,12 +161,31 @@ describe('/setup', () => {
     expect(html).not.toContain('获取词典值')
     expect(html).not.toContain('词典值')
 
-    // 「快捷指令输入」 may appear exactly once, and only to tell the reader not
-    // to go looking for it — that warning is worth keeping, since this is the
-    // step they got stuck on.
-    const mentions = html.split('快捷指令输入').length - 1
-    expect(mentions).toBeLessThanOrEqual(1)
-    if (mentions === 1) expect(html).toContain('不要去找')
+    // 「快捷指令输入」 may be named, but only ever to say it is not there. The
+    // guard used to be a count — at most one mention — which was a proxy for
+    // the real rule and started failing the moment a second, equally negative
+    // sentence was needed (explaining why every app gets its own shortcut
+    // instead of one shared one taking the app key as input). Counting
+    // mentions would have meant deleting the explanation to satisfy the test.
+    //
+    // So it asserts the actual invariant: every occurrence sits next to a
+    // negation. An instruction to go and pick it fails; an explanation of why
+    // you cannot does not.
+    const DENIALS = ['不要去找', '挑不到', '找不到', '没有']
+    let from = 0
+    let mentions = 0
+    for (;;) {
+      const at = html.indexOf('快捷指令输入', from)
+      if (at === -1) break
+      mentions++
+      const around = html.slice(Math.max(0, at - 60), at + 60)
+      expect(
+        DENIALS.some((d) => around.includes(d)),
+        `「快捷指令输入」 at ${at} is not next to a denial: ${around}`,
+      ).toBe(true)
+      from = at + 1
+    }
+    expect(mentions, 'the warning itself must survive').toBeGreaterThanOrEqual(1)
   })
 
   it('puts a complete, pasteable URL in step one', async () => {
@@ -205,6 +224,66 @@ describe('/setup', () => {
     expect(html).toContain('data-test=')
     expect(html).toContain('fetch(')
     expect(html).not.toContain('location.href')
+  })
+
+  it('prints a finished line for EVERY configured app, not just the first', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'qidian', '起点读书')
+    await seedApp(user.id, 'xhs', '小红书')
+    await seedApp(user.id, 'weibo', '微博')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // The bug this replaces: step one printed the FIRST app's line under the
+    // sentence 「已经是你的真实地址和 token」. With three apps configured that
+    // sentence is true for one of them, and the failure it invites is silent —
+    // paste the qidian line into 小红书's shortcut and interception still
+    // works, using qidian's wait, qidian's grace, qidian's scheme to jump back
+    // to, and recording the count against qidian. Nothing errors.
+    const stepOne = html.slice(0, html.indexOf('第二步'))
+    for (const app of ['qidian', 'xhs', 'weibo']) {
+      expect(stepOne, app).toContain(`gate?app=${app}&amp;k=deadbeef00112233&amp;fmt=text`)
+    }
+  })
+
+  it('says which app each line is for, once there is more than one', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'qidian', '起点读书')
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // A stack of near-identical URLs with nothing distinguishing them is the
+    // same trap in a different shape.
+    expect(html).toContain('起点读书')
+    expect(html).toContain('小红书')
+    expect(html).toMatch(/拦<b>起点读书<\/b>的那条快捷指令用这行/)
+  })
+
+  it('never claims the app key can be shared between shortcuts', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user)
+
+    // This page used to open with 「token 只出现一次，就在下面第一步那个共用快捷
+    // 指令里…将来换 token 只改那一处」. That was left over from a design that was
+    // abandoned on a real device: the URL field will not offer 「快捷指令输入」,
+    // so the app key cannot be passed in and every app needs its own shortcut.
+    // Following the stale text, somebody who rotates their token at /account
+    // fixes one shortcut and silently loses every other app.
+    expect(html).not.toContain('共用快捷指令')
+    expect(html).not.toContain('只改那一处')
+    expect(html).not.toContain('不重复填')
+    // And says the true thing in its place.
+    expect(html).toContain('每一条都改')
+  })
+
+  it('tells an empty account to go configure something, not to paste a fake line', async () => {
+    const user = await seedUser()
+    const html = await render(user, '?k=deadbeef00112233')
+    expect(html).toContain('你还没配置任何 App')
+    expect(html).toContain('/settings')
+    // No line to copy, because there is no correct line to give.
+    const stepOne = html.slice(0, html.indexOf('第二步'))
+    expect(stepOne).not.toMatch(/gate\?app=\w+&amp;k=deadbeef/)
   })
 
   it('never caches, since the page can carry a token', async () => {

@@ -45,7 +45,6 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   // manual can only print a template and hope the reader substitutes correctly,
   // and mis-substitution is the most common way this setup fails.
   const firstApp = apps.find((a) => a.enabled) ?? apps[0]
-  const exampleApp = firstApp?.app ?? 'xhs'
 
   const rawLineFor = (appKey: string): string =>
     `${origin}/gate?app=${appKey}&k=${token ?? ''}&fmt=text`
@@ -53,13 +52,31 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   const lineFor = (appKey: string): string =>
     `${origin}/gate?app=${appKey}&amp;k=${token ?? '&lt;先点上面的「显示」&gt;'}&amp;fmt=text`
 
-  // The first app's line, shown inline in step one so the reader can paste
-  // without scrolling. Everything else lives in the table below.
-  const firstPasteLine = firstApp
-    ? `<pre class="copy">${lineFor(escapeHtml(firstApp.app))}</pre>`
-    : `<pre class="copy">${escapeHtml(origin)}/gate?app=&lt;先去设置加一个 App&gt;&amp;k=${
-        token ? escapeHtml(token) : '&lt;先点上面的「显示」&gt;'
-      }&amp;fmt=text</pre>`
+  // One finished line per configured app, inline in step one.
+  //
+  // It used to print only the first app's line, under the sentence 「已经是你的
+  // 真实地址和 token」. With more than one app configured that sentence is a lie
+  // for every app but one, and the failure it invites is silent: paste the
+  // qidian line into 小红书's shortcut and the interception still works — with
+  // qidian's wait, qidian's grace, qidian's scheme to jump back to, and the
+  // count recorded against qidian. Nothing errors. You just quietly measure the
+  // wrong thing and get thrown into the wrong app.
+  //
+  // Which also made the page contradict its own rule. Everything else here is
+  // built so the reader never substitutes anything — that is what the whole
+  // 「一个变量都不用挑」 box is about — and this one line asked them to edit a
+  // query parameter by hand without ever saying so.
+  const pasteBlock = !firstApp
+    ? `<p class="hl">${icon('caveat')}<span>你还没配置任何 App，所以这里没有可粘的网址。
+       先去<a href="/settings">设置</a>加一个，再回来。</span></p>`
+    : apps
+        .map(
+          (a) => `<p class="pastefor">${
+            apps.length > 1 ? `拦<b>${escapeHtml(a.label)}</b>的那条快捷指令用这行` : '这一整行'
+          }${a.enabled ? '' : '<span class="off"> · 这个 App 现在是停用的</span>'}</p>
+<pre class="copy">${lineFor(escapeHtml(a.app))}</pre>`,
+        )
+        .join('\n')
 
   // One finished line per configured app. Step two is then literally "paste
   // this", which is the only part that repeats per app and the only part iOS
@@ -116,9 +133,15 @@ ${(() => {
 })()}
 
 <div class="box">
-<h3>先记住一件事</h3>
-<p>整套配置里 <strong>token 只出现一次</strong>，就在下面第一步那个共用快捷指令里。
-后面每个 App 的自动化都只是调用它，不重复填。将来换 token 只改那一处。</p>
+<h3>先记住一件事：一个 App 一条，各配各的</h3>
+<p>没有「共用」那一说。<b>每个要拦的 App 都要单独建一条快捷指令</b>，各自的网址里
+<code>app=</code> 后面写各自的 App 键——拦小红书就写 <code>xhs</code>，拦起点读书就写
+<code>qidian</code>。写错了不会报错，只会用错那个 App 的配置：按别人的秒数呼吸、
+跳回别人的 App、记录也记在别人名下。</p>
+<p class="note flat">曾经想过让所有 App 共用一条、把 App 键当输入传进去。做不到：
+「获取 URL 的内容」的网址栏里挑不到「快捷指令输入」那个变量（真机上验过两次），
+所以只能整条粘。代价就是 token 在每条快捷指令里各出现一次，<b>将来换 token
+要每一条都改</b>。</p>
 </div>
 
 <h2>你的 token</h2>
@@ -129,7 +152,7 @@ ${tokenLine}
 <h2>第一步 · 给一个 App 建快捷指令</h2>
 
 <p>装好之后整条是这个形状——三个动作，加一个自动补上的「结束如果」：</p>
-${shortcutDiagram(exampleApp)}
+${shortcutDiagram()}
 
 <div class="box">
 <h3>一个变量都不用挑</h3>
@@ -142,8 +165,9 @@ ${shortcutDiagram(exampleApp)}
   <span class="no">1</span>
   <div class="sbody">
     <p class="shead">${icon('fetch')}「获取 URL 的内容」</p>
-    <p>动作搜索框里搜 <code>URL</code>，把下面这一整条<b>粘进 URL 那一栏</b>（已经是你的真实地址和 token）：</p>
-    ${firstPasteLine}
+    <p>动作搜索框里搜 <code>URL</code>，把下面对应那一整条<b>粘进 URL 那一栏</b>。
+    地址、token、App 键都已经填好了，<b>一个字都不用改</b>：</p>
+    ${pasteBlock}
     <p class="chips"><span class="chip">显示更多 · 方法 GET</span><span class="chip">请求头 空</span><span class="chip">请求体 空</span></p>
   </div>
 </li>
@@ -378,12 +402,11 @@ const TEST_SCRIPT = `
  * below this, and a card wide enough to hold a 32-character token is a card too
  * wide to read the shape of.
  */
-function shortcutDiagram(app: string): string {
-  const key = escapeHtml(app)
+function shortcutDiagram(): string {
   return `<div class="sc" role="img" aria-label="快捷指令的三个动作：获取 URL 的内容、如果内容包含 https、在如果里面打开 URL 的内容">
   <div class="sc-a">
     <span class="sc-i">${icon('fetch')}</span>
-    <span class="sc-t">获取 <code class="sc-u">…/gate?app=${key}&amp;k=…&amp;fmt=text</code> 内容</span>
+    <span class="sc-t">获取 <code class="sc-u">…/gate?app=<b class="sc-ph">这个 App 的键</b>&amp;k=…&amp;fmt=text</code> 内容</span>
   </div>
   <div class="sc-l"></div>
   <div class="sc-a">
@@ -426,6 +449,11 @@ const SETUP_CSS = `
    page's own colours rather than imitating iOS chrome, because what has to
    survive is the structure, and a half-convincing fake screenshot invites the
    reader to compare pixels instead of reading it. */
+.sc-ph{font-weight:400;color:var(--fg);border-bottom:1px dashed var(--rule)}
+.pastefor{margin:1rem 0 .35rem;font-size:.86rem;color:var(--dim)}
+.pastefor:first-of-type{margin-top:.2rem}
+.pastefor b{color:var(--fg)}
+.pastefor .off{color:var(--danger)}
 .sc{margin:0 0 1rem}
 .sc-a{display:flex;align-items:flex-start;gap:9px;
   border:1px solid var(--rule);border-radius:10px;padding:11px 13px;background:var(--rule)}

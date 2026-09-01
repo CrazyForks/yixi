@@ -245,6 +245,13 @@ npx wrangler d1 execute yixi --remote --command \
 
 ### One shortcut, three actions, zero variables to pick
 
+<p align="center">
+  <img src="docs/images/shortcut.png" width="330" alt="The finished shortcut in the iOS Shortcuts editor: Get Contents of URL with the gate URL, If Contents of URL contains https, and Open URL nested inside it, then End If">
+</p>
+
+<p align="center"><sub>The same thing on a real phone. The token is masked; yours is already filled in on <code>/setup</code>. Note that <b>Open URL sits inside the If</b> — that nesting is the one part a written list conveys badly, and getting it wrong makes the shortcut jump on every launch, including the ones the gate just told it to leave alone.</sub></p>
+
+
 **① Get Contents of URL.** Paste the whole line into the URL field:
 
 ```

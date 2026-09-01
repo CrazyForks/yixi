@@ -244,6 +244,13 @@ npx wrangler d1 execute yixi --remote --command \
 
 ### 一个快捷指令，三个动作，一个变量都不用挑
 
+<p align="center">
+  <img src="docs/images/shortcut.png" width="330" alt="装好的快捷指令在 iOS「快捷指令」里的样子：获取 URL 的内容、如果内容包含 https、打开 URL 的内容嵌在里面、结束如果">
+</p>
+
+<p align="center"><sub>真机上的样子。token 已打码，你自己的那份在 <code>/setup</code> 里已经填好了。注意<b>「打开 URL」是嵌在「如果」里面的</b>——这个嵌套关系是文字最讲不清的一处，放错了会变成每次都跳，包括服务端刚说了「这次别拦」的那些次。</sub></p>
+
+
 **① 获取 URL 的内容。**把这一整条粘进 URL 那一栏：
 
 ```
