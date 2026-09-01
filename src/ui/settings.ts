@@ -16,6 +16,7 @@ import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { fold, hl, icon, seal } from './icons'
 import { forbiddenPrefixes, forbiddenSchemePattern } from '../scheme'
+import { inAppBrowserOf, type InAppBrowser } from '../inapp'
 
 
 // --- route handler ---------------------------------------------------------
@@ -23,7 +24,7 @@ import { forbiddenPrefixes, forbiddenSchemePattern } from '../scheme'
 export async function handleSettings(request: Request, env: Env, user: User): Promise<Response> {
   if (request.method === 'GET') {
     const url = new URL(request.url)
-    return await renderSettings(env, user, { saved: url.searchParams.get('saved') })
+    return await renderSettings(request, env, user, { saved: url.searchParams.get('saved') })
   }
   if (request.method === 'POST') return await handlePost(request, env, user)
   return new Response('method not allowed', { status: 405, headers: { allow: 'GET, POST' } })
@@ -39,7 +40,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   try {
     form = await request.formData()
   } catch {
-    return await renderSettings(env, user, { error: '表单没读出来，重试一次。', status: 400 })
+    return await renderSettings(request, env, user, { error: '表单没读出来，重试一次。', status: 400 })
   }
 
   const op = field(form, 'op')
@@ -47,13 +48,13 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
 
   if (op === 'delete') {
     const app = validAppKey(rawApp)
-    if (!app) return await renderSettings(env, user, { error: '要删除的 App 键不对。', status: 400 })
+    if (!app) return await renderSettings(request, env, user, { error: '要删除的 App 键不对。', status: 400 })
     await deleteUserApp(env.DB, user.id, app)
     return seeOther('/settings')
   }
 
   if (op !== 'save' && op !== 'add') {
-    return await renderSettings(env, user, { error: '不认识这个操作。', status: 400 })
+    return await renderSettings(request, env, user, { error: '不认识这个操作。', status: 400 })
   }
 
   // Adding and editing hit the same upsert, so they have to be told apart here.
@@ -66,7 +67,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   if (op === 'add') {
     const key = validAppKey(rawApp)
     if (key !== null && (await getUserApp(env.DB, user.id, key)) !== null) {
-      return await renderSettings(env, user, {
+      return await renderSettings(request, env, user, {
         error: `已经有一条 ${key} 了。要改它就展开下面那条，别在这里重新加一遍——直接加会把它的秒数一起覆盖掉。`,
         draft: {
           app: rawApp,
@@ -95,7 +96,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   if (typeof parsed === 'string') {
     // Same reason as the collision branch: a rejected ADD whose key happens to
     // match an existing row must reopen the add form, not that row.
-    return await renderSettings(env, user, { error: parsed, draft, draftIsAdd: op === 'add', status: 400 })
+    return await renderSettings(request, env, user, { error: parsed, draft, draftIsAdd: op === 'add', status: 400 })
   }
 
   await upsertUserApp(env.DB, { user_id: user.id, ...parsed })
@@ -214,7 +215,7 @@ interface RenderOptions {
   status?: number
 }
 
-async function renderSettings(env: Env, user: User, o: RenderOptions): Promise<Response> {
+async function renderSettings(request: Request, env: Env, user: User, o: RenderOptions): Promise<Response> {
   const apps = await listUserApps(env.DB, user.id)
   const draft = o.draft
   // A rejected edit re-renders from the database, which would silently throw
@@ -242,6 +243,7 @@ async function renderSettings(env: Env, user: User, o: RenderOptions): Promise<R
 <main>
   <h1>要拦哪些 App</h1>
   <p class="lede">每条对应 iPhone 上一条「打开 App 时」自动化。改完立刻生效，不用重建快捷指令。</p>
+  ${inAppNotice(inAppBrowserOf(request))}
   ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
   ${o.saved ? `<p class="banner good">已保存 <span class="mono">${escapeHtml(o.saved)}</span>。</p>` : ''}
 
@@ -269,6 +271,28 @@ function fromDraft(d: Draft): Omit<UserApp, 'user_id'> {
     grace_seconds: int(d.grace, DEFAULT_GRACE_SECONDS) ?? DEFAULT_GRACE_SECONDS,
     enabled: d.enabled ? 1 : 0,
   }
+}
+
+/**
+ * Said before the first tap, not after the tenth.
+ *
+ * 「试跳」 is a `location.href` to a custom scheme, which an app's embedded
+ * browser generally refuses — silently. Without this the reader taps, nothing
+ * happens, and the only conclusion available is that the scheme is wrong; they
+ * then work through every candidate in the list, each failing for a reason that
+ * has nothing to do with any of them.
+ *
+ * The second sentence matters as much as the first: the interception itself is
+ * unaffected, because the Shortcut opens the system default browser. Without
+ * saying so, this notice reads as 「这个工具在微信里坏了」 rather than 「这一步
+ * 要换个浏览器做」.
+ */
+function inAppNotice(host: InAppBrowser | null): string {
+  if (host === null) return ''
+  const name = escapeHtml(host.name)
+  return `<p class="banner warn">${icon('caveat')}<span>你现在是在<b>${name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的
+    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。${escapeHtml(host.escape)}，用 Safari 打开这一页再试。
+    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过${name}。</span></p>`
 }
 
 function emptyState(): string {

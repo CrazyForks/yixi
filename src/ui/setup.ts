@@ -1,6 +1,7 @@
 import type { Env, User } from '../types'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { inAppBrowserOf } from '../inapp'
 import { fold, hl, icon } from './icons'
 import { listUserApps } from '../db'
 import { revealToken } from '../account'
@@ -103,6 +104,16 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
 <h1>怎么配</h1>
 <p class="lede">全部在 iPhone 自带的「快捷指令」App 里完成，不用越狱，不用装别的东西。
 第一次约 5 分钟，之后每多拦一个 App 再花 1 分钟。</p>
+${(() => {
+  const host = inAppBrowserOf(request)
+  if (host === null) return ''
+  // Said here as well as on /settings, because this page is the walkthrough
+  // somebody follows top to bottom, and step 5 of it is a jump that cannot
+  // work from where they are standing.
+  return `<p class="banner warn">${icon('caveat')}<span>你现在是在<b>${escapeHtml(host.name)}</b>内置的浏览器里。
+    下面凡是要「跳回 App」的步骤在这里都不会有反应——它不让网页跳去别的 App。
+    ${escapeHtml(host.escape)}，用 Safari 打开这一页再照着做。</span></p>`
+})()}
 
 <div class="box">
 <h3>先记住一件事</h3>

@@ -132,6 +132,12 @@ button.linky.danger{color:var(--danger)}
 a.linky{color:var(--dim);font-size:14px}
 .banner{border:1px solid var(--rule);border-radius:12px;padding:12px 15px;font-size:14px;line-height:1.75;margin:0 0 16px}
 .banner.bad{border-color:var(--danger);color:var(--danger)}
+/* Not .banner.bad: nothing is broken and nothing was rejected. An in-app
+   browser is the environment being wrong for one step, so it reads as a
+   caution. Shared, because /settings and /setup both say it. */
+.banner.warn{display:flex;gap:9px;align-items:flex-start;border-color:var(--rule);color:var(--dim)}
+.banner.warn b{color:var(--fg)}
+.banner.warn .ic{flex:none;margin-top:3px;color:var(--dim)}
 .banner.good{color:var(--dim)}
 .banner-go{margin-left:.5rem;white-space:nowrap;text-underline-offset:3px;color:inherit}
 .empty{border:1px dashed var(--rule);border-radius:14px;padding:26px 16px;text-align:center;color:var(--dim);font-size:15px;margin-bottom:16px}

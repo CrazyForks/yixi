@@ -1,4 +1,5 @@
 import { DEFAULT_THEME, page } from './layout'
+import { inAppBrowserPattern } from '../inapp'
 
 /**
  * GET / — what a stranger sees, and now the front door as well: /register and
@@ -16,11 +17,16 @@ export function renderLanding(): Response {
     title: '一息',
     theme: DEFAULT_THEME,
     css: LANDING_CSS,
+    script: INAPP_SCRIPT,
     // Static text, no session, safe to sit in a CDN edge for a minute.
     cacheControl: 'public, max-age=60',
     body: `<main class="doc">
 <h1>一息</h1>
 <p class="lede">在你打开一个 App 之前，先呼吸十秒。</p>
+
+<p class="inapp" id="inapp" hidden>这一页是从某个 App 的内置浏览器打开的。
+逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。
+点右上角的「⋯」，选「在浏览器中打开」。</p>
 
 <div class="peek" role="img" aria-label="呼吸页示意：一团墨随呼吸涨落，外圈是倒计时">
   <div class="orb">
@@ -87,6 +93,9 @@ const LANDING_CSS = `
  * The one difference is that the real page drives scale from JS via --level,
  * because it has to stay in step with a countdown; here a keyframe does it.
  */
+.inapp{margin:1.6rem 0 0;padding:.85rem 1rem;font-size:.88rem;line-height:1.75;
+  color:var(--dim);border:1px solid var(--rule);border-radius:10px}
+.inapp b{color:var(--fg)}
 .peek{display:flex;flex-direction:column;align-items:center;gap:.9rem;margin:2.4rem 0 2.8rem}
 .peek .orb{position:relative;width:min(46vw,178px);height:min(46vw,178px);display:grid;place-items:center}
 .peek .ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
@@ -165,4 +174,26 @@ li::marker{color:var(--faint)}
 .looks.go a:first-child{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
 .foot{margin-top:4rem;color:var(--faint);font-size:.87rem;line-height:1.9}
 .foot a{color:var(--dim);text-underline-offset:3px}
+`
+
+/**
+ * The landing page is edge-cacheable (`public, max-age=60`), so it cannot vary
+ * its HTML on User-Agent the way /settings and /setup do — a UA-dependent body
+ * behind a shared cache serves one visitor's answer to the next. So the notice
+ * ships hidden in every copy and is revealed in the browser instead.
+ *
+ * The pattern comes from src/inapp.ts rather than being retyped here. Two
+ * copies of a list like this drift, and this project has already paid for that
+ * once with the scheme denylist.
+ *
+ * Worth having on this page and not only on /settings: the most likely first
+ * contact is a link shared in WeChat, and somebody who signs up there and then
+ * cannot make 试跳 work has no way to know the two facts are connected.
+ */
+const INAPP_SCRIPT = `
+(function () {
+  if (!/${inAppBrowserPattern()}/i.test(navigator.userAgent || '')) return;
+  var el = document.getElementById('inapp');
+  if (el) el.hidden = false;
+})();
 `
