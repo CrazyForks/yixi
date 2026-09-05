@@ -12,12 +12,21 @@ import { inAppBrowserPattern } from '../inapp'
  * only a hash, and this page says so in the same breath as the guarantee that
  * still holds — otherwise the first paragraph is doing marketing.
  */
-export function renderLanding(): Response {
+export function renderLanding(url: URL): Response {
   return page({
-    title: '一息',
+    title: '一息 —— 打开 App 之前，先呼吸十秒',
     theme: DEFAULT_THEME,
     css: LANDING_CSS,
     script: INAPP_SCRIPT,
+    // The one page here a stranger is meant to find. Everything else stays
+    // noindex by default — see PageOptions.indexable.
+    indexable: true,
+    description:
+      '在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去。' +
+      '自建的 One Sec 替代品：一个网页加 iOS 快捷指令，不用装 App，跑在 Cloudflare 免费额度里。',
+    // The live origin, not a constant: a self-hosted copy must not name this
+    // instance as its canonical URL.
+    canonical: url.origin + '/',
     // Static text, no session, safe to sit in a CDN edge for a minute.
     cacheControl: 'public, max-age=60',
     body: `<main class="doc">

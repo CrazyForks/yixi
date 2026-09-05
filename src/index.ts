@@ -45,7 +45,13 @@ export default {
       if (path === '/resolve' && method === 'POST') return await handleResolve(request, env)
       if (path === '/b' && method === 'GET') return await renderBreathe(request, env)
       if (path === '/mock' && method === 'GET') return renderMock(url)
-      if (path === '/' && method === 'GET') return renderLanding()
+      if (path === '/' && method === 'GET') return renderLanding(url)
+      // robots.txt is the half of the story a meta tag cannot tell: it names
+      // what may be crawled before the crawler has fetched anything. The
+      // Disallow list is deliberately redundant with each page's own
+      // noindex — a crawler that ignores one still sees the other, and the
+      // pages named here are the ones whose URLs carry a session or a token.
+      if (path === '/robots.txt' && method === 'GET') return robotsTxt()
 
       // Sign-up and sign-in must answer before authenticate(), or the only way
       // to get an account would be to already have one. Registration being open
@@ -155,6 +161,41 @@ const RATE_WINDOW_RETENTION_MS = 24 * 60 * 60 * 1000
 function redact(err: unknown): string {
   const text = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err)
   return text.replace(/([?&](?:k|token)=)[^&\s"']+/gi, '$1[redacted]').replace(/\b[0-9a-f]{32}\b/gi, '[redacted]')
+}
+
+/**
+ * GET /robots.txt — crawl the front door, nothing else.
+ *
+ * The Allow/Disallow pairs mirror PageOptions.indexable: `/` is the only page
+ * meant for strangers, and everything named below either shows one person's
+ * own record or carries a session/token in the URL. This is belt to the meta
+ * tag's braces — a crawler that honours only one of the two still stays out.
+ *
+ * No Sitemap: line. With exactly one indexable page a sitemap carries no
+ * information a crawler does not already have from `/`, and naming a file
+ * that 404s is worse than naming none.
+ */
+function robotsTxt(): Response {
+  const body = [
+    'User-agent: *',
+    'Allow: /$',
+    'Disallow: /b',
+    'Disallow: /gate',
+    'Disallow: /mock',
+    'Disallow: /review',
+    'Disallow: /setup',
+    'Disallow: /settings',
+    'Disallow: /account',
+    'Disallow: /admin',
+    'Disallow: /login',
+    'Disallow: /register',
+    'Disallow: /claim',
+    'Disallow: /recover',
+    '',
+  ].join('\n')
+  return new Response(body, {
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' },
+  })
 }
 
 function tooManyRequests(retryAfterSeconds: number): Response {

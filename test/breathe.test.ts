@@ -287,7 +287,7 @@ describe('nothing is fetched from anywhere', () => {
 
   it('inlines everything on /mock and /', async () => {
     assertSelfContained(await renderMock(new URL('https://yixi.example/mock?v=1')).text())
-    assertSelfContained(await renderLanding().text())
+    assertSelfContained(await renderLanding(new URL('https://yixi.example/')).text())
   })
 })
 
@@ -319,8 +319,18 @@ function assertSelfContained(html: string): void {
   for (const m of html.matchAll(/\b(?:src|srcset|xlink:href|poster|data)\s*=\s*"([^"]*)"/g)) {
     expect(m[1], `loads ${m[0]}`).not.toMatch(/^(?:https?:)?\/\//)
   }
-  for (const m of html.matchAll(/<link[^>]*\bhref\s*=\s*"([^"]*)"/g)) {
-    expect(m[1], `<link> to ${m[1]}`).not.toMatch(/^(?:https?:)?\/\//)
+  for (const m of html.matchAll(/<link[^>]*>/g)) {
+    const tag = m[0]
+    const href = tag.match(/\bhref\s*=\s*"([^"]*)"/)?.[1]
+    if (href === undefined) continue
+    // rel="canonical" is the one <link> that names a URL without asking the
+    // browser to go and get it — it is a declaration about this page's own
+    // address, and on an indexable page it is necessarily absolute. Same
+    // distinction the <a href> rule below draws: a resource is banned, a
+    // statement about where something lives is not. Every other rel, preload
+    // and prefetch included, still has to be local.
+    if (/\brel\s*=\s*"canonical"/.test(tag)) continue
+    expect(href, `<link> to ${href}`).not.toMatch(/^(?:https?:)?\/\//)
   }
 
   // And an <a> may only go somewhere a person chose to go: no javascript:, and
@@ -369,7 +379,7 @@ describe('/mock previews both looks without a session', () => {
 
 describe('/ explains itself', () => {
   it('renders and points at both previews', async () => {
-    const res = renderLanding()
+    const res = renderLanding(new URL('https://yixi.example/'))
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('一息')

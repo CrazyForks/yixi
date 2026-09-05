@@ -240,6 +240,53 @@ export interface PageOptions {
    * policy for it, or a relaxed policy it does not use.
    */
   turnstile?: boolean
+  /**
+   * Let search engines index this page. Defaults to false, which emits
+   * `noindex,nofollow`.
+   *
+   * Default-deny is the point. Every page here except the landing page is
+   * either somebody's own record (/review, /settings, /account) or a URL with
+   * a live session in it (/b?s=…, /claim, /recover) — none of that belongs in
+   * an index, and a page added later should be private until somebody decides
+   * otherwise rather than the other way round.
+   */
+  indexable?: boolean
+  /**
+   * `<meta name="description">` and `og:description`. Without one, a search
+   * engine writes its own snippet out of whatever text it finds first, which
+   * on the landing page is the in-app-browser warning.
+   */
+  description?: string
+  /**
+   * Absolute URL of this page, for `<link rel="canonical">` and `og:url`.
+   * Pass the live request's own origin — hardcoding the public instance would
+   * make every self-hosted copy declare somebody else's domain as canonical
+   * and hand it the ranking.
+   */
+  canonical?: string
+}
+
+/**
+ * The description/canonical/Open Graph block, empty unless the caller asked
+ * for one. Kept out of the template above because it is the only part of the
+ * head that is conditional in three different ways, and inlining it there
+ * turns a readable document into a nest of ternaries.
+ */
+function socialTags(o: PageOptions): string {
+  const tags: string[] = []
+  if (o.description) tags.push(`<meta name="description" content="${escapeHtml(o.description)}">`)
+  if (o.canonical) tags.push(`<link rel="canonical" href="${escapeHtml(o.canonical)}">`)
+  // og:* only for a page that is meant to be seen by strangers. A private page
+  // has nothing to gain from a rich unfurl and something to lose: chat clients
+  // fetch these URLs server-side, so a session page would be opened by a bot.
+  if (o.indexable) {
+    tags.push(`<meta property="og:title" content="${escapeHtml(o.title)}">`)
+    if (o.description) tags.push(`<meta property="og:description" content="${escapeHtml(o.description)}">`)
+    if (o.canonical) tags.push(`<meta property="og:url" content="${escapeHtml(o.canonical)}">`)
+    tags.push('<meta property="og:type" content="website">')
+    tags.push('<meta name="twitter:card" content="summary">')
+  }
+  return tags.length > 0 ? '\n' + tags.join('\n') : ''
 }
 
 export function pageHtml(o: PageOptions): string {
@@ -252,9 +299,8 @@ export function pageHtml(o: PageOptions): string {
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" media="(prefers-color-scheme:light)" content="${t.barLight}">
 <meta name="theme-color" media="(prefers-color-scheme:dark)" content="${t.barDark}">
-<meta name="robots" content="noindex,nofollow">
-<link rel="icon" href="data:,">
-<title>${escapeHtml(o.title)}</title>
+${o.indexable ? '' : '<meta name="robots" content="noindex,nofollow">\n'}<link rel="icon" href="data:,">
+<title>${escapeHtml(o.title)}</title>${socialTags(o)}
 <style>${t.tokens}${BASE_CSS}${o.css ?? ''}</style>${o.turnstile ? '\n' + TURNSTILE_LOADER : ''}
 </head>
 <body${o.bodyAttrs ? ' ' + o.bodyAttrs : ''}>

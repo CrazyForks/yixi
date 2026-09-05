@@ -25,6 +25,7 @@ import { handleAdmin } from '../src/api/admin'
 import { CONSOLE_CSS } from '../src/ui/console'
 import { breathePage } from '../src/ui/breathe'
 import { renderLanding } from '../src/ui/landing'
+import { renderMock } from '../src/ui/mock'
 import { DEFAULT_THEME } from '../src/ui/layout'
 import { upsertUserApp } from '../src/db'
 import type { User } from '../src/types'
@@ -174,7 +175,7 @@ describe('type scale', () => {
         farewell: '明天再看',
       }).text(),
     ])
-    rendered.push(['landing', await renderLanding().text()])
+    rendered.push(['landing', await renderLanding(new URL('https://yixi.example/')).text()])
     for (const [name, page] of rendered) {
       const styles = page.match(/<style>([\s\S]*?)<\/style>/g) ?? []
       styles.forEach((s, i) => out.push([`${name} <style> #${i + 1}`, s]))
@@ -224,6 +225,79 @@ describe('type scale', () => {
     // Not a readability rule like the others — this one is load-bearing.
     for (const m of CONSOLE_CSS.matchAll(/input[^{]*\{[^}]*font-size:\s*([0-9.]+)px/g)) {
       expect(Number(m[1]), `input at ${m[1]}px`).toBeGreaterThanOrEqual(16)
+    }
+  })
+})
+
+/**
+ * Which pages a search engine may keep.
+ *
+ * The whole site used to be noindex, set once in pageHtml and never revisited
+ * — including the landing page, the one page whose entire job is to be found
+ * by somebody who has never heard of this. Promoting a URL that no crawler is
+ * allowed to index means the only traffic it can ever get is traffic that was
+ * pushed to it.
+ *
+ * The invariant now has two halves and this test pins both, because getting
+ * only the first half right is how a session URL ends up in a search result:
+ * the landing page is indexable, and everything else is not.
+ */
+describe('what may be indexed', () => {
+  const ORIGIN = 'https://yixi.example'
+
+  async function privatePages(): Promise<Array<[string, string]>> {
+    const out: Array<[string, string]> = []
+    for (const name of Object.keys(PAGES)) out.push([name, await html(name)])
+    out.push([
+      'breathe',
+      await breathePage({
+        theme: DEFAULT_THEME,
+        label: '小红书',
+        waitSeconds: 10,
+        sid: 'shot',
+        scheme: 'xhsdiscover://',
+        farewell: '明天再看',
+      }).text(),
+    ])
+    out.push(['mock', await renderMock(new URL(`${ORIGIN}/mock?v=1`)).text()])
+    return out
+  }
+
+  it('keeps noindex on every page that is not the front door', async () => {
+    for (const [name, page] of await privatePages()) {
+      expect(page, `${name} lost its noindex`).toMatch(
+        /<meta name="robots" content="noindex,nofollow">/,
+      )
+    }
+  })
+
+  it('lets the landing page be found', async () => {
+    const page = await renderLanding(new URL(`${ORIGIN}/`)).text()
+    expect(page).not.toMatch(/name="robots"/)
+    expect(page).toMatch(/<meta name="description" content="[^"]{40,}">/)
+  })
+
+  /**
+   * The canonical URL and og:url must come from the request, not a constant.
+   * A self-hosted copy that names the public instance as canonical is telling
+   * every crawler to credit somebody else's domain with its content — and
+   * every self-hoster would ship that bug without ever seeing it.
+   */
+  it('takes its canonical URL from whoever is being asked', async () => {
+    const mine = await renderLanding(new URL('https://breathe.example.org/')).text()
+    expect(mine).toContain('<link rel="canonical" href="https://breathe.example.org/">')
+    expect(mine).toContain('<meta property="og:url" content="https://breathe.example.org/">')
+    expect(mine).not.toContain('yixi-app.pages.dev')
+  })
+
+  /**
+   * og:* is for pages meant to be shared. A chat client fetches these URLs
+   * server-side to build the preview card, so emitting them on a session page
+   * would mean a bot opening somebody's breathing session.
+   */
+  it('offers no unfurl for a private page', async () => {
+    for (const [name, page] of await privatePages()) {
+      expect(page, `${name} advertises og: tags`).not.toMatch(/property="og:/)
     }
   })
 })

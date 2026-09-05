@@ -140,3 +140,50 @@ describe('registering an address that already exists', () => {
     expect(html).not.toContain('<img src=x')
   })
 })
+
+/**
+ * robots.txt is the half of the crawl story the meta tag cannot tell: it is
+ * read before any page is fetched, and it is what a crawler that ignores meta
+ * tags still obeys. The two halves have to agree — an Allow here for a page
+ * that is noindex, or a page missing from Disallow, is how a URL carrying a
+ * live session ends up crawled.
+ */
+describe('robots.txt', () => {
+  it('opens the front door and nothing else', async () => {
+    const res = await get('/robots.txt')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/^text\/plain/)
+    const body = await res.text()
+    expect(body).toMatch(/^User-agent: \*$/m)
+    expect(body).toMatch(/^Allow: \/\$$/m)
+    // Every path that shows one person's own record or carries a session or a
+    // token in the URL. Listed explicitly rather than checked by count, so
+    // adding a page and forgetting this file fails here rather than silently.
+    for (const path of [
+      '/b',
+      '/gate',
+      '/mock',
+      '/review',
+      '/setup',
+      '/settings',
+      '/account',
+      '/admin',
+      '/login',
+      '/register',
+      '/claim',
+      '/recover',
+    ]) {
+      expect(body, `${path} is crawlable`).toMatch(new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'))
+    }
+  })
+
+  /**
+   * Naming a sitemap that 404s is worse than naming none — Search Console
+   * reports it as an error forever, and with one indexable page a sitemap
+   * carries nothing `/` does not already say.
+   */
+  it('promises no sitemap it does not serve', async () => {
+    const body = await (await get('/robots.txt')).text()
+    expect(body).not.toMatch(/Sitemap:/i)
+  })
+})
