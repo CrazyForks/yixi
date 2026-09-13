@@ -53,7 +53,7 @@ Guarded by tests, and they are stricter than they look:
 - `test/breathe.test.ts` strips comments from the page script first (the script *carries* a comment containing the word `await`, so a naive grep would go green on the bug), then asserts the word appears nowhere in it, and that nothing awaiting sits between the `sendBeacon` call and `location.href=SCHEME`.
 - `test/lookup.test.ts` asserts that `/lookup` — which absorbed `/probe`, so it is the only page that jumps to a candidate — contains **exactly one** `jump()` and **exactly one** assignment to `location.href`, and that the statement matches the breathing page's own, modulo the variable name. This used to be a byte comparison between two pages' copies of the function; with one page the copies are gone and what is left to protect is that the candidates, the configured apps and the hand-typed box did not each grow their own navigation. It is deliberately stronger than "no await": an `<a href>` and a synchronous handler are different mechanisms in Safari, and a scheme certified by the wrong one would still fail where it counts.
 
-`/today`'s own `go()` and the `schemefield` script that `/settings` and `/goals` share are bound by this same rule; `test/today.test.ts` and `test/schemefield.test.ts` each carry their own assertion of it.
+`/today`'s own `go()` and the `schemefield` script that `/settings` and `/today/goals` share are bound by this same rule; `test/today.test.ts` and `test/schemefield.test.ts` each carry their own assertion of it.
 
 ## 3. `/gate` is the hot path
 

@@ -14,7 +14,7 @@ import { inAppBrowserPattern } from '../inapp'
  */
 export function renderLanding(url: URL): Response {
   return page({
-    title: '一息 —— 打开 App 之前，先呼吸十秒',
+    title: '一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事',
     theme: DEFAULT_THEME,
     css: LANDING_CSS,
     script: INAPP_SCRIPT,
@@ -22,7 +22,8 @@ export function renderLanding(url: URL): Response {
     // noindex by default — see PageOptions.indexable.
     indexable: true,
     description:
-      '在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去。' +
+      '在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去；' +
+      '「今日」一页则收好未来一段时间最重要的三件事，一按就去做。' +
       '自建的 One Sec 替代品：一个网页加 iOS 快捷指令，不用装 App，跑在 Cloudflare 免费额度里。',
     // The live origin, not a constant: a self-hosted copy must not name this
     // instance as its canonical URL.
@@ -32,6 +33,8 @@ export function renderLanding(url: URL): Response {
     body: `<main class="doc">
 <h1>一息</h1>
 <p class="lede">在你打开一个 App 之前，先呼吸十秒。</p>
+
+<p class="two">一息做两件事。<b>拦</b>：打开小红书这类 App 之前先呼吸十秒。<b>引</b>：把未来一段时间最重要的三件事放在<a href="/today">今日</a>一页，一按就去做。两件事各自能用，共用一个账号。</p>
 
 <p class="inapp" id="inapp" hidden>这一页是从某个 App 的内置浏览器打开的。
 逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。
@@ -159,7 +162,10 @@ h1{
   margin:0 0 .4rem;font-size:1.9rem;font-weight:400;
   letter-spacing:.42em;text-indent:.42em;
 }
-.lede{margin:0 0 3.2rem;color:var(--dim);font-size:.98rem;letter-spacing:.06em}
+.lede{margin:0 0 1.6rem;color:var(--dim);font-size:.98rem;letter-spacing:.06em}
+.two{margin:0 0 2.8rem;color:var(--dim);font-size:15px;line-height:1.75}
+.two b{color:var(--fg)}
+.two a{color:var(--dim)}
 h2{
   margin:3rem 0 .9rem;font-size:.84rem;font-weight:400;color:var(--faint);
   letter-spacing:.3em;text-indent:.3em;

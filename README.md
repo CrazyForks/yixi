@@ -21,6 +21,8 @@ You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone
 
 **Who this is for:** anyone who wants a nudge rather than a wall. It is friction, not enforcement — the automation is one toggle away from off, on purpose.
 
+一息 actually does two things, sharing one account: it **stops** you (breathe ten seconds before a distracting app opens — the whole page above) and it **points** you ([`/today`](#pages), your top three goals for the day, each one tap away). Either half is useful on its own.
+
 The open instance is the quickest way in. If you would rather not keep a minute-by-minute log of your worst impulses on someone else's server, deploy your own in fifteen minutes; it is the same code either way.
 
 ```
@@ -71,13 +73,14 @@ The price is that the animation is not as smooth as native, and a Safari cold st
 
 ## What it is
 
-One Cloudflare Worker and one D1 database. The whole app is a single `fetch` handler plus a nightly cron.
+One Cloudflare Worker and one D1 database. The whole app is a single `fetch` handler plus two nightly crons: noon Shanghai trims stale sessions, logins and rate-limit windows, and 00:00 Shanghai writes yesterday's `goal_days` snapshot — one row per user with a live goal, recording how many goals were shown that day, how many got checked in, and how many sub-tasks were finished. Written once and never rewritten; a day the Worker missed is just a gap, not a wrong number.
 
 - Every page is server-rendered, with CSS and JavaScript inlined. **Zero external requests** — no CDN, no web font, not even a favicon fetch. This is enforced by a `default-src 'none'` CSP, not just intended: the moment these pages open is the moment someone is reaching for a distraction on a bad connection, and one blocking round trip would end the product. The single exception is the optional Turnstile widget on `/register`, which is a sign-up page rather than an interception page — see step 6.
 - No client framework, no runtime dependencies. The `package.json` has five devDependencies and nothing else.
 - The interception log is never deleted. Sessions, logins and rate-limit windows are trimmed nightly; `events` is the product and stays forever.
 - Accounts are email + password, and the password is only ever a convenience. The real credential is a 128-bit random **gate token** that the Shortcut carries.
-- `/today` is the page meant to be opened every morning: your top three goals, each with its next task, a seven-day dot strip instead of a streak number, and a one-tap jump into whichever app the goal is actually about. `/goals` behind it is where they get added, edited and archived. Add `/today` to the home screen from `/setup` and it opens full-screen with no address bar — a real login is still needed the first time, since the home-screen copy does not share Safari's session.
+- `/today` is the page meant to be opened every morning: your top three goals, each with its next task, a seven-day dot strip instead of a streak number, and a one-tap jump into whichever app the goal is actually about. `/today/goals` behind it is where they get added, edited and archived, and `/today/review` looks back at how the days actually went. Add `/today` to the home screen from `/today/setup` and it opens full-screen with no address bar — a real login is still needed the first time, since the home-screen copy does not share Safari's session.
+- 一息 is two faces in one app: 「今日」 (`/today` and behind it) points you at what matters, and 「拦截」 (the breathing page and behind it) stops you from what doesn't. Each nav carries a small link to the other face, and both share the same login.
 
 ### Pages
 
@@ -89,7 +92,10 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `POST /resolve` | sid | records proceed / abandon, opens the grace window |
 | `/register` `/login` `/claim` `/recover` | anyone | sign up, sign in, bind an old token, reset a password with a token |
 | `/today` | you | the one page to open every morning: your top goals, the next task, a seven-day dot strip |
-| `/goals` | you | add, edit, reorder and archive goals — everything `/today` shows but does not let you change |
+| `/today/goals` | you | add, edit, reorder and archive goals — everything `/today` shows but does not let you change |
+| `/today/review` | you | looking back: today's ratio, a 30-day strip, every goal's own dot strip and check-in rate, this week's finished sub-tasks |
+| `/today/setup` | you | add `/today` to the home screen, a Shortcut, or a timed automation that opens it on its own |
+| `/goals` | you | kept as a 302 to `/today/goals`, so old links and bookmarks still land somewhere useful |
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
 | `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings`; not a page |
@@ -109,7 +115,7 @@ One codebase, two Cloudflare deployments, sharing one D1 database:
 | Deployment | Config | Job |
 | --- | --- | --- |
 | **Pages** | `pages/wrangler.toml` | the hostname people actually open |
-| **Worker** | `wrangler.toml` | the nightly cleanup cron |
+| **Worker** | `wrangler.toml` | the two nightly crons — cleanup at noon Shanghai, the `goal_days` snapshot at 00:00 |
 
 This is worth reading even if you are nowhere near China, because it is a real and reusable piece of operational knowledge about Cloudflare's shared hostnames.
 
@@ -117,7 +123,7 @@ This is worth reading even if you are nowhere near China, because it is a real a
 
 `*.pages.dev` is currently clean, so Pages gets the human-facing hostname. Same edge, same runtime, same code, same database; only the hostname differs. `pages/functions/[[path]].ts` is one line that forwards every request into the same Worker `fetch` handler.
 
-**The Worker deployment stays because Pages has no Cron Triggers.** The nightly cleanup is fired by Cloudflare itself, so it does not care that its own hostname is unreachable from China.
+**The Worker deployment stays because Pages has no Cron Triggers.** Both nightly crons are fired by Cloudflare itself, so neither cares that its own hostname is unreachable from China.
 
 Two things to know before copying this pattern:
 
@@ -346,32 +352,35 @@ Read these before deploying. Some of them cannot be fixed in code.
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 461 tests over 23 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 494 tests over 26 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
 
 ```
-src/index.ts        route table, three auth shapes, nightly cron
+src/index.ts        route table, three auth shapes, the two crons
 src/gate.ts         /gate and /resolve — the only machine-facing routes
 src/auth.ts         ?k= token, cookie session, constant-time compares
 src/account.ts      register / login / claim / recover; the closed recovery loop
 src/crypto.ts       PBKDF2 passwords, AES-GCM token sealing, random hex
 src/db.ts           every D1 statement in the app, and nothing else
 src/stats.ts        /review aggregation; the grace_pass exclusion lives here
+src/snapshot.ts      the goal_days snapshot: what /today showed, what got done
 src/ratelimit.ts    per-IP fixed-window throttle for the open endpoints
 src/turnstile.ts    the optional /register challenge, and its fail-open rules
 src/scheme.ts       the URL-scheme denylist — one authority, three call sites
 src/schemes.ts      frozen snapshot of two public scheme collections (60 apps)
 src/types.ts        Env, User, event kinds, the shared constants
-src/dates.ts        'YYYY-MM-DD' arithmetic shared by /today and /goals
+src/dates.ts        'YYYY-MM-DD' arithmetic shared by /today and /today/goals
 src/ui/*.ts         one module per page, all server-rendered
-src/ui/schemefield.ts  the URL-scheme picker field shared by /settings and /goals
+src/ui/schemefield.ts  the URL-scheme picker field shared by /settings and /today/goals
 src/ui/pwa.ts       the home-screen manifest and icon — public, no per-user data
 src/ui/today.ts     /today — the morning page: goals, next task, seven-day dots
-src/ui/goals.ts     /goals — add, edit, reorder and archive goals
+src/ui/goals.ts     /today/goals — add, edit, reorder and archive goals
+src/ui/progress.ts  /today/review — looking back: the 30-day strip, per-goal check-in rate
+src/ui/todaysetup.ts  /today/setup — home screen, Shortcut and timed-automation walkthrough
 src/api/admin.ts    the owner's ticket window, and the privacy line
-migrations/*.sql    D1 schema, four migrations
+migrations/*.sql    D1 schema, five migrations
 scripts/icon.mjs    regenerates the base64 PNG baked into src/ui/pwa.ts
 pages/              Pages entry point (one line) + its own wrangler.toml
 shortcut/README.md  why the Shortcut is shaped the way it is

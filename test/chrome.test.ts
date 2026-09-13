@@ -377,6 +377,11 @@ describe('what may be indexed', () => {
     expect(page).toMatch(/<meta name="description" content="[^"]{40,}">/)
   })
 
+  it('gives the landing page an entrance into the 今日 face', async () => {
+    const page = await renderLanding(new URL(`${ORIGIN}/`)).text()
+    expect(page).toContain('href="/today"')
+  })
+
   /**
    * The canonical URL and og:url must come from the request, not a constant.
    * A self-hosted copy that names the public instance as canonical is telling

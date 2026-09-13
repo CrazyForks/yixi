@@ -29,7 +29,7 @@ The entire application is one `fetch` handler and one `scheduled` handler in `sr
                         D1 (SQLite)
 ```
 
-`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart. `src/dates.ts` is the same pattern one level up: `addDays`/`isExpired` used to live inside `src/ui/goals.ts` with `/today` importing a page module just to reach two pure date-string functions; both now import them from `src/dates.ts` instead, and neither `src/ui/goals.ts` nor `src/ui/today.ts` re-exports them.
+`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts`, `src/snapshot.ts` and `src/account.ts` are the pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else — now including `progress.ts` (`/today/review`) and `todaysetup.ts` (`/today/setup`), the two newest additions to the 今日 face. `src/snapshot.ts` sits in the same layer as `src/stats.ts`: given a database and a day, it computes what that day's `goal_days` row should hold and returns it — it does not write anything itself. It is called from exactly two places, the midnight cron in `src/index.ts` and tests, never from a page. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/today/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart. `src/dates.ts` is the same pattern one level up: `addDays`/`isExpired` used to live inside `src/ui/goals.ts` with `/today` importing a page module just to reach two pure date-string functions; both now import them from `src/dates.ts` instead, and neither `src/ui/goals.ts` nor `src/ui/today.ts` re-exports them.
 
 ## Request lifecycle
 
@@ -132,7 +132,9 @@ When a request authenticated by `?k=`, the response gets a `Set-Cookie` appended
 
 ### The cron: `scheduled`
 
-`0 4 * * *` UTC — noon in Shanghai, which is when nobody is mid-interception.
+Two ticks a day, told apart by `event.cron` — one trims, the other snapshots, and neither knows the other exists.
+
+**`0 4 * * *` UTC — noon in Shanghai**, which is when nobody is mid-interception.
 
 ```
 deleteStaleSessions(now − 7 days)      a `sessions` row older than a week can
@@ -143,6 +145,27 @@ pruneRateLimits(now − 24h)             comfortably past the longest window
 ```
 
 **`events` is never touched.** That history is the product.
+
+**`0 16 * * *` UTC — 00:00 in Shanghai** (`SNAPSHOT_CRON`, defined in `src/snapshot.ts`). It fires a moment after the day it is about to summarize has already ended, so `snapshotDate(now)` backs the clock up 60 seconds before converting to a calendar day — the tick's own instant must never leak into the date it writes, or the snapshot would name the day that just started instead of the one that just finished.
+
+For every user with at least one non-archived goal (`listUsersWithLiveGoals`), `snapshotUser` computes one row, pure and unwritten until the caller upserts it:
+
+```
+shown       = that user's non-archived goals, not expired as of the snapshot
+              day — isExpired(g, date), the same rule /today applies, but
+              pinned to `date` rather than "today" so a cron that runs late
+              still judges expiry against the day it is closing out —
+              trimmed to the first TODAY_GOAL_LIMIT
+done        = of those `shown` goals, how many have a goal_checkins row
+              for `date`
+tasks_done  = goal_tasks rows across ALL of the user's goals (not just the
+              `shown` ones) whose shanghaiDate(done_at) = date
+INSERT OR REPLACE INTO goal_days (user_id, date, shown, done, tasks_done, ts)
+```
+
+`INSERT OR REPLACE` against the `(user_id, date)` primary key is what makes a re-run idempotent: the same day snapshotted twice overwrites itself rather than erroring or duplicating a row. Each user's snapshot runs inside its own `try`/`catch` in `snapshotGoalDays` — a failure is logged and counted, never thrown, so one bad row cannot stop every other user's snapshot from being written in the same tick.
+
+**Honesty over completeness.** If the Worker did not run at midnight — an outage, a bad deploy — no row is written and none is backfilled later. `/today/review` renders that day as a gap in its 30-day strip, not a guessed number.
 
 ## The three auth shapes, and why each exists
 
@@ -185,7 +208,7 @@ The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was cheaper
 
 ## D1 tables
 
-Four migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/goals`, touching nothing that existed before.
+Five migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/today/goals`, touching nothing that existed before; `0005_goal_days.sql` adds the one table behind `/today/review`.
 
 ### `users`
 
@@ -271,11 +294,27 @@ The first version read the count and then incremented it. Under concurrency that
 
 The upsert both resets a lapsed window and increments a live one, so the decision is made from a value that cannot have changed underneath. Requests past the limit still increment but do not extend `window_start`, so the window still closes on schedule.
 
-### `goals`, `goal_tasks`, `goal_checkins` — behind `/today` and `/goals`
+### `goals`, `goal_tasks`, `goal_checkins` — behind `/today` and `/today/goals`
 
 Three tables, added in `0004_goals.sql`, touching nothing that came before. `goals` is the short list of things that matter over the next while; `goal_tasks` are one-off to-dos hung off a goal; `goal_checkins` is a per-day check-in, primary-keyed `(user_id, goal_id, date)` so tapping the check button twice in one day writes nothing twice.
 
 `goal_checkins.date` is the same **Asia/Shanghai** calendar string as `events.date` — same computation, same format — so a check-in and a gate interception attribute to the same day rather than drifting across a UTC boundary. Every write against all three tables carries `user_id` explicitly, rather than trusting a join through `goal_id` alone, so a `goal_id` guessed or borrowed from another account can never land a write in someone else's row.
+
+**`deleteGoal` keeps `goal_checkins`.** Its `db.batch` only deletes from `goal_tasks` and `goals`; the check-in history behind the deleted goal is left in place. `goal_days` is aggregate — the day's `shown`/`done` counts do not name which goal was checked — so a deleted goal cannot corrupt it. The per-goal 7-day/30-day rates on `/today/review` only ever iterate over goals that still exist, so a deleted goal's orphaned `goal_checkins` rows are simply never read; they are kept because the history happened, not because anything currently queries them by a dangling `goal_id`.
+
+### `goal_days` — the daily snapshot behind `/today/review`
+
+Added in `0005_goal_days.sql`. One row per `(user_id, date)`, written once by the midnight cron (see [The cron: `scheduled`](#the-cron-scheduled)) and never rewritten except by an idempotent re-run of the same day.
+
+| column | notes |
+| --- | --- |
+| `user_id` `date` | primary key. `date` is the **Asia/Shanghai** day being summarized, not the day the cron ran |
+| `shown` | how many goals `/today` would have shown that user that day — non-archived, not expired as of `date`, capped at `TODAY_GOAL_LIMIT` |
+| `done` | of those, how many had a `goal_checkins` row for `date` |
+| `tasks_done` | `goal_tasks` completed that day, across every goal the user had, not only the ones in `shown` |
+| `ts` | when the row was written, epoch ms |
+
+A day with no row is not zero — it is unknown, and `/today/review` renders it as a gap rather than guessing. "Today" itself never has a row (the cron has not run yet), so `/today/review` computes today's ratio live, with the same selection rule `snapshotUser` would use.
 
 ## The anti-loop mechanism
 
@@ -401,7 +440,7 @@ The button hierarchy on a candidate is deliberate: 「试跳」 is the filled da
 
 ## Tests
 
-461 tests over 23 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+494 tests over 26 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
 
 The files worth knowing about before you change something:
 

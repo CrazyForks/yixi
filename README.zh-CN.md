@@ -23,6 +23,8 @@
 
 **给谁用**：想要一点摩擦而不是一道墙的人。它是摩擦，不是强制——自动化随时可以两下关掉，这是刻意的。
 
+一息其实做两件事，共用一个账号：**拦**你（打开干扰 App 之前先呼吸十秒——上面这一整页说的就是它），和**引**你（[`/today`](#页面)，每天最重要的三件事，一按就去做）。两件事各自能用，不需要都用。
+
 用公开实例最省事；如果你不愿意把「几点几分没忍住打开了哪个 App」这种日志放在别人的服务器上，就自己部署一份，十五分钟。两条路的代码完全一样。
 
 ```
@@ -72,13 +74,13 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 
 ## 它是什么
 
-一个 Cloudflare Worker 加一个 D1。整个 App 就是一个 `fetch` 处理函数，外加一条每日 cron。
+一个 Cloudflare Worker 加一个 D1。整个 App 就是一个 `fetch` 处理函数，外加两条每日 cron：中午（北京时间）清理过期 session、登录态和限流窗口；零点写一份「昨天」的 `goal_days` 快照——每个有目标的人一行，记那天展示了几个目标、打了几个卡、划掉几条子任务。写了就不改，Worker 哪天没跑就是一个空位，不补算。
 
 - 页面全部服务端渲染，CSS 和 JS 内联，**零外部请求**——没有 CDN、没有网络字体、连 favicon 都是 `data:`。这一条由 `default-src 'none'` 的 CSP 强制，不只是承诺：打开这些页面的时刻，人正伸手去够一个干扰源，网络还经常不好，多一次阻塞请求这个产品就废了。唯一的例外是 `/register` 上那个可选的 Turnstile widget——那是注册页，不是拦截页，见第 6 步。
 - 没有前端框架，没有运行时依赖。`package.json` 里只有五个 devDependencies。
 - 拦截记录永不删除。session、登录态、限流窗口每晚清理，`events` 表是这个产品本身，一直留着。
 - 账号是邮箱加密码，但密码只是方便。真正的身份是一把 128 位随机的 **gate token**，快捷指令拿它认人。
-- `/today` 是每天早上要开的那一页：最重要的三个目标，各自的下一步，七天墨点代替连续打卡数字，还有一键跳进目标对应的那个 App。背后的 `/goals` 用来增删改目标。从 `/setup` 把 `/today` 添加到主屏幕就能全屏打开、没有地址栏——第一次打开仍要重新登录一次，因为主屏幕副本不和 Safari 共享登录状态。
+- `/today` 是每天早上要开的那一页：最重要的三个目标，各自的下一步，七天墨点代替连续打卡数字，还有一键跳进目标对应的那个 App。背后的 `/today/goals` 用来增删改目标，`/today/review`「回看」把过去的日子倒回来看。从 `/today/setup` 把 `/today` 添加到主屏幕就能全屏打开、没有地址栏——第一次打开仍要重新登录一次，因为主屏幕副本不和 Safari 共享登录状态。
 
 ### 页面
 
@@ -90,7 +92,10 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | `POST /resolve` | sid | 记 proceed／abandon，开免打扰窗口 |
 | `/register` `/login` `/claim` `/recover` | 所有人 | 注册、登录、给老 token 绑账号、用 token 重置密码 |
 | `/today` | 本人 | 每天早上要开的那一页：最重要的目标、下一步、七天墨点 |
-| `/goals` | 本人 | 增删改目标——`/today` 展示但不让改的那部分 |
+| `/today/goals` | 本人 | 增删改目标——`/today` 展示但不让改的那部分 |
+| `/today/review` | 本人 | 回看：今天几分之几、最近三十天一排竖条、每个目标的墨点与打卡率、本周划掉的子任务数 |
+| `/today/setup` | 本人 | 把 `/today` 加到主屏幕、配快捷指令或定时自动打开它 |
+| `/goals` | 本人 | 保留为 302 跳 `/today/goals`，旧链接和书签仍能落到有用的地方 |
 | `/review` | 本人 | 今天、七天、哪个 App 最消耗你 |
 | `/settings` | 本人 | 增删改自己要拦的 App |
 | `GET /api/candidates` | 本人 | JSON：输入 App 名字，给出带来源的 scheme 候选。由 `/settings` 的 URL scheme 字段直接 fetch，不是页面 |
@@ -110,13 +115,13 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | 部署 | 配置 | 作用 |
 | --- | --- | --- |
 | **Pages** | `pages/wrangler.toml` | 人访问的那个地址 |
-| **Worker** | `wrangler.toml` | 只跑每日清理的 cron |
+| **Worker** | `wrangler.toml` | 两条每日 cron——中午清理，零点写 `goal_days` 快照 |
 
 **`*.workers.dev` 在中国大陆被 DNS 污染。**这是实测出来的，不是猜的：任取一个 `*.workers.dev` 主机名，在国内三家公共 DNS（223.5.5.5 / 119.29.29.29 / 114.114.114.114）各自返回一个互不相同的地址，而且都不等于境外解析值。这是典型的域名级污染，不是 Cloudflare 被封——`cloudflare.com` 和 `*.pages.dev` 在国内外解析逐字节一致。被单独针对的是 `workers.dev` 这个共享后缀。
 
 `*.pages.dev` 目前干净，所以人访问的地址交给 Pages。同一个边缘、同一个运行时、同一份代码、同一个数据库，只有主机名不同。`pages/functions/[[path]].ts` 里只有一行，把请求转进同一个 Worker `fetch` 处理函数。
 
-**Worker 那份必须留着，因为 Pages 不支持 Cron Trigger。**清理任务由 Cloudflare 自己触发，不需要从国内访问，所以它的主机名被污染无所谓。
+**Worker 那份必须留着，因为 Pages 不支持 Cron Trigger。**两条 cron 都由 Cloudflare 自己触发，不需要从国内访问，所以它的主机名被污染无所谓。
 
 照抄这个方案之前有两件事要知道：
 
@@ -346,32 +351,35 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 23 个文件 461 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 26 个文件 494 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
 
 ```
-src/index.ts        路由表、三种认证形态、每日 cron
+src/index.ts        路由表、三种认证形态、两条 cron
 src/gate.ts         /gate 与 /resolve —— 唯一两条机器面对的路由
 src/auth.ts         ?k= token、cookie session、常数时间比较
 src/account.ts      注册／登录／绑定／找回，闭环找回逻辑
 src/crypto.ts       PBKDF2 密码、AES-GCM 封存 token、随机 hex
 src/db.ts           全部 D1 语句，只有 D1 语句
 src/stats.ts        /review 的聚合层，grace_pass 的排除规则在这里
+src/snapshot.ts      goal_days 快照：那天展示了什么、做成了什么
 src/ratelimit.ts    开放端点的每 IP 固定窗口限流
 src/turnstile.ts    /register 上那道可选的人机验证，以及它的 fail-open 规则
 src/scheme.ts       URL scheme 黑名单 —— 一份正本，三处调用
 src/schemes.ts      两份公开 scheme 清单的固化快照（60 个 App）
 src/types.ts        Env、User、事件类型、共享常量
-src/dates.ts        /today 与 /goals 共用的 'YYYY-MM-DD' 日期运算
+src/dates.ts        /today 与 /today/goals 共用的 'YYYY-MM-DD' 日期运算
 src/ui/*.ts         一个页面一个模块，全部服务端渲染
-src/ui/schemefield.ts  /settings 与 /goals 共用的 URL scheme 选择字段
+src/ui/schemefield.ts  /settings 与 /today/goals 共用的 URL scheme 选择字段
 src/ui/pwa.ts       主屏幕的 manifest 和图标——公开，不含任何个人数据
 src/ui/today.ts     /today —— 每天早上打开的那一页：目标、下一步、七天墨点
-src/ui/goals.ts     /goals —— 增删改、排序、归档目标
+src/ui/goals.ts     /today/goals —— 增删改、排序、归档目标
+src/ui/progress.ts  /today/review —— 回看：三十天竖条、每个目标的打卡率
+src/ui/todaysetup.ts  /today/setup —— 主屏幕、快捷指令与定时自动打开的配置向导
 src/api/admin.ts    owner 的发号台，以及那条隐私红线
-migrations/*.sql    D1 schema，四个 migration
+migrations/*.sql    D1 schema，五个 migration
 scripts/icon.mjs    重新生成 src/ui/pwa.ts 里那份 base64 PNG
 pages/              Pages 入口（一行）加它自己的 wrangler.toml
 shortcut/README.md  快捷指令为什么长这样
