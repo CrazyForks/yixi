@@ -449,13 +449,22 @@ describe('/ in English', () => {
     expect(zh).toContain('<p class="lang"><a href="?lang=en">English</a> · 中文</p>')
   })
 
-  it('keeps its cache, and tells every cache what the page varies on', async () => {
+  it('keeps its cache, and names what the page varies on', async () => {
     const res = renderLanding(new Request(`${BASE}/`, { headers: EN }))
     expect(res.headers.get('cache-control')).toContain('max-age')
-    // Without this a shared cache hands one visitor's language to the next,
-    // and the switcher above looks broken for up to a minute in the visitor's
-    // own browser.
+    // The browser's own cache is what has to hear this: without it, the copy
+    // a visitor is reading stays fresh for up to a minute after the switcher
+    // above has changed the cookie, and the switch looks broken.
     expect(res.headers.get('vary')).toBe('Accept-Language, Cookie')
+  })
+
+  it('gives the English phase word its own width, gated so Chinese does not move', async () => {
+    const html = await renderLanding(new Request(`${BASE}/`, { headers: EN })).text()
+    // 4em is two CJK glyphs; an English word needs more room and wants to be
+    // centred under the orb rather than starting at the left of the box.
+    expect(html).toContain('html[lang="en"] .peek .phase{width:6em;text-align:center}')
+    // The Chinese rule is untouched, and the override cannot reach it.
+    expect(html).toContain('.peek .phase{position:relative;margin:0;height:1.2em;width:4em;')
   })
 })
 

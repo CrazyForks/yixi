@@ -151,7 +151,7 @@ export const EN: Record<string, string> = {
   // is the short everyday phrase and proceeding is the one that admits what it
   // is. The four parting lines are one each for a quarter of the sids — plain,
   // no praise, no lecture.
-  '好，就到这里。': 'All right. Stopping here.',
+  '好，就到这里。': 'All right. That is far enough.',
   '这一次，你没有点进去。': 'This time you did not go in.',
   '省下来的几分钟是你的。': 'The few minutes you saved are yours.',
   '放下就好。': 'Putting it down is enough.',
@@ -200,7 +200,7 @@ export const EN: Record<string, string> = {
   '一息做两件事。<b>拦</b>：打开小红书这类 App 之前先呼吸十秒。<b>引</b>：把未来一段时间最重要的三件事放在<a href="/today">今日</a>一页，一按就去做。两件事各自能用，共用一个账号。':
     '一息 (yixi) does two things. <b>Breathe</b>: ten seconds before an app like Instagram opens. <b>Steer</b>: the three things that matter most in the weeks ahead sit on one page, <a href="/today">Today</a>, one tap from being done. Either half works on its own, and they share one account.',
   '这一页是从某个 App 的内置浏览器打开的。\n逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。\n点右上角的「⋯」，选「在浏览器中打开」。':
-    'This page was opened inside the built-in browser of some app.\nReading is fine, <b>but the setup step is not</b> — a built-in browser will not let a page jump to another app, and setup depends on exactly that.\nTap the “⋯” in the top corner and choose “Open in browser”.',
+    'This page was opened inside the built-in browser of some app.\nReading is fine, <b>but the setup step is not</b> — a built-in browser will not let a page jump to another app, and setup depends on exactly that.\nTap the “⋯” in the top-right corner and choose “Open in browser”.',
   '呼吸页示意：一团墨随呼吸涨落，外圈是倒计时':
     'A look at the breathing page: a wash of ink swelling and fading with the breath, the ring outside it counting down',
   '十秒之后，页面先递给你「算了」，过一会儿才递给你「继续」。\n顺序是故意的——大多数时候你会发现，那一下其实只是手指的惯性。':

@@ -249,12 +249,13 @@ export interface PageOptions {
   /**
    * `Vary`, for the one page that is both cacheable and language-dependent.
    *
-   * A cacheable response whose body follows the `yixi_lang` cookie or
-   * `Accept-Language` is wrong in two caches at once without this: a shared
-   * one hands the first visitor's language to the next, and the visitor's own
-   * browser replays the copy it already has after the footer's `?lang=` link
-   * has changed the cookie. Naming both request headers makes each of those a
-   * miss instead. Every other page here is `no-store`, so none of them needs
+   * The browser's own cache is what this is for. A response whose body follows
+   * the `yixi_lang` cookie or `Accept-Language` has to name those headers, or
+   * the copy a visitor is already reading stays fresh and on screen for up to
+   * a minute after the footer's `?lang=` link has changed the cookie — the
+   * switch would simply look broken. (Not for Cloudflare's edge: it does not
+   * store a Worker-generated response, and honours no `Vary` but
+   * `Accept-Encoding`.) Every other page here is `no-store` and needs none of
    * it.
    */
   vary?: string

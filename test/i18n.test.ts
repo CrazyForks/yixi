@@ -451,6 +451,22 @@ function placeholdersOf(s: string): string[] {
   return [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
 }
 
+const TAG_RE = /<[^>]+>/g
+
+/**
+ * Every HTML tag in a string, whitespace-normalised and sorted. A `<b>` lost
+ * in translation, or an `href` quietly pointed somewhere else, shows up as a
+ * difference between the source's list and the translation's.
+ */
+function tagsOf(s: string): string[] {
+  return (s.match(TAG_RE) ?? []).map((tag) => tag.replace(/\s+/g, ' ').trim()).sort()
+}
+
+/** The prose of a string, with its markup taken out. */
+function stripTags(s: string): string {
+  return s.replace(TAG_RE, '')
+}
+
 describe('guard helpers', () => {
   it('strips block and line comments before scanning', () => {
     const src = "/* 你好 */\n// 世界\nconst x = t('保留')\n"
@@ -473,6 +489,15 @@ describe('guard helpers', () => {
 
   it('placeholdersOf finds every {name}, order-independent', () => {
     expect(placeholdersOf('还剩 {n} 秒，{who} 的第 {n} 次')).toEqual(['n', 'n', 'who'])
+  })
+
+  it('tagsOf is order-independent and does not mind the spacing inside a tag', () => {
+    expect(tagsOf('<b>x</b> <a href="/t">y</a>')).toEqual(tagsOf('<a  href="/t">y</a><b>x</b>'))
+    expect(tagsOf('<a href="/t">y</a>')).not.toEqual(tagsOf('<a href="/other">y</a>'))
+  })
+
+  it('stripTags leaves the prose and takes the markup', () => {
+    expect(stripTags('<a href="/t">y</a><br>z')).toBe('yz')
   })
 })
 
@@ -518,6 +543,35 @@ describe('guard ③: en.ts entries are clean, faithful translations', () => {
   it('keeps the same {placeholder} set as its source', () => {
     for (const [zh, translation] of Object.entries(EN)) {
       expect(placeholdersOf(translation), `EN[${JSON.stringify(zh)}]`).toEqual(placeholdersOf(zh))
+    }
+  })
+
+  /**
+   * Three pages interpolate `t()` straight into `aria-label="…"` — the
+   * breathing orb, the /mock switcher and the landing page's miniature — and
+   * `t` escapes nothing. A straight double quote in a translation would end
+   * the attribute there and put the rest of the sentence into the tag; the
+   * curly quotes this file's voice asks for cannot. Quotes inside a tag the
+   * source itself carries (`<a href="/today">`) are the markup's own, and the
+   * clause below is what checks those.
+   */
+  it('uses no straight double quote outside a tag, so a translation cannot end an attribute', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      expect(
+        stripTags(translation).includes('"'),
+        `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} has a straight " — the voice uses “ ”`,
+      ).toBe(false)
+    }
+  })
+
+  /**
+   * Markup is not the translator's to change. Same tags, same order-free
+   * multiset, same `href` — a translation that drops a `<b>` or retargets a
+   * link is a broken page, not a wording choice.
+   */
+  it('carries exactly the tags and links its source carries', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      expect(tagsOf(translation), `EN[${JSON.stringify(zh)}]`).toEqual(tagsOf(zh))
     }
   })
 })

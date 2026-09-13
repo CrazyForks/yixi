@@ -42,15 +42,13 @@ export function renderLanding(request: Request): Response {
     // The live origin, not a constant: a self-hosted copy must not name this
     // instance as its canonical URL.
     canonical: url.origin + '/',
-    // Static text, no session, safe to sit in a CDN edge for a minute — but
-    // the text is no longer the same for every visitor: it now follows the
-    // language cookie and Accept-Language. `vary` is what keeps that cache
-    // honest in both places it lives. A shared cache stops handing one
-    // visitor's language to the next, and the visitor's own browser stops
-    // replaying the page they were reading a moment ago: the footer's
-    // `?lang=` link changes the cookie, the cached copy no longer matches the
-    // request, and the new language is on screen immediately rather than up
-    // to a minute later.
+    // Static text and no session, so it may sit in a cache for a minute — but
+    // the text is no longer the same for every visitor: it follows the
+    // language cookie and Accept-Language. `vary` is what the browser's own
+    // cache needs to hear. Without it, the footer's `?lang=` link rewrites the
+    // cookie and the browser still replays the copy it was already reading,
+    // for up to a minute; with it, that copy no longer matches the request and
+    // the new language is on screen at once.
     cacheControl: 'public, max-age=60',
     vary: 'Accept-Language, Cookie',
     body: `<main class="doc">
@@ -144,6 +142,11 @@ const LANDING_CSS = `
    would have left this reading 吸气 while the ink was plainly shrinking. */
 .peek .phase{position:relative;margin:0;height:1.2em;width:4em;
   font-size:.8rem;color:var(--faint);letter-spacing:.34em;text-indent:.34em}
+/* 4em is two CJK glyphs and their tracking. An English word is longer and is
+   not tracked out (BASE_CSS zeroes .phase's letter-spacing under lang=en), so
+   it gets its own width and is centred under the orb. Gated on the attribute
+   so not one Chinese pixel moves. */
+html[lang="en"] .peek .phase{width:6em;text-align:center}
 .peek .phase span{position:absolute;inset:0;animation:peek-word 10s steps(1,end) infinite}
 .peek .phase .out{animation-name:peek-word-out}
 @keyframes peek-breathe{
