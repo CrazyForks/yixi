@@ -88,7 +88,7 @@ export async function userFromToken(env: Env, token: string): Promise<User | nul
   const row = await findUserByTokenHash(env.DB, hash)
   if (!row) return null
   if (!timingSafeEqual(row.token_hash, hash)) return null
-  return { id: row.id, name: row.name, is_owner: row.is_owner, created_at: row.created_at }
+  return { id: row.id, name: row.name, is_owner: row.is_owner, created_at: row.created_at, locale: row.locale }
 }
 
 // --- cookie ---------------------------------------------------------------

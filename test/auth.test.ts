@@ -62,7 +62,13 @@ describe('userFromToken', () => {
 
     const user = await userFromToken(env, TOKEN)
 
-    expect(user).toEqual({ id: userId, name: 'alice', is_owner: 1, created_at: expect.any(Number) })
+    expect(user).toEqual({
+      id: userId,
+      name: 'alice',
+      is_owner: 1,
+      created_at: expect.any(Number),
+      locale: null,
+    })
     expect(user).not.toHaveProperty('token_hash')
   })
 

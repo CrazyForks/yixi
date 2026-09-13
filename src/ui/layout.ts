@@ -14,6 +14,7 @@
  */
 
 import { PWA_HEAD } from './pwa'
+import { htmlLang, type Locale } from '../i18n'
 
 export type ThemeName = 'ink' | 'breath'
 
@@ -222,11 +223,18 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webki
 a{color:inherit}
 ::selection{background:var(--fg);color:var(--bg)}
 .sp{letter-spacing:.28em;text-indent:.28em}
+html[lang=en] .sp,html[lang=en] .brand,html[lang=en] .prelude,html[lang=en] .phase,html[lang=en] .fin,html[lang=en] .a1,html[lang=en] .a2,html[lang=en] h2{letter-spacing:0;text-indent:0}
 `
 
 export interface PageOptions {
   title: string
   theme: ThemeName
+  /**
+   * Which language to declare and to zero the CJK letter-spacing/text-indent
+   * rules for. Defaults to 'zh' — every existing caller that has not been
+   * converted yet keeps rendering byte-for-byte what it always has.
+   */
+  lang?: Locale
   /** Page-specific CSS, appended after the reset and the theme tokens. */
   css?: string
   body: string
@@ -295,7 +303,7 @@ function socialTags(o: PageOptions): string {
 export function pageHtml(o: PageOptions): string {
   const t = THEMES[o.theme]
   return `<!doctype html>
-<html lang="zh-Hans">
+<html lang="${htmlLang(o.lang ?? 'zh')}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">

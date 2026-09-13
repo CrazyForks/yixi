@@ -412,5 +412,6 @@ function plainUser(account: AccountRecord): User {
     name: account.name,
     is_owner: account.is_owner,
     created_at: account.created_at,
+    locale: account.locale,
   }
 }

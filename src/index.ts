@@ -21,9 +21,10 @@ import {
 import { handleSettings } from './ui/settings'
 import { handleAdmin } from './api/admin'
 import { renderLanding } from './ui/landing'
-import { deleteExpiredWebSessions, deleteStaleSessions } from './db'
+import { deleteExpiredWebSessions, deleteStaleSessions, setUserLocale } from './db'
 import { checkRate, pruneRateLimits } from './ratelimit'
 import { SNAPSHOT_CRON, snapshotGoalDays } from './snapshot'
+import { isLocale, langCookie } from './i18n'
 
 /**
  * Route table. Only /gate and /resolve are machine-facing; everything else is a
@@ -50,6 +51,35 @@ export default {
       if (path === '/gate' && method === 'GET') return await handleGate(request, env)
       if (path === '/resolve' && method === 'POST') return await handleResolve(request, env)
       if (path === '/b' && method === 'GET') return await renderBreathe(request, env)
+
+      // `?lang=zh|en` works on any page, signed in or not — the landing
+      // page footer, the login/register footer and (later) /account all link
+      // to it. Placed after /gate, /resolve and /b so their own contracts
+      // are untouched, but before every other route so it never has to be
+      // repeated per page. A valid value writes the cookie unconditionally
+      // and, if this request also authenticates, `users.locale` too; then it
+      // 303s back to the same path and query with only `lang` stripped — a
+      // `?k=` alongside it survives that strip, so the ordinary `?k=` ->
+      // session-cookie seeding near the bottom of this function still runs
+      // on the next hop. An invalid value is left alone entirely and the
+      // request falls through to the router below as if `lang` had never
+      // been there.
+      const lang = url.searchParams.get('lang')
+      if (lang !== null && isLocale(lang)) {
+        const langAuth = await authenticate(request, env)
+        if (langAuth) await setUserLocale(env.DB, langAuth.user.id, lang)
+        const clean = new URL(url)
+        clean.searchParams.delete('lang')
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: clean.pathname + (clean.search || ''),
+            'set-cookie': langCookie(lang),
+            'cache-control': 'no-store',
+          },
+        })
+      }
+
       if (path === '/mock' && method === 'GET') return renderMock(url)
       if (path === '/' && method === 'GET') return renderLanding(url)
       // robots.txt is the half of the story a meta tag cannot tell: it names

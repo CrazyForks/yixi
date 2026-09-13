@@ -1,0 +1,482 @@
+// Two jobs share this file: the mechanism itself (localeOf / translator /
+// the ?lang= cookie-and-redirect dance / page({lang})) and the guard that
+// keeps translation coverage honest as later i18n tasks wrap the ~600
+// remaining Chinese strings in t()/msg(). See
+// docs/plans/yixi/2026-09-13-i18n-design.md §4 for the guard's contract.
+
+import { env } from 'cloudflare:test'
+import { beforeEach, describe, expect, it } from 'vitest'
+import worker from '../src/index'
+import { register } from '../src/account'
+import { setUserLocale } from '../src/db'
+import { DEFAULT_THEME, page, pageHtml } from '../src/ui/layout'
+import {
+  LANG_COOKIE,
+  htmlLang,
+  isLocale,
+  langCookie,
+  localeOf,
+  msg,
+  translator,
+} from '../src/i18n'
+import { EN } from '../src/i18n/en'
+
+// --- raw source for the guard, read the same way test/wrangler-config.test.ts
+// reads wrangler.toml: vitest-pool-workers runs inside workerd, where
+// node:fs is unavailable, so files are pulled in as plain-text Vite assets
+// (test/env.d.ts declares `*?raw`) rather than opened at runtime.
+
+import accountRaw from '../src/account.ts?raw'
+import candidatesRaw from '../src/api/candidates.ts?raw'
+import authRaw from '../src/auth.ts?raw'
+import cryptoRaw from '../src/crypto.ts?raw'
+import datesRaw from '../src/dates.ts?raw'
+import dbRaw from '../src/db.ts?raw'
+import gateRaw from '../src/gate.ts?raw'
+import i18nEnRaw from '../src/i18n/en.ts?raw'
+import i18nIndexRaw from '../src/i18n/index.ts?raw'
+import inappRaw from '../src/inapp.ts?raw'
+import indexRaw from '../src/index.ts?raw'
+import ratelimitRaw from '../src/ratelimit.ts?raw'
+import schemeRaw from '../src/scheme.ts?raw'
+import snapshotRaw from '../src/snapshot.ts?raw'
+import statsRaw from '../src/stats.ts?raw'
+import turnstileRaw from '../src/turnstile.ts?raw'
+import typesRaw from '../src/types.ts?raw'
+import uiAccountRaw from '../src/ui/account.ts?raw'
+import uiBreatheRaw from '../src/ui/breathe.ts?raw'
+import uiConsoleRaw from '../src/ui/console.ts?raw'
+import uiGoalsRaw from '../src/ui/goals.ts?raw'
+import uiIconsRaw from '../src/ui/icons.ts?raw'
+import uiLandingRaw from '../src/ui/landing.ts?raw'
+import uiLayoutRaw from '../src/ui/layout.ts?raw'
+import uiMockRaw from '../src/ui/mock.ts?raw'
+import uiProgressRaw from '../src/ui/progress.ts?raw'
+import uiPwaRaw from '../src/ui/pwa.ts?raw'
+import uiReviewRaw from '../src/ui/review.ts?raw'
+import uiSchemefieldRaw from '../src/ui/schemefield.ts?raw'
+import uiSettingsRaw from '../src/ui/settings.ts?raw'
+import uiTodayRaw from '../src/ui/today.ts?raw'
+import uiTodaysetupRaw from '../src/ui/todaysetup.ts?raw'
+
+const BASE = 'https://yixi.test'
+
+// ============================================================================
+// Mechanism
+// ============================================================================
+
+describe('isLocale', () => {
+  it('accepts only the two known locales', () => {
+    expect(isLocale('zh')).toBe(true)
+    expect(isLocale('en')).toBe(true)
+    expect(isLocale('fr')).toBe(false)
+    expect(isLocale('')).toBe(false)
+    expect(isLocale(null)).toBe(false)
+  })
+})
+
+describe('localeOf', () => {
+  function req(url: string, headers?: Record<string, string>): Request {
+    return new Request(url, headers ? { headers } : undefined)
+  }
+
+  it('falls back to zh with no language information at all — the existing suite\'s baseline', () => {
+    expect(localeOf(req(`${BASE}/today`), null)).toBe('zh')
+  })
+
+  it('honours Accept-Language only once nothing more specific is present', () => {
+    expect(localeOf(req(`${BASE}/today`, { 'Accept-Language': 'en-US,en;q=0.9' }), null)).toBe('en')
+    expect(localeOf(req(`${BASE}/today`, { 'Accept-Language': 'zh-CN,zh;q=0.9' }), null)).toBe('zh')
+    expect(localeOf(req(`${BASE}/today`, { 'Accept-Language': 'fr-FR,fr;q=0.9' }), null)).toBe('en')
+  })
+
+  it('prefers the yixi_lang cookie over Accept-Language', () => {
+    const request = req(`${BASE}/today`, { Cookie: `${LANG_COOKIE}=en`, 'Accept-Language': 'zh-CN' })
+    expect(localeOf(request, null)).toBe('en')
+  })
+
+  it('ignores a malformed cookie value and falls through to Accept-Language', () => {
+    const request = req(`${BASE}/today`, { Cookie: `${LANG_COOKIE}=fr`, 'Accept-Language': 'en-US' })
+    expect(localeOf(request, null)).toBe('en')
+  })
+
+  it('prefers user.locale over the cookie', () => {
+    const request = req(`${BASE}/today`, { Cookie: `${LANG_COOKIE}=zh` })
+    expect(localeOf(request, { locale: 'en' })).toBe('en')
+  })
+
+  it('treats an absent or null user.locale exactly like no preference', () => {
+    const request = req(`${BASE}/today`, { Cookie: `${LANG_COOKIE}=en` })
+    expect(localeOf(request, { locale: null })).toBe('en')
+    expect(localeOf(request, {})).toBe('en')
+  })
+
+  it('prefers ?lang= over everything else', () => {
+    const request = req(`${BASE}/today?lang=en`, { Cookie: `${LANG_COOKIE}=zh` })
+    expect(localeOf(request, { locale: 'zh' })).toBe('en')
+  })
+
+  it('ignores an invalid ?lang= and falls through to the next level', () => {
+    const request = req(`${BASE}/today?lang=fr`, { Cookie: `${LANG_COOKIE}=en` })
+    expect(localeOf(request, { locale: 'zh' })).toBe('zh')
+  })
+})
+
+describe('translator', () => {
+  it('zh returns the source verbatim, with placeholders filled', () => {
+    const t = translator('zh')
+    expect(t('还剩 {n} 秒')).toBe('还剩 {n} 秒')
+    expect(t('还剩 {n} 秒', { n: 5 })).toBe('还剩 5 秒')
+  })
+
+  it('zh leaves an unmatched placeholder untouched', () => {
+    expect(translator('zh')('还剩 {n} 秒', {})).toBe('还剩 {n} 秒')
+  })
+
+  it('en falls back to the Chinese source when no translation exists, still filling placeholders', () => {
+    const t = translator('en')
+    expect(t('一个从未翻译过的短语 {n}', { n: 1 })).toBe('一个从未翻译过的短语 1')
+  })
+
+  it('en uses the EN dictionary entry when one exists', () => {
+    const key = '__i18n_mechanism_test_only__ {n}'
+    EN[key] = 'translated {n}'
+    try {
+      expect(translator('en')(key, { n: 7 })).toBe('translated 7')
+    } finally {
+      delete EN[key]
+    }
+  })
+})
+
+describe('msg', () => {
+  it('is the identity function — a marker for the guard, not a translator', () => {
+    expect(msg('原样返回')).toBe('原样返回')
+  })
+})
+
+describe('htmlLang', () => {
+  it('maps zh to zh-Hans and en to en', () => {
+    expect(htmlLang('zh')).toBe('zh-Hans')
+    expect(htmlLang('en')).toBe('en')
+  })
+})
+
+describe('langCookie', () => {
+  it('is a one-year, HttpOnly, Secure, SameSite=Lax cookie at Path=/', () => {
+    expect(langCookie('en')).toBe('yixi_lang=en; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000')
+    expect(langCookie('zh')).toBe('yixi_lang=zh; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000')
+  })
+})
+
+describe('page({ lang }) / pageHtml({ lang })', () => {
+  it('defaults to zh-Hans, byte for byte what every page emitted before lang existed', () => {
+    expect(pageHtml({ title: 't', theme: DEFAULT_THEME, body: '' })).toContain('<html lang="zh-Hans">')
+  })
+
+  it('emits zh-Hans when asked for zh explicitly', () => {
+    expect(pageHtml({ title: 't', theme: DEFAULT_THEME, body: '', lang: 'zh' })).toContain('<html lang="zh-Hans">')
+  })
+
+  it('emits en when asked', () => {
+    expect(pageHtml({ title: 't', theme: DEFAULT_THEME, body: '', lang: 'en' })).toContain('<html lang="en">')
+  })
+
+  it('page() carries the same attribute through the Response body', async () => {
+    const res = page({ title: 't', theme: DEFAULT_THEME, body: '', lang: 'en' })
+    expect(await res.text()).toContain('<html lang="en">')
+  })
+})
+
+describe('?lang= handling in the router', () => {
+  async function reset(): Promise<void> {
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM sessions_web'),
+      env.DB.prepare('DELETE FROM rate_limit'),
+      env.DB.prepare('DELETE FROM user_apps'),
+      env.DB.prepare('DELETE FROM users'),
+    ])
+  }
+  beforeEach(reset)
+
+  function get(path: string): Promise<Response> {
+    return worker.fetch(new Request(`${BASE}${path}`), env)
+  }
+
+  it('sets the cookie and 303s to the same path with lang stripped, for a signed-out visitor', async () => {
+    const res = await get('/?lang=en')
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/')
+    expect(res.headers.get('set-cookie')).toContain(`${LANG_COOKIE}=en`)
+  })
+
+  it('keeps the rest of the query string, dropping only lang', async () => {
+    const res = await get('/setup?show=1&lang=en')
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/setup?show=1')
+  })
+
+  it('ignores an invalid value and falls through to the normal router', async () => {
+    const res = await get('/?lang=fr')
+    expect(res.status).not.toBe(303)
+  })
+
+  it('leaves /gate alone — its fail-open contract runs before lang is ever looked at', async () => {
+    const res = await get('/gate?lang=en')
+    expect(res.headers.get('location')).not.toBe('/gate')
+  })
+
+  it('writes users.locale when the request also authenticates, and keeps k= for the next hop', async () => {
+    const created = await register(env, { email: 'lang@example.com', password: 'correct-horse-1' })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const res = await get(`/today?k=${created.token}&lang=en`)
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe(`/today?k=${created.token}`)
+    expect(res.headers.get('set-cookie')).toContain(`${LANG_COOKIE}=en`)
+
+    const row = await env.DB.prepare('SELECT locale FROM users WHERE id = ?1')
+      .bind(created.user.id)
+      .first<{ locale: string | null }>()
+    expect(row?.locale).toBe('en')
+  })
+
+  it('a later request with no ?lang= at all still resolves to the stored locale', async () => {
+    const created = await register(env, { email: 'persist@example.com', password: 'correct-horse-1' })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    await setUserLocale(env.DB, created.user.id, 'en')
+    const row = await env.DB.prepare('SELECT locale FROM users WHERE id = ?1')
+      .bind(created.user.id)
+      .first<{ locale: string | null }>()
+
+    // This is the mechanism-level half of "登录后 users.locale 被写入、下次不带
+    // 参数仍英文": a page wiring localeOf(request, user) into its own render is
+    // a later i18n task's job (see task-2..4 briefs), not this one's — but the
+    // fact that the stored column drives localeOf with no ?lang= and no cookie
+    // present is exactly what this task's mechanism must already guarantee.
+    const bareRequest = new Request(`${BASE}/today`)
+    expect(localeOf(bareRequest, { locale: row?.locale ?? null })).toBe('en')
+  })
+})
+
+// ============================================================================
+// Guard
+// ============================================================================
+
+/**
+ * Files a later i18n task has fully converted — every user-visible string
+ * wrapped in `t()`/`msg()`, nothing left in the raw Chinese. Empty until the
+ * first such task lands; each one appends its own paths here (and a matching
+ * entry in SOURCES below) — that two-line diff is the entire cost of
+ * extending this guard to a new file.
+ */
+export const CONVERTED: string[] = []
+
+/** Raw source for each CONVERTED path, keyed the same way. */
+const SOURCES: Record<string, string> = {
+  // 'src/ui/today.ts': uiTodayRaw,   <- what a later task's two-line addition
+  //                                     looks like: one entry here, one path
+  //                                     pushed onto CONVERTED above.
+}
+
+/**
+ * Every file under src/ meant to carry user-visible copy, minus the three
+ * that never will: api/admin.ts (owner-only tool), schemes.ts (App display
+ * names are data, not UI copy) and ui/setup.ts (batch 2's long tutorial,
+ * translated in its own task so it never sits half-done here).
+ *
+ * Unlike CONVERTED/SOURCES above, nothing here is on the honour system: every
+ * `t()`/`msg()` source found in any of these files must already have an EN
+ * key the moment it is written, whichever task adds it — guard ② below scans
+ * all of them, not just the ones a task remembered to list.
+ */
+const ALL_SOURCES: Record<string, string> = {
+  'src/account.ts': accountRaw,
+  'src/api/candidates.ts': candidatesRaw,
+  'src/auth.ts': authRaw,
+  'src/crypto.ts': cryptoRaw,
+  'src/dates.ts': datesRaw,
+  'src/db.ts': dbRaw,
+  'src/gate.ts': gateRaw,
+  'src/i18n/en.ts': i18nEnRaw,
+  'src/i18n/index.ts': i18nIndexRaw,
+  'src/inapp.ts': inappRaw,
+  'src/index.ts': indexRaw,
+  'src/ratelimit.ts': ratelimitRaw,
+  'src/scheme.ts': schemeRaw,
+  'src/snapshot.ts': snapshotRaw,
+  'src/stats.ts': statsRaw,
+  'src/turnstile.ts': turnstileRaw,
+  'src/types.ts': typesRaw,
+  'src/ui/account.ts': uiAccountRaw,
+  'src/ui/breathe.ts': uiBreatheRaw,
+  'src/ui/console.ts': uiConsoleRaw,
+  'src/ui/goals.ts': uiGoalsRaw,
+  'src/ui/icons.ts': uiIconsRaw,
+  'src/ui/landing.ts': uiLandingRaw,
+  'src/ui/layout.ts': uiLayoutRaw,
+  'src/ui/mock.ts': uiMockRaw,
+  'src/ui/progress.ts': uiProgressRaw,
+  'src/ui/pwa.ts': uiPwaRaw,
+  'src/ui/review.ts': uiReviewRaw,
+  'src/ui/schemefield.ts': uiSchemefieldRaw,
+  'src/ui/settings.ts': uiSettingsRaw,
+  'src/ui/today.ts': uiTodayRaw,
+  'src/ui/todaysetup.ts': uiTodaysetupRaw,
+}
+
+const CJK_RE = /[一-鿿]/
+const CHINESE_PUNCT_RE = /[「」，。！？；：（）]/
+const WHITELIST = ['一息', 'zh-Hans', '中文']
+/** First arg of a `t(...)` or `msg(...)` call: quote char in group 1, body in group 2. */
+const CALL_ARG_RE = /\b(?:t|msg)\(\s*(['"])((?:\\.|(?!\1).)*)\1/g
+const TEMPLATE_ARG_RE = /\b(?:t|msg)\(\s*`/
+
+/** Removes `/* … *‍/` blocks and any line whose first non-space characters are `//` or `*`. */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trimStart()
+      return !trimmed.startsWith('//') && !trimmed.startsWith('*')
+    })
+    .join('\n')
+}
+
+/**
+ * Interprets the handful of escapes a real `t()`/`msg()` call could plausibly
+ * contain. Not a full JS string-literal parser — workerd disallows
+ * generating code from strings (no `eval`/`new Function`), so this is a
+ * small hand-rolled unescaper instead; unrecognised escapes fall back to the
+ * character itself, same as a JS engine does for an escape it does not know.
+ */
+function unescapeStringLiteral(content: string): string {
+  return content.replace(/\\(.)/g, (_whole, ch: string) => {
+    switch (ch) {
+      case 'n':
+        return '\n'
+      case 't':
+        return '\t'
+      case 'r':
+        return '\r'
+      default:
+        return ch
+    }
+  })
+}
+
+/** Every literal first argument passed to `t(` or `msg(` in this source. */
+function extractCalls(src: string): string[] {
+  const out: string[] = []
+  for (const m of stripComments(src).matchAll(CALL_ARG_RE)) {
+    out.push(unescapeStringLiteral(m[2]))
+  }
+  return out
+}
+
+/**
+ * Comments stripped, and every `t()`/`msg()` first-argument literal blanked
+ * out (down to the call's own open paren) — so a legitimate translation
+ * source string cannot itself trip "no residual Chinese outside t()/msg()".
+ */
+function withoutCallArgs(src: string): string {
+  return stripComments(src).replace(CALL_ARG_RE, (whole, quote: string) => whole.slice(0, whole.indexOf(quote)))
+}
+
+function hasResidualChinese(text: string): boolean {
+  let cleaned = text
+  for (const w of WHITELIST) cleaned = cleaned.split(w).join('')
+  return CJK_RE.test(cleaned)
+}
+
+function placeholdersOf(s: string): string[] {
+  return [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+}
+
+describe('guard helpers', () => {
+  it('strips block and line comments before scanning', () => {
+    const src = "/* 你好 */\n// 世界\nconst x = t('保留')\n"
+    expect(hasResidualChinese(withoutCallArgs(src))).toBe(false)
+  })
+
+  it('flags Chinese left outside t()/msg()', () => {
+    expect(hasResidualChinese(withoutCallArgs("const label = '未包裹的中文'"))).toBe(true)
+  })
+
+  it('extracts t() and msg() first arguments alike, unescaping \\n', () => {
+    const src = "t('你好 {name}\\n再见'); msg(\"再见\")"
+    expect(extractCalls(src)).toEqual(['你好 {name}\n再见', '再见'])
+  })
+
+  it('is whitelist-aware for 一息 / zh-Hans / 中文', () => {
+    const src = "const brand = '一息'; const attr = 'zh-Hans'; const label = '中文'"
+    expect(hasResidualChinese(withoutCallArgs(src))).toBe(false)
+  })
+
+  it('placeholdersOf finds every {name}, order-independent', () => {
+    expect(placeholdersOf('还剩 {n} 秒，{who} 的第 {n} 次')).toEqual(['n', 'n', 'who'])
+  })
+})
+
+describe('guard ①: every CONVERTED file carries no residual Chinese', () => {
+  it('has none left outside t()/msg() sources', () => {
+    for (const path of CONVERTED) {
+      const src = SOURCES[path]
+      expect(typeof src, `${path} listed in CONVERTED but missing from SOURCES`).toBe('string')
+      expect(hasResidualChinese(withoutCallArgs(src ?? '')), `${path} still has un-t()-wrapped Chinese`).toBe(false)
+    }
+  })
+})
+
+describe('guard ②: every t()/msg() source anywhere in src/ has an EN key', () => {
+  it('covers every file except api/admin.ts, schemes.ts, ui/setup.ts', () => {
+    const missing: string[] = []
+    for (const [path, src] of Object.entries(ALL_SOURCES)) {
+      for (const call of extractCalls(src)) {
+        if (!(call in EN)) missing.push(`${path}: ${JSON.stringify(call)}`)
+      }
+    }
+    expect(missing, missing.join('\n')).toEqual([])
+  })
+})
+
+describe('guard ③: en.ts entries are clean, faithful translations', () => {
+  it('contains no residual Chinese characters other than 一息', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      const withoutBrand = translation.split('一息').join('')
+      expect(CJK_RE.test(withoutBrand), `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} still has Chinese`).toBe(false)
+    }
+  })
+
+  it('uses no Chinese punctuation', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      expect(
+        CHINESE_PUNCT_RE.test(translation),
+        `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} uses Chinese punctuation`,
+      ).toBe(false)
+    }
+  })
+
+  it('keeps the same {placeholder} set as its source', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      expect(placeholdersOf(translation), `EN[${JSON.stringify(zh)}]`).toEqual(placeholdersOf(zh))
+    }
+  })
+})
+
+describe('guard ④: no template literal as the first t()/msg() argument', () => {
+  it('forbids it across every scanned file (comments excepted — this line names the pattern)', () => {
+    const offenders = Object.entries(ALL_SOURCES)
+      .filter(([, src]) => TEMPLATE_ARG_RE.test(stripComments(src)))
+      .map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
+  it('still catches one outside a comment', () => {
+    expect(TEMPLATE_ARG_RE.test(stripComments("const x = t(`hi ${name}`)"))).toBe(true)
+  })
+})

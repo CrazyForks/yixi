@@ -35,6 +35,14 @@ export interface User {
   name: string
   is_owner: number
   created_at: number
+  /**
+   * The language this user has chosen ('zh' | 'en'), or NULL/unset if they
+   * never have. Optional — not just nullable — so every existing `User`
+   * literal in the test suite keeps compiling unedited; see
+   * src/i18n/index.ts's `localeOf`, which treats a missing property exactly
+   * like a NULL one.
+   */
+  locale?: string | null
 }
 
 export interface UserApp {
