@@ -157,7 +157,7 @@ describe('/today in English', () => {
     const g = await seed('健身')
     await toggleCheckin(env.DB, 1, g, TODAY, NOW)
     const main = mainOf(await todayHtml())
-    expect(main).toContain('Today’s things are done.')
+    expect(main).toContain('That is everything for today.')
     expect(main).toContain('The rest can wait until tomorrow.')
     expect(main).not.toMatch(/[!！]/)
   })
@@ -178,7 +178,17 @@ describe('/today/goals in English', () => {
   it('translates the page, the add form and the field labels', async () => {
     const html = await goalsHtml()
     expect(html).toContain('<html lang="en">')
-    const main = withoutSchemeField(mainOf(html))
+
+    // The scheme field's own three strings live in goals.ts (label, placeholder
+    // and hint are passed *into* schemefield.ts), so they are this task's to
+    // translate even though the component around them is not — assert them
+    // before withoutSchemeField() cuts the block out below.
+    const whole = mainOf(html)
+    expect(whole).toContain('Where the button jumps · optional')
+    expect(whole).toContain('placeholder="instagram:// or https://…"')
+    expect(whole).toContain('Link <b>the exact lesson, the exact book</b>')
+
+    const main = withoutSchemeField(whole)
     expect(main).toContain('<h1>Goals</h1>')
     expect(main).toContain('The top three show up on <a href="/today">Today</a>.')
     expect(main).toContain('Add a goal')
@@ -220,7 +230,7 @@ describe('/today/review in English', () => {
     expect(main).toContain('<h2>Each goal</h2>')
     expect(main).toContain('<h2>This week</h2>')
     expect(main).toContain('10 days · 1 checked')
-    expect(main).toContain('The interception side keeps its record under <a href="/review">Log</a>.')
+    expect(main).toContain('Breathe keeps its own record under <a href="/review">Log</a>.')
     expect(main).not.toMatch(CHINESE_PUNCT)
     expect(main).not.toMatch(/[!！]/)
   })
@@ -231,7 +241,7 @@ describe('/today/setup in English', () => {
     const html = await setupHtml()
     expect(html).toContain('<html lang="en">')
     const main = mainOf(html)
-    expect(main).toContain('<h1>Setup</h1>')
+    expect(main).toContain('<h1>Guide</h1>')
     expect(main).toContain('Add to Home Screen')
     expect(main).toContain('Shortcuts')
     expect(main).toContain(`${BASE}/today`)
@@ -249,7 +259,7 @@ describe('the shared console header', () => {
     for (const html of [await todayHtml(), await goalsHtml(), await progressHtml(), await setupHtml()]) {
       const nav = html.match(/<nav aria-label="Navigation">([\s\S]*?)<\/nav>/)
       expect(nav, 'nav missing or still labelled in Chinese').toBeTruthy()
-      for (const label of ['Today', 'Goals', 'Review', 'Setup', 'Account']) {
+      for (const label of ['Today', 'Goals', 'Review', 'Guide', 'Account']) {
         expect(nav![1]).toContain(`<span class="lb">${label}</span>`)
       }
     }
@@ -258,7 +268,7 @@ describe('the shared console header', () => {
   it('offers the other face in English beside the brand, keeping the brand itself', async () => {
     const html = await todayHtml()
     expect(html).toContain('<span class="brand">一息</span><span class="facename">· Today</span>')
-    expect(html).toMatch(/<a class="face" href="\/review">Intercept\s*›<\/a>/)
+    expect(html).toMatch(/<a class="face" href="\/review">Breathe\s*›<\/a>/)
   })
 })
 

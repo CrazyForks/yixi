@@ -114,15 +114,15 @@ async function render(request: Request, env: Env, user: User, loc: Locale, t: T)
   const checked = new Set(checkins.map((c) => `${c.goal_id}:${c.date}`))
 
   const cards: Card[] = top.map((g, i) => {
-    const mine = tasks.filter((t) => t.goal_id === g.id)
-    const undone = mine.filter((t) => t.done_at === null)
+    const mine = tasks.filter((tk) => tk.goal_id === g.id)
+    const undone = mine.filter((tk) => tk.done_at === null)
     return {
       goal: g,
       hero: i === 0,
       checked: checked.has(`${g.id}:${today}`),
       next: undone[0] ?? null,
       moreUndone: Math.max(0, undone.length - 1),
-      doneToday: mine.filter((t) => t.done_at !== null && shanghaiDate(t.done_at) === today),
+      doneToday: mine.filter((tk) => tk.done_at !== null && shanghaiDate(tk.done_at) === today),
       dots: days.map((d) => checked.has(`${g.id}:${d}`)),
     }
   })
@@ -157,7 +157,7 @@ function emptyState(t: T): string {
   return `<form class="card quick" method="post" action="/today">
   <p class="q1">${t('先写一件最重要的事。')}</p>
   <div class="row">
-    <input type="text" name="title" placeholder="${t('健身')}" maxlength="${TITLE_MAX}" required aria-label="${t('目标')}">
+    <input type="text" name="title" placeholder="${t('健身')}" maxlength="${TITLE_MAX}" required aria-label="${t('新目标')}">
     <button class="primary" type="submit" name="op" value="quick_add">${t('记下')}</button>
   </div>
 </form>`

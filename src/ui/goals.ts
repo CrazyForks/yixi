@@ -163,10 +163,10 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   const goals = await listGoals(env.DB, user.id)
   const tasks = await listTasks(env.DB, user.id)
   const byGoal = new Map<number, GoalTask[]>()
-  for (const t of tasks) {
-    const arr = byGoal.get(t.goal_id) ?? []
-    arr.push(t)
-    byGoal.set(t.goal_id, arr)
+  for (const task of tasks) {
+    const arr = byGoal.get(task.goal_id) ?? []
+    arr.push(task)
+    byGoal.set(task.goal_id, arr)
   }
   const live = goals.filter((g) => g.archived_at === null && !isExpired(g, today))
   const expired = goals.filter((g) => g.archived_at === null && isExpired(g, today))
@@ -247,7 +247,7 @@ function goalFields(d: Draft, ns: string, t: T): string {
 
 function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean; draft?: Draft }, t: T): string {
   const d: Draft = o.draft ?? { title: g.title, cue: g.cue, target: g.target, target_label: g.target_label, until: g.until ?? '' }
-  const undone = tasks.filter((t) => t.done_at === null)
+  const undone = tasks.filter((tk) => tk.done_at === null)
   const ns = `g${g.id}`
   return `<details class="app" id="goal-${g.id}"${o.draft ? ' open' : ''}>
   <summary>
