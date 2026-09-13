@@ -149,4 +149,49 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:28px 0 18px}
 .note-tight{margin-bottom:14px}
 .note.flat{margin:0}
 p.flat{margin:0}
+
+/* --- add, at the top, one tap when closed --- */
+.add{margin:0 0 22px}
+.add > summary.addbtn{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  border:1px dashed var(--rule);border-radius:14px;padding:15px;
+  color:var(--dim);font-size:16px;letter-spacing:.04em;cursor:pointer;list-style:none;
+}
+.add > summary.addbtn::-webkit-details-marker{display:none}
+.add > summary.addbtn::marker{content:""}
+.add > summary.addbtn:active{opacity:.7}
+.add[open] > summary.addbtn{
+  border-style:solid;color:var(--fg);border-radius:14px 14px 0 0;border-bottom:0;padding:14px 16px;
+  justify-content:flex-start;
+}
+.add[open] > summary.addbtn .ic{transform:rotate(45deg);transition:transform .18s ease}
+.add > .addform{border-radius:0 0 14px 14px;margin:0}
+
+/* --- one configured app, collapsed to a line --- */
+details.app{margin:0 0 10px;border:1px solid var(--rule);border-radius:14px;overflow:hidden}
+details.app.off{opacity:.62}
+details.app > summary{
+  display:flex;align-items:baseline;gap:9px;padding:14px 16px;
+  cursor:pointer;list-style:none;
+}
+details.app > summary::-webkit-details-marker{display:none}
+details.app > summary::marker{content:""}
+details.app > summary:active{background:var(--ring-track)}
+details.app[open] > summary{border-bottom:1px solid var(--rule)}
+.sname{font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.skey{font-size:13px;color:var(--faint);flex:0 0 auto}
+.mini{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;
+  font-size:13px;color:var(--faint);white-space:nowrap}
+.mini .ic{width:14px;height:14px}
+.mini .ic:not(:first-child){margin-left:5px}
+details.app > summary .badge{margin-left:auto}
+/* Without this nothing on a collapsed row says it opens. The row went from
+   「a form you scroll past」 to 「a line you tap」, and a line that looks like
+   plain text is a line nobody taps. */
+details.app > summary .chev{flex:0 0 auto;width:14px;height:14px;color:var(--faint);
+  margin-left:8px;transition:transform .18s ease}
+details.app[open] > summary .chev{transform:rotate(90deg)}
+/* The form inside carries the card's padding but not its border — the <details>
+   is the card now, so a second outline would draw a box inside a box. */
+details.app > form.card{border:0;border-radius:0;margin:0}
 ${ICON_CSS}`
