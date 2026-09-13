@@ -48,7 +48,7 @@ import { shanghaiDate } from '../db'
 import { TURNSTILE_FIELD, turnstileKeys, verifyTurnstile } from '../turnstile'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { localeOf, msg, translator, type Locale, type T } from '../i18n'
-import { DEFAULT_THEME, escapeHtml, langSwitch, page } from './layout'
+import { DEFAULT_THEME, escapeHtml, jsonForScript, langSwitch, page } from './layout'
 
 /**
  * Mirrors src/account.ts, which is the authority and re-checks every one of
@@ -78,11 +78,16 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
   const turnstile = turnstileKeys(env)
   const siteKey = turnstile?.siteKey ?? null
 
-  if (request.method === 'GET') return registerPage({ siteKey, loc, t })
+  // Everything every render of this page needs before it has anything to say.
+  // `search` is here rather than at each call site so the footer switcher keeps
+  // the query on the four error renders too, not just on the first GET.
+  const base = { siteKey, loc, t, search: new URL(request.url).search }
+
+  if (request.method === 'GET') return registerPage(base)
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return registerPage({ siteKey, loc, t, error: t(FORM_UNREADABLE), status: 400 })
+  if (!form) return registerPage({ ...base, error: t(FORM_UNREADABLE), status: 400 })
 
   const draft: SignupDraft = { email: field(form, 'email'), name: field(form, 'name') }
   const password = secret(form, 'password')
@@ -101,13 +106,13 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
     // One sentence for every way this can fail — no token, expired token,
     // replayed token, forged token — in the same spirit as /login below. The
     // outcome type does not even carry the reason, so this cannot drift.
-    return registerPage({ siteKey, loc, t, draft, error: t(CHALLENGE_FAILED), status: 400 })
+    return registerPage({ ...base, draft, error: t(CHALLENGE_FAILED), status: 400 })
   }
 
   // Whether two boxes match is a question about this form, not about the
   // account, so it never reaches src/account.ts.
   if (password !== secret(form, 'password2')) {
-    return registerPage({ siteKey, loc, t, draft, error: t(MISMATCH), status: 400 })
+    return registerPage({ ...base, draft, error: t(MISMATCH), status: 400 })
   }
 
   const res = await register(env, { email: draft.email, password, name: draft.name || undefined })
@@ -119,7 +124,7 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
       res.error === 'email_taken'
         ? { href: `/login?email=${encodeURIComponent(draft.email)}`, label: t('去登录 →') }
         : undefined
-    return registerPage({ siteKey, loc, t, draft, error: accountErrorMessage(res.error, t), status: 400, action })
+    return registerPage({ ...base, draft, error: accountErrorMessage(res.error, t), status: 400, action })
   }
 
   // 303 rather than rendering the account page from this POST: a phone that
@@ -145,6 +150,8 @@ interface RegisterOptions extends Lang {
   error?: string
   status?: number
   action?: { href: string; label: string }
+  /** The request's query string, for the footer switcher; see `langSwitch`. */
+  search?: string
 }
 
 function registerPage(o: RegisterOptions): Response {
@@ -155,6 +162,7 @@ function registerPage(o: RegisterOptions): Response {
     lang: o.loc,
     t,
     langSwitch: true,
+    ...(o.search ? { search: o.search } : {}),
     status: o.status,
     // The only page in the product that loads anything from another host, and
     // only while a widget is actually configured. layout.ts explains the break.
@@ -201,20 +209,24 @@ ${banner(o.error, 'bad', o.action)}
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   const loc = localeOf(request, null)
   const t = translator(loc)
-  const q = new URL(request.url).searchParams
+  const url = new URL(request.url)
+  const q = url.searchParams
   const next = safeNext(q.get('next'), request.url)
+  // Kept for the footer switcher, so tapping English on /login?next=/settings
+  // does not quietly throw the destination away. See `langSwitch`.
+  const search = url.search
 
   if (request.method === 'GET') {
     // Arriving either from the "already registered" banner with the address
     // already typed once, or from a signed-out tap on a console link. Both
     // deserve to land where they were going.
     const prefill = q.get('email') ?? ''
-    return loginPage({ loc, t, ...(prefill ? { email: prefill } : {}), next })
+    return loginPage({ loc, t, search, ...(prefill ? { email: prefill } : {}), next })
   }
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return loginPage({ loc, t, error: t(FORM_UNREADABLE), status: 400 })
+  if (!form) return loginPage({ loc, t, search, error: t(FORM_UNREADABLE), status: 400 })
 
   const email = field(form, 'email')
   const res = await login(env, { email, password: secret(form, 'password') })
@@ -226,7 +238,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   // person use 一息" is itself worth hiding, so the failed response — message,
   // status, and every byte of markup — is identical for a stranger and for a
   // real account with a typo'd password.
-  if (!res.ok) return loginPage({ loc, t, email, error: accountErrorMessage(res.error, t), status: 401, next })
+  if (!res.ok) return loginPage({ loc, t, search, email, error: accountErrorMessage(res.error, t), status: 401, next })
   return seeOther(next ?? '/review', res.setCookie)
 }
 
@@ -235,6 +247,8 @@ interface LoginOptions extends Lang {
   next?: string
   error?: string
   status?: number
+  /** The request's query string, for the footer switcher; see `langSwitch`. */
+  search?: string
 }
 
 function loginPage(o: LoginOptions): Response {
@@ -244,6 +258,7 @@ function loginPage(o: LoginOptions): Response {
     lang: o.loc,
     t,
     langSwitch: true,
+    ...(o.search ? { search: o.search } : {}),
     status: o.status,
     body: `<h1>${t('登录')}</h1>
 <p class="lede">${t('登录只是为了让你在这几个页面上看到自己的记录和 token。快捷指令那边不受影响，它认的一直是 token。')}</p>
@@ -681,9 +696,13 @@ function bindCard(t: T): string {
  * token so iOS offers 拷贝 on the long-press menu.
  *
  * Built per request rather than held as a constant, because the two words it
- * puts on the button are copy like any other. `JSON.stringify` rather than
+ * puts on the button are copy like any other. `jsonForScript` rather than
  * quotes of our own: a translation is allowed an apostrophe, which would
- * otherwise end the string literal it sits in.
+ * otherwise end the string literal it sits in. It is `jsonForScript` rather
+ * than a bare `JSON.stringify` because this is a classic `<script>`, where the
+ * parser looks for `</script` inside the string before JavaScript ever sees it
+ * — neither of today's two words contains one, and that is a fact about the
+ * copy, not a property of the escaping. The next translation is not bound by it.
  */
 function copyScript(t: T): string {
   return `
@@ -691,13 +710,13 @@ var b=document.getElementById('cp'),t=document.getElementById('tok');
 if(b&&t){b.addEventListener('click',function(){
   var s=t.textContent||'';
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(s).then(function(){b.textContent=${JSON.stringify(t('已复制'))}},select);
+    navigator.clipboard.writeText(s).then(function(){b.textContent=${jsonForScript(t('已复制'))}},select);
   }else{select()}
   function select(){
     var r=document.createRange();r.selectNodeContents(t);
     var sel=window.getSelection();
     if(sel){sel.removeAllRanges();sel.addRange(r)}
-    b.textContent=${JSON.stringify(t('已选中，长按拷贝'))};
+    b.textContent=${jsonForScript(t('已选中，长按拷贝'))};
   }
 })}`
 }
@@ -719,6 +738,11 @@ interface GatePageOptions {
    * decided, and a switcher on a page whose whole job is one paste is noise.
    */
   langSwitch?: boolean
+  /**
+   * The current URL's query string, so the switcher can keep it. Without it a
+   * tap on English from `/login?next=/settings` throws the destination away.
+   */
+  search?: string
 }
 
 /**
@@ -737,7 +761,7 @@ function gatePage(o: GatePageOptions): Response {
     ...(o.turnstile ? { turnstile: true } : {}),
     body: `<main class="gate">
 <a class="mark" href="/">一息</a>
-${o.body}${o.langSwitch ? `\n<p class="lang">${langSwitch(o.lang, o.t)}</p>` : ''}
+${o.body}${o.langSwitch ? `\n<p class="lang">${langSwitch(o.lang, o.search)}</p>` : ''}
 </main>`,
   })
 }
@@ -769,11 +793,31 @@ function safeNext(raw: string | null, base: string): string | undefined {
     // to normalise, then check the normalised form — the order matters, because
     // this check is only trustworthy on output the parser produced.
     const path = resolved.pathname + resolved.search
-    if (!path.startsWith('/') || path.startsWith('//')) return undefined
-    return path
+    return sameSitePath(path) ? path : undefined
   } catch {
     return undefined
   }
+}
+
+/**
+ * Whether a *parser-normalised* `pathname + search` is safe to hand back as a
+ * `Location` header — that is, whether the browser will stay on this site.
+ *
+ * Exported because `?lang=` in src/index.ts builds a Location out of a
+ * normalised pathname too, and hits the identical trap: `/..//evil.example.com`
+ * normalises to a pathname of `//evil.example.com`, which as a Location is
+ * protocol-relative and leaves the origin entirely. One rule, one home — two
+ * copies of an open-redirect guard is how one of them ends up a version behind.
+ *
+ * `/\` is checked even though the WHATWG parser never emits it for an http(s)
+ * URL (it folds a backslash in the path into `/`, which is why the caller must
+ * normalise first): the cost is one comparison, and the cost of being wrong
+ * about a parser detail here is an open redirect. `%5C` is a different matter —
+ * it stays percent-encoded, so it is an ordinary path character, not an
+ * authority separator.
+ */
+export function sameSitePath(path: string): boolean {
+  return path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\')
 }
 
 const MISMATCH = msg('两次输入的密码不一样，再来一次。')

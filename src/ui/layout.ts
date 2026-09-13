@@ -421,12 +421,29 @@ export function jsSingleQuotedBody(s: string): string {
  * Shared by the landing page's footer and the signed-out account shell so the
  * switcher cannot drift into two designs. Each name is written in its own
  * language — 「中文」 is what a Chinese reader looks for even on an English
- * page — so neither goes through `t`; the optional translator is accepted so a
- * caller that holds one does not have to know that, and so this line can gain
- * translated copy without re-threading every call site.
+ * page — so neither goes through `t`.
+ *
+ * `search` is the current URL's query string, and passing it is the difference
+ * between switching language and losing where you were going: `?lang=en` on its
+ * own *replaces* the query, so tapping English on `/login?next=/settings` used
+ * to sign you in and then drop you on /review. Every other param is carried
+ * across and only `lang` is rewritten. With no query at all the result is the
+ * bare `?lang=en` this emitted before, byte for byte — which is what keeps the
+ * landing page's Chinese output where it was.
+ *
+ * `URLSearchParams` does the encoding, so a param a visitor put in the address
+ * bar cannot break out of the attribute (`"`, `<` and `&` all come back
+ * percent-encoded); `escapeHtml` over the whole href is belt and braces, and
+ * turns the separators this function itself writes into `&amp;`.
  */
-export function langSwitch(loc: Locale, _t?: T): string {
+export function langSwitch(loc: Locale, search = ''): string {
+  const href = (target: Locale): string => {
+    const params = new URLSearchParams(search)
+    params.delete('lang')
+    params.append('lang', target)
+    return escapeHtml('?' + params.toString())
+  }
   return loc === 'en'
-    ? 'English · <a href="?lang=zh">中文</a>'
-    : '<a href="?lang=en">English</a> · 中文'
+    ? `English · <a href="${href('zh')}">中文</a>`
+    : `<a href="${href('en')}">English</a> · 中文`
 }

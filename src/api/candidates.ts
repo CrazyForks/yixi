@@ -29,6 +29,8 @@
 
 import type { Candidate, Confidence } from '../schemes'
 import { deriveFromBundleId, findApps, isCorroborated, suggestKey } from '../schemes'
+import type { User } from '../types'
+import { localeOf, translator, type T } from '../i18n'
 
 // --- wire format -----------------------------------------------------------
 
@@ -194,17 +196,42 @@ export async function searchCandidates(q: string, deps: CandidateDeps = {}): Pro
   return hits.length === 0 ? { state: 'unknown' } : { state: 'derived', hits }
 }
 
+/**
+ * The one part of the answer that is copy rather than data.
+ *
+ * It happens here and not in `searchCandidates` for two reasons. The table in
+ * src/schemes.ts is a module-level constant shared by every request an isolate
+ * serves, so nothing may translate a `Candidate` in place; `toOut` has already
+ * made a per-request copy by the time this runs, and it is that copy this
+ * rewrites. And `searchCandidates` is what the tests assert the *table* through
+ * — a function that answered in whatever language the last caller asked for
+ * would make those assertions depend on a header.
+ *
+ * `t` on a string with no entry in the dictionary returns the string, so a
+ * caveat somebody adds without translating it degrades to Chinese on an English
+ * page rather than vanishing.
+ */
+function localiseCaveats(out: SearchOut, t: T): SearchOut {
+  if (out.state !== 'table' && out.state !== 'derived') return out
+  const hits = out.hits.map((h) => ({
+    ...h,
+    candidates: h.candidates.map((c) => (c.caveat === undefined ? c : { ...c, caveat: t(c.caveat) })),
+  }))
+  return out.state === 'table' ? { state: 'table', hits } : { state: 'derived', hits }
+}
+
 // --- route -----------------------------------------------------------------
 
 export async function handleCandidates(
   request: Request,
   deps: CandidateDeps = {},
+  user: User | null = null,
 ): Promise<Response> {
   const q = new URL(request.url).searchParams.get('q') ?? ''
   // 40 is /settings' own cap on a display name; a longer string is not a search,
   // and passing it on would put it in an outbound URL.
   const out = await searchCandidates(q.slice(0, 40), deps)
-  return new Response(JSON.stringify(out), {
+  return new Response(JSON.stringify(localiseCaveats(out, translator(localeOf(request, user)))), {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       // Authenticated route: the answer is not user-specific, but the request

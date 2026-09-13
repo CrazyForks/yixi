@@ -155,6 +155,8 @@ npm run deploy    # applies migrations against the remote D1, then deploys
 
 Migrations only need to run once; the Pages deployment shares the same database.
 
+**Always deploy with `npm run deploy`, never a bare `wrangler deploy`** — it is the migrations-then-deploy order that keeps the two in step. The current Worker needs `0006_user_locale.sql` in particular: `/gate` reads `users.locale` on its way to knowing who you are, so a Worker deployed against a database without that column stops intercepting anything.
+
 ### 5. Deploy Pages
 
 ```bash
@@ -230,7 +232,7 @@ npx wrangler d1 execute yixi --remote --command \
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 611 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 624 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
@@ -258,7 +260,7 @@ src/ui/goals.ts     /today/goals — add, edit, reorder and archive goals
 src/ui/progress.ts  /today/review — looking back: the 30-day strip, per-goal check-in rate
 src/ui/todaysetup.ts  /today/setup — home screen, Shortcut and timed-automation walkthrough
 src/api/admin.ts    the owner's ticket window, and the privacy line
-migrations/*.sql    D1 schema, five migrations
+migrations/*.sql    D1 schema, six migrations
 scripts/icon.mjs    regenerates the base64 PNG baked into src/ui/pwa.ts
 pages/              Pages entry point (one line) + its own wrangler.toml
 shortcut/README.md  why the Shortcut is shaped the way it is

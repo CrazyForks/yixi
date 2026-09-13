@@ -30,6 +30,7 @@ import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
 import { createGoal, createTask, shanghaiDate, toggleCheckin, upsertUserApp } from '../src/db'
 import type { User } from '../src/types'
+import { translator } from '../src/i18n'
 
 const BASE = 'https://yixi.test'
 const NOW = Date.now()
@@ -224,7 +225,11 @@ describe('/today/review in English', () => {
     expect(main).toContain('<h2>The last 30 days</h2>')
     expect(main).toContain('<h2>Each goal</h2>')
     expect(main).toContain('<h2>This week</h2>')
-    expect(main).toContain('10 days · 1 checked')
+    // Both of these are counts, and English agreement breaks at 1 — 「1 days」,
+    // 「1 have a record」. The wording has to read as a stat line, not as a
+    // sentence that has to agree with the number in it.
+    expect(main).toContain('10-day span · 1 checked')
+    expect(main).toContain('Of 30 days: 1 with a record, 1 done in full.')
     expect(main).toContain('Breathe keeps its own record under <a href="/review">Log</a>.')
     expect(main).not.toMatch(CHINESE_PUNCT)
     expect(main).not.toMatch(/[!！]/)
@@ -335,6 +340,18 @@ describe('the switcher in the signed-out footer', () => {
       const zh = await (await handler(req(path, false))).text()
       expect(zh, path).toContain('<p class="lang"><a href="?lang=en">English</a> · 中文</p>')
     }
+  })
+
+  it('keeps the rest of the query, so switching language does not lose where you were going', async () => {
+    // /login?next=/settings: the footer used to link a bare `?lang=en`, which
+    // replaces the whole query — you switched to English and landed on /review.
+    const html = await (await handleLogin(req('/login?next=/settings'), env)).text()
+    const link = html.match(/<p class="lang">([\s\S]*?)<\/p>/)
+    expect(link, 'the switcher is missing from /login').toBeTruthy()
+    expect(link![1]).toContain('next=%2Fsettings')
+    expect(link![1]).toContain('lang=zh')
+    // The form still carries it too — the two must not disagree.
+    expect(html).toContain('action="/login?next=%2Fsettings"')
   })
 
   it('leaves /claim and /recover without one — by then the language is settled', async () => {
@@ -455,6 +472,29 @@ describe('/settings in English', () => {
 })
 
 describe('/review in English', () => {
+  it('words every count so it reads at one as well as at many', async () => {
+    // Three of the /review numbers can be 1, and 「1 stops」 / 「held 1 times」
+    // is how a page tells the reader it was written for the plural case only.
+    const at = (n: number, hold: number): string =>
+      translator('en')('共 <b class="num">{n}</b> 次拦下，忍住 <b class="num">{hold}</b> 次，放弃率 <b class="num">{rate}</b>。', {
+        n,
+        hold,
+        rate: '50%',
+      })
+    for (const line of [at(1, 1), at(12, 6)]) {
+      expect(line).not.toMatch(/\b1 (?:stops|times)\b/)
+      expect(line).not.toMatch(/[一-鿿]/)
+    }
+    const t = translator('en')
+    expect(t('<b class="num">{n}</b> 次', { n: 1 })).toBe('stops: <b class="num">1</b>')
+    expect(t('{date}：拦下 {n} 次，忍住 {hold}，没做选择 {idle}，进去了 {go}', {
+      date: '9-13', n: 1, hold: 1, idle: 0, go: 0,
+    })).toBe('9-13: stopped 1, held 1, no choice 0, went in 0')
+    expect(t('另有 {n} 次是点「继续」跳回 App 时自动化重复触发的，属于机器噪音，未计入以上任何数字。', { n: 1 })).toContain(
+      'Plus 1 from the automation firing again',
+    )
+  })
+
   it('translates the empty state and the Breathe face nav', async () => {
     const html = await (await renderReview(req('/review'), env, user)).text()
 

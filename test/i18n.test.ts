@@ -39,6 +39,7 @@ import inappRaw from '../src/inapp.ts?raw'
 import indexRaw from '../src/index.ts?raw'
 import ratelimitRaw from '../src/ratelimit.ts?raw'
 import schemeRaw from '../src/scheme.ts?raw'
+import schemesRaw from '../src/schemes.ts?raw'
 import snapshotRaw from '../src/snapshot.ts?raw'
 import statsRaw from '../src/stats.ts?raw'
 import turnstileRaw from '../src/turnstile.ts?raw'
@@ -204,6 +205,30 @@ describe('langSwitch', () => {
     expect(langSwitch('zh')).toBe('<a href="?lang=en">English</a> · 中文')
     expect(langSwitch('en')).toBe('English · <a href="?lang=zh">中文</a>')
   })
+
+  it('is byte for byte what it was when there is no query to carry', () => {
+    // The landing page's Chinese output is pinned to this string.
+    expect(langSwitch('zh', '')).toBe(langSwitch('zh'))
+    expect(langSwitch('en', '')).toBe(langSwitch('en'))
+  })
+
+  it('carries every other param across and rewrites only lang', () => {
+    // /login?next=/settings — switching language used to throw the destination
+    // away, because `?lang=en` replaces the whole query rather than editing it.
+    expect(langSwitch('zh', '?next=%2Fsettings')).toBe(
+      '<a href="?next=%2Fsettings&amp;lang=en">English</a> · 中文',
+    )
+    // A lang already in the query is replaced, not appended a second time.
+    expect(langSwitch('en', '?next=%2Fsettings&lang=en')).toBe(
+      'English · <a href="?next=%2Fsettings&amp;lang=zh">中文</a>',
+    )
+  })
+
+  it('cannot be talked out of its own attribute by a param from the address bar', () => {
+    const html = langSwitch('zh', '?next=" onmouseover="alert(1)')
+    expect(html).not.toContain('onmouseover="')
+    expect(html).toContain('%22')
+  })
 })
 
 describe('htmlLang', () => {
@@ -261,6 +286,37 @@ describe('?lang= handling in the router', () => {
     )
   }
 
+  const isLocaleWrite = (sql: string): boolean => sql.includes('UPDATE users SET locale')
+
+  /**
+   * Every statement one request asked D1 to prepare.
+   *
+   * A write that does not happen leaves nothing behind to assert on — the row
+   * reads the same either way, which is the whole point of skipping it — so the
+   * evidence has to be the statement itself. The Worker takes its `env` as an
+   * argument, so handing it a DB that records what it is asked needs no module
+   * mocking and changes nothing about what actually runs.
+   */
+  async function sqlOf(path: string): Promise<string[]> {
+    const seen: string[] = []
+    const db = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === 'prepare') {
+          return (sql: string) => {
+            seen.push(sql)
+            return target.prepare(sql)
+          }
+        }
+        const value = Reflect.get(target, prop) as unknown
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value
+      },
+    })
+    await worker.fetch(new Request(`${BASE}${path}`), { ...env, DB: db })
+    return seen
+  }
+
   it('does not intercept a POST — /login?lang=en must reach handleLogin with its body intact, not 303 with it dropped', async () => {
     const fields = { email: 'nobody@example.com', password: 'whatever-wrong-1' }
     const withLang = await post('/login?lang=en', fields)
@@ -284,6 +340,54 @@ describe('?lang= handling in the router', () => {
     const res = await get('/setup?show=1&lang=en')
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/setup?show=1')
+
+    const other = await get('/today?lang=en&x=1')
+    expect(other.status).toBe(303)
+    expect(other.headers.get('location')).toBe('/today?x=1')
+  })
+
+  /**
+   * The Location is built out of `url.pathname`, which is the WHATWG parser's
+   * normalised output — and normalising is what makes these three requests
+   * dangerous rather than safe. All three arrive at a pathname of
+   * `//evil.example.com`, and a Location header starting `//` is
+   * protocol-relative: the browser reads what follows as a hostname and leaves
+   * the site, from a link that lived on the real domain. Exactly the shape
+   * src/ui/account.ts's `safeNext` already documents and blocks for `?next=`,
+   * which is why both now ask the same predicate.
+   */
+  it('never answers with an off-site Location, whatever shape the path arrives in', async () => {
+    for (const path of ['/..//evil.example.com', '//evil.example.com', '/\\evil.example.com']) {
+      const res = await get(`${path}?lang=en`)
+      expect(res.status, path).toBe(303)
+      const location = res.headers.get('location') ?? ''
+      expect(location, path).toBe('/')
+      expect(new URL(location, BASE).origin, path).toBe(new URL(BASE).origin)
+      // The choice still takes effect. Refusing the destination is not a reason
+      // to refuse the language — that would make the switcher look broken.
+      expect(res.headers.get('set-cookie'), path).toContain(`${LANG_COOKIE}=en`)
+    }
+  })
+
+  it('spends no write on a language the account has already settled on', async () => {
+    const created = await register(env, { email: 'idem@example.com', password: 'correct-horse-1' })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const first = await sqlOf(`/today?k=${created.token}&lang=en`)
+    expect(first.some(isLocaleWrite), 'the first choice has to be recorded').toBe(true)
+
+    const again = await sqlOf(`/today?k=${created.token}&lang=en`)
+    expect(again.some(isLocaleWrite), 'the column already says en').toBe(false)
+
+    // "No write" must not be reachable by having written the wrong thing.
+    const row = await env.DB.prepare('SELECT locale FROM users WHERE id = ?1')
+      .bind(created.user.id)
+      .first<{ locale: string | null }>()
+    expect(row?.locale).toBe('en')
+
+    const back = await sqlOf(`/today?k=${created.token}&lang=zh`)
+    expect(back.some(isLocaleWrite), 'switching away is a change and must be written').toBe(true)
   })
 
   it('ignores an invalid value and falls through to the normal router', async () => {
@@ -379,10 +483,15 @@ const SOURCES: Record<string, string> = {
 }
 
 /**
- * Every file under src/ meant to carry user-visible copy, minus the three
- * that never will: api/admin.ts (owner-only tool), schemes.ts (App display
- * names are data, not UI copy) and ui/setup.ts (batch 2's long tutorial,
- * translated in its own task so it never sits half-done here).
+ * Every file under src/ meant to carry user-visible copy, minus the two that
+ * never will: api/admin.ts (owner-only tool) and ui/setup.ts (batch 2's long
+ * tutorial, translated in its own task so it never sits half-done here).
+ *
+ * schemes.ts is in the list but is not in CONVERTED, and the split is the
+ * point: its `caveat` strings are copy and are wrapped, while `name`,
+ * `aliases` and `category` are the data a search matches against and stay
+ * Chinese on every page. Guard ① would not be able to tell those apart, so it
+ * is guard ② alone that covers this file.
  *
  * Unlike CONVERTED/SOURCES above, nothing here is on the honour system: every
  * `t()`/`msg()` source found in any of these files must already have an EN
@@ -402,6 +511,7 @@ const ALL_SOURCES: Record<string, string> = {
   'src/inapp.ts': inappRaw,
   'src/index.ts': indexRaw,
   'src/ratelimit.ts': ratelimitRaw,
+  'src/schemes.ts': schemesRaw,
   'src/scheme.ts': schemeRaw,
   'src/snapshot.ts': snapshotRaw,
   'src/stats.ts': statsRaw,
@@ -435,7 +545,7 @@ const ALL_SOURCES: Record<string, string> = {
  * must also bump this number in the same diff, or "guard rail: ALL_SOURCES
  * count" below goes red. Bump both together.
  */
-const ALL_SOURCES_EXPECTED_COUNT = 32
+const ALL_SOURCES_EXPECTED_COUNT = 33
 
 describe('guard rail: ALL_SOURCES has not silently drifted from its pinned count', () => {
   it('covers exactly as many files as it is pinned to', () => {
@@ -573,7 +683,7 @@ describe('guard ①: every CONVERTED file carries no residual Chinese', () => {
 })
 
 describe('guard ②: every t()/msg() source anywhere in src/ has an EN key', () => {
-  it('covers every file except api/admin.ts, schemes.ts, ui/setup.ts', () => {
+  it('covers every file except api/admin.ts and ui/setup.ts', () => {
     const missing: string[] = []
     for (const [path, src] of Object.entries(ALL_SOURCES)) {
       for (const call of extractCalls(src)) {
@@ -585,9 +695,19 @@ describe('guard ②: every t()/msg() source anywhere in src/ has an EN key', () 
 })
 
 describe('guard ③: en.ts entries are clean, faithful translations', () => {
+  /**
+   * The prose, not the markup. What sits inside `<…>` is pinned byte for byte
+   * to the source by the tag-parity clause below, so it is not the
+   * translator's to change and cannot be evidence of a half-done translation —
+   * the same reasoning the straight-quote clause already runs on. It matters
+   * for one real string: a caveat in src/schemes.ts writes a run of digits as
+   * `tencent<数字>://`, which `tagsOf` reads as a tag and therefore requires
+   * the English to carry unchanged. Chinese anywhere else, including between
+   * two tags, still fails.
+   */
   it('contains no residual Chinese characters other than 一息', () => {
     for (const [zh, translation] of Object.entries(EN)) {
-      const withoutBrand = translation.split('一息').join('')
+      const withoutBrand = stripTags(translation).split('一息').join('')
       expect(CJK_RE.test(withoutBrand), `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} still has Chinese`).toBe(false)
     }
   })
@@ -621,6 +741,21 @@ describe('guard ③: en.ts entries are clean, faithful translations', () => {
       expect(
         stripTags(translation).includes('"'),
         `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} has a straight " — the voice uses “ ”`,
+      ).toBe(false)
+    }
+  })
+
+  /**
+   * en.ts's own header asks for no exclamation marks, and the Chinese has
+   * none to translate: nothing in this product congratulates the reader, and
+   * a single 「！」 turned into English would make one page louder than every
+   * other. Cheaper to assert than to notice in review.
+   */
+  it('uses no exclamation mark', () => {
+    for (const [zh, translation] of Object.entries(EN)) {
+      expect(
+        /!/.test(translation),
+        `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} uses an exclamation mark`,
       ).toBe(false)
     }
   })

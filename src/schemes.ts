@@ -26,6 +26,7 @@
  * external request. A build-time copy costs nothing at runtime.
  */
 
+import { msg } from './i18n'
 import { safeScheme } from './scheme'
 
 /** When the two collections below were read. They are not watched for changes. */
@@ -48,7 +49,17 @@ export interface Candidate {
    * recorded it, it was guessed here.
    */
   sources: SchemeSource[]
-  /** A reason to distrust this particular line, rendered verbatim to the user. */
+  /**
+   * A reason to distrust this particular line, rendered verbatim to the user.
+   *
+   * The only field on this type that is *copy* rather than data, and so the
+   * only one wrapped in `msg()`: `name`, `aliases` and `category` are what the
+   * two collections call these apps and what a search has to match against, and
+   * translating them would break the lookup while telling the reader nothing.
+   * A caveat is a sentence written for whoever is deciding whether to trust a
+   * guess, and it reaches them through `/api/candidates`, which resolves it
+   * against the request's language before answering.
+   */
   caveat?: string
   /** ISO date the jump was observed on a real device. Only for `verified`. */
   verifiedOn?: string
@@ -146,7 +157,7 @@ export const APPS: AppEntry[] = [
       fromBoth('snssdk1128://'),
       fromUrlScheme(
         'wb1462309810://',
-        'iOS-URL-Scheme 把这一条同时记给了「火山小视频」。两个 App 不可能共用一个 scheme，所以至少有一条是抄错的。',
+        msg('iOS-URL-Scheme 把这一条同时记给了「火山小视频」。两个 App 不可能共用一个 scheme，所以至少有一条是抄错的。'),
       ),
     ],
   },
@@ -168,7 +179,7 @@ export const APPS: AppEntry[] = [
       fromAppInfo('kwai://'),
       fromUrlScheme(
         'gifshow://',
-        '两份清单在这个 App 上不一致，一份记 kwai、一份记 gifshow。只能两个都试。',
+        msg('两份清单在这个 App 上不一致，一份记 kwai、一份记 gifshow。只能两个都试。'),
       ),
     ],
   },
@@ -253,7 +264,7 @@ export const APPS: AppEntry[] = [
     candidates: [
       fromAppInfo(
         'weibointernational://',
-        'iOS-URL-Scheme 把同一个 scheme 记在「微博轻享版」名下。两个名字指的可能是同一个 App，也可能不是。',
+        msg('iOS-URL-Scheme 把同一个 scheme 记在「微博轻享版」名下。两个名字指的可能是同一个 App，也可能不是。'),
       ),
     ],
   },
@@ -282,7 +293,7 @@ export const APPS: AppEntry[] = [
     candidates: [
       fromAppInfo(
         'com.baidu.tieba://',
-        '这一条就是 bundle id 本身当 scheme 用，看着不像但清单确实这么记。',
+        msg('这一条就是 bundle id 本身当 scheme 用，看着不像但清单确实这么记。'),
       ),
     ],
   },
@@ -317,7 +328,7 @@ export const APPS: AppEntry[] = [
     candidates: [
       fromUrlScheme(
         'tencent100336226://',
-        '这种 tencent<数字>:// 的形状是腾讯开放平台分配的 App ID，很容易随版本换掉。',
+        msg('这种 tencent<数字>:// 的形状是腾讯开放平台分配的 App ID，很容易随版本换掉。'),
       ),
     ],
   },
@@ -349,7 +360,7 @@ export const APPS: AppEntry[] = [
       fromAppInfo('iqiyi://'),
       fromUrlScheme(
         'qiyi-iphone://',
-        '两份清单不一致。qiyi-iphone:// 看着像更老的那一版，但没人验证过。',
+        msg('两份清单不一致。qiyi-iphone:// 看着像更老的那一版，但没人验证过。'),
       ),
     ],
   },
@@ -377,7 +388,7 @@ export const APPS: AppEntry[] = [
     category: '影音',
     candidates: [
       fromAppInfo('sohuvideo://'),
-      fromUrlScheme('sohuvideo-iphone://', '两份清单不一致，差一个 -iphone 后缀。'),
+      fromUrlScheme('sohuvideo-iphone://', msg('两份清单不一致，差一个 -iphone 后缀。')),
     ],
   },
   {
@@ -434,7 +445,7 @@ export const APPS: AppEntry[] = [
     bundleId: 'com.shuqicenter.reader',
     category: '小说阅读',
     candidates: [
-      fromAppInfo('shuqireaderap://', '结尾的 ap 看着像 app 被截断了，但清单就是这么记的。'),
+      fromAppInfo('shuqireaderap://', msg('结尾的 ap 看着像 app 被截断了，但清单就是这么记的。')),
     ],
   },
   {
@@ -503,7 +514,7 @@ export const APPS: AppEntry[] = [
     candidates: [
       fromBoth(
         'openapp.jdmoble://',
-        '两份清单都把 moble 写成了这样（不是 mobile）。可能是京东自己拼错的，也可能是一份抄错了另一份跟着传。照抄试一次就知道。',
+        msg('两份清单都把 moble 写成了这样（不是 mobile）。可能是京东自己拼错的，也可能是一份抄错了另一份跟着传。照抄试一次就知道。'),
       ),
     ],
   },
@@ -673,7 +684,7 @@ export const APPS: AppEntry[] = [
     candidates: [
       fromUrlScheme(
         'tencentlaunch1104466820://',
-        'tencentlaunch<数字>:// 里的数字是腾讯开放平台的 App ID，换版本就可能变。',
+        msg('tencentlaunch<数字>:// 里的数字是腾讯开放平台的 App ID，换版本就可能变。'),
       ),
     ],
   },
@@ -843,13 +854,13 @@ export function deriveFromBundleId(bundleId: string): Candidate[] {
 
   const last = parts[parts.length - 1]
   if (last !== undefined) {
-    push(stripNoise(last), 'bundle id 的最后一段，去掉 App/Store/iPhone 这类后缀。这一类猜对过（起点读书就是这么来的），也错过很多次。')
-    push(last, 'bundle id 的最后一段，原样。')
+    push(stripNoise(last), msg('bundle id 的最后一段，去掉 App/Store/iPhone 这类后缀。这一类猜对过（起点读书就是这么来的），也错过很多次。'))
+    push(last, msg('bundle id 的最后一段，原样。'))
   }
   if (parts.length >= 2) {
-    push(parts[parts.length - 2], 'bundle id 倒数第二段——通常是公司或产品名（知乎、豆瓣都对上了）。')
+    push(parts[parts.length - 2], msg('bundle id 倒数第二段——通常是公司或产品名（知乎、豆瓣都对上了）。'))
   }
-  push(bundleId, '整个 bundle id 当 scheme（百度贴吧就是这么记的）。')
+  push(bundleId, msg('整个 bundle id 当 scheme（百度贴吧就是这么记的）。'))
 
   return out
 }

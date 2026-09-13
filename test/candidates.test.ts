@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest'
 import { handleCandidates, searchCandidates, type SearchOut } from '../src/api/candidates'
 import { safeScheme } from '../src/scheme'
 import { APPS, appForScheme, deriveFromBundleId, findApps, suggestKey } from '../src/schemes'
+import type { User } from '../src/types'
 
 /** A fetch stand-in, so no test in this file can reach itunes.apple.com. */
 function stubFetch(handler: () => Promise<Response> | Response): typeof fetch {
@@ -348,5 +349,95 @@ describe('GET /api/candidates', () => {
     const res = await handleCandidates(new Request('https://yixi.test/api/candidates'))
     expect(res.status).toBe(200)
     expect(((await res.json()) as SearchOut).state).toBe('idle')
+  })
+})
+
+/**
+ * A caveat is the sentence that keeps a guess from being read as an answer, and
+ * the picker on /settings renders it verbatim out of this JSON — so it is copy,
+ * and it has to arrive in the language the rest of the page is in. Everything
+ * else in the payload is data: schemes, bundle ids, source labels and the app
+ * names a search matches against are the same bytes in both languages.
+ */
+describe('handleCandidates — the caveats follow the reader', () => {
+  const QIDIAN = itunes([{ trackName: '起点读书', bundleId: 'm.qidian.QDReaderAppStore' }])
+
+  const signedIn = (locale: string | null): User => ({
+    id: 1,
+    name: 'Alex',
+    is_owner: 0,
+    created_at: 0,
+    locale,
+  })
+
+  async function hits(
+    q: string,
+    o: { headers?: Record<string, string>; user?: User; fetchImpl?: typeof fetch } = {},
+  ): Promise<SearchOut> {
+    const res = await handleCandidates(
+      new Request(`https://yixi.test/api/candidates?q=${encodeURIComponent(q)}`, {
+        headers: o.headers ?? {},
+      }),
+      { fetchImpl: o.fetchImpl ?? NEVER_CALLED },
+      o.user ?? null,
+    )
+    return (await res.json()) as SearchOut
+  }
+
+  function caveats(out: SearchOut): string[] {
+    if (out.state !== 'table' && out.state !== 'derived') return []
+    return out.hits.flatMap((h) => h.candidates.map((c) => c.caveat ?? ''))
+  }
+
+  it('answers a derived candidate in English when the browser asks in English', async () => {
+    const out = await hits('foobarbaz', {
+      headers: { 'accept-language': 'en-US,en;q=0.9' },
+      fetchImpl: QIDIAN,
+    })
+    expect(out.state).toBe('derived')
+    const all = caveats(out)
+    expect(all.length).toBeGreaterThan(0)
+    expect(all).toContain('The last segment of the bundle id, as it stands.')
+    for (const c of all) expect(c, c).not.toMatch(/[一-鿿]/)
+  })
+
+  it('takes the language from the cookie the switcher wrote, and from the account', async () => {
+    const viaCookie = caveats(
+      await hits('foobarbaz', { headers: { cookie: 'yixi_lang=en' }, fetchImpl: QIDIAN }),
+    )
+    const viaAccount = caveats(await hits('foobarbaz', { user: signedIn('en'), fetchImpl: QIDIAN }))
+    expect(viaCookie).toContain('The last segment of the bundle id, as it stands.')
+    expect(viaAccount).toContain('The last segment of the bundle id, as it stands.')
+  })
+
+  it('leaves the Chinese exactly as the table writes it when nothing asks otherwise', async () => {
+    // Byte for byte the source string, both for a guess and for a table row —
+    // the Chinese answer must not move because English exists.
+    expect(caveats(await hits('foobarbaz', { fetchImpl: QIDIAN }))).toContain('bundle id 的最后一段，原样。')
+    expect(caveats(await hits('搜狐视频'))).toContain('两份清单不一致，差一个 -iphone 后缀。')
+  })
+
+  it('translates the caveat and nothing else about a table hit', async () => {
+    const zh = await hits('搜狐视频')
+    const en = await hits('搜狐视频', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
+    expect(en.state).toBe('table')
+    expect(caveats(en)).toContain('The two collections disagree, by one -iphone suffix.')
+    if (zh.state !== 'table' || en.state !== 'table') return
+    // The app name, the key, the schemes and the source links are data.
+    expect(en.hits.map((h) => h.name)).toEqual(zh.hits.map((h) => h.name))
+    expect(en.hits.map((h) => h.key)).toEqual(zh.hits.map((h) => h.key))
+    expect(en.hits.flatMap((h) => h.candidates.map((c) => c.scheme))).toEqual(
+      zh.hits.flatMap((h) => h.candidates.map((c) => c.scheme)),
+    )
+    expect(en.hits.flatMap((h) => h.candidates.flatMap((c) => c.sources.map((x) => x.url)))).toEqual(
+      zh.hits.flatMap((h) => h.candidates.flatMap((c) => c.sources.map((x) => x.url))),
+    )
+  })
+
+  it('leaves the shared table untouched, so the next request does not inherit a language', async () => {
+    await hits('搜狐视频', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
+    // Straight off the module-level constant, not through the endpoint.
+    const sohu = APPS.find((a) => a.key === 'sohuvideo')
+    expect(sohu?.candidates.map((c) => c.caveat)).toContain('两份清单不一致，差一个 -iphone 后缀。')
   })
 })

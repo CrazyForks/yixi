@@ -21,7 +21,10 @@ export function renderLanding(request: Request): Response {
   // The language being read right now is plain text, not a link — a link back
   // to the page you are already standing on is a dead end wearing a pointer.
   // Shared with the signed-out account pages; see `langSwitch` in ./layout.ts.
-  const langLine = langSwitch(loc, t)
+  // The query goes with it so a link that arrived carrying one keeps it; on the
+  // bare `/` this page is normally read at, that is the empty string and the
+  // href is the same `?lang=en` it has always been.
+  const langLine = langSwitch(loc, url.search)
 
   return page({
     title: t('一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事'),

@@ -17,6 +17,7 @@ import {
   handleLogin,
   handleRecover,
   handleRegister,
+  sameSitePath,
 } from './ui/account'
 import { handleSettings } from './ui/settings'
 import { handleAdmin } from './api/admin'
@@ -72,13 +73,27 @@ export default {
       const lang = url.searchParams.get('lang')
       if (lang !== null && isLocale(lang) && method === 'GET') {
         const langAuth = await authenticate(request, env)
-        if (langAuth) await setUserLocale(env.DB, langAuth.user.id, lang)
+        // Only when it actually changes. A switcher is tapped twice as often as
+        // it changes anything — re-reading a `?lang=` link, arriving from a
+        // bookmark that still carries one — and every one of those hits would
+        // otherwise spend a D1 write rewriting the value already in the column.
+        if (langAuth && langAuth.user.locale !== lang) {
+          await setUserLocale(env.DB, langAuth.user.id, lang)
+        }
         const clean = new URL(url)
         clean.searchParams.delete('lang')
+        // `clean.pathname` is the parser's own normalised output, and that is
+        // exactly what makes it dangerous rather than safe: `/..//evil.example.com`
+        // normalises to a pathname of `//evil.example.com`, and a Location header
+        // starting `//` is protocol-relative — the browser reads the rest as a
+        // hostname and leaves the site. Same trap `?next=` fell into on /login,
+        // so the same predicate answers it; a shape that fails it still gets the
+        // cookie, it just lands on the front page instead of off-site.
+        const target = clean.pathname + (clean.search || '')
         return new Response(null, {
           status: 303,
           headers: {
-            location: clean.pathname + (clean.search || ''),
+            location: sameSitePath(target) ? target : '/',
             'set-cookie': langCookie(lang),
             'cache-control': 'no-store',
           },
@@ -146,7 +161,10 @@ export default {
       else if (path === '/today/review' && method === 'GET') res = await renderProgress(request, env, user)
       else if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
-      else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request)
+      // The user goes in so a signed-in reader whose account has settled on a
+      // language gets the candidate caveats in it, not just whoever carries the
+      // cookie the switcher wrote.
+      else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request, {}, user)
       // /lookup and /probe were pages; both are now the URL scheme field on
       // /settings. 302 rather than 301 because Safari caches a 301 more or less
       // forever, and this costs one round trip on a path nobody navigates

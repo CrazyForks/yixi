@@ -153,6 +153,8 @@ npm run deploy    # 先对远端 D1 apply migration，再发布
 
 migration 只需要跑一次，Pages 那份共用同一个数据库。
 
+**部署一律走 `npm run deploy`，不要直接 `wrangler deploy`**——「先 migration 再发布」这个顺序就是两边不脱节的全部保证。当前版本尤其依赖 `0006_user_locale.sql`：`/gate` 认人的路径上会读 `users.locale`，数据库里没有这一列的话，Worker 一上去就谁也拦不住了。
+
 ### 5. 部署 Pages
 
 ```bash
@@ -228,7 +230,7 @@ npx wrangler d1 execute yixi --remote --command \
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 30 个文件 611 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 30 个文件 624 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
@@ -256,7 +258,7 @@ src/ui/goals.ts     /today/goals —— 增删改、排序、归档目标
 src/ui/progress.ts  /today/review —— 回看：三十天竖条、每个目标的打卡率
 src/ui/todaysetup.ts  /today/setup —— 主屏幕、快捷指令与定时自动打开的配置向导
 src/api/admin.ts    owner 的发号台，以及那条隐私红线
-migrations/*.sql    D1 schema，五个 migration
+migrations/*.sql    D1 schema，六个 migration
 scripts/icon.mjs    重新生成 src/ui/pwa.ts 里那份 base64 PNG
 pages/              Pages 入口（一行）加它自己的 wrangler.toml
 shortcut/README.md  快捷指令为什么长这样

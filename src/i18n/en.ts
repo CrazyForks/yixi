@@ -76,10 +76,13 @@ export const EN: Record<string, string> = {
   按钮上叫它什么: 'What the button calls it',
   // An example inside a placeholder, not a translation: 「B 站」 here is the
   // sample answer to 「按钮上叫它什么」, so English offers an app an English
-  // reader would name. A label a user actually typed is data — it is escaped
-  // and interpolated, never passed through `t()`, so 「Open B 站」 stays 「Open
-  // B 站」 in both languages.
-  'B 站': 'Reddit',
+  // reader would name. It has to be the *same* app as the scheme placeholder a
+  // few lines above — the two boxes sit next to each other in the form, and two
+  // different apps in one worked example read as an instruction rather than as
+  // an example. A label a user actually typed is data — it is escaped and
+  // interpolated, never passed through `t()`, so 「Open B 站」 stays 「Open B 站」
+  // in both languages.
+  'B 站': 'Instagram',
   '做到哪天 · 可不填': 'Until · optional',
   长期: 'Ongoing',
   保存: 'Save',
@@ -121,15 +124,19 @@ export const EN: Record<string, string> = {
   今天: 'Today',
   '最近 {days} 天': 'The last {days} days',
   最近三十天每天的完成比例: 'How much of each day was done, over the last thirty days',
+  // Counted things, and every count can be 1. English agreement would make
+  // 「1 days have a record」 out of the natural phrasing, so these read as a
+  // stat line instead — the number is the answer, and no verb has to agree
+  // with it. The Chinese is unchanged; it never had the problem.
   '{days} 天里有记录的 {n} 天，做完全部的 {full} 天。':
-    'Of {days} days, {n} have a record and {full} were done in full.',
+    'Of {days} days: {n} with a record, {full} done in full.',
   每个目标: 'Each goal',
   '没有正在进行的目标。': 'No goals running right now.',
   这周: 'This week',
   '划掉了 <b class="num">{n}</b> 条子任务。': 'Crossed off <b class="num">{n}</b> sub-tasks.',
   '拦截那边的记录在<a href="/review">回顾</a>。':
     'Breathe keeps its own record under <a href="/review">Log</a>.',
-  '{n} 天 · 打卡 {x} 天': '{n} days · {x} checked',
+  '{n} 天 · 打卡 {x} 天': '{n}-day span · {x} checked',
   '还没有可以回看的。先去<a href="/today">今日</a>记下一件事。':
     'Nothing to look back on yet. Go to <a href="/today">Today</a> and write down one thing.',
 
@@ -469,13 +476,13 @@ export const EN: Record<string, string> = {
     '“Held” is having tapped “Never mind”; “No choice” is the breathing page opening and being swiped away — the app went unopened either way, but only the first was a decision, so they are counted apart.',
   '这七天一次都没被拦下。': 'Nothing stopped you in these seven days.',
   '共 <b class="num">{n}</b> 次拦下，忍住 <b class="num">{hold}</b> 次，放弃率 <b class="num">{rate}</b>。':
-    '<b class="num">{n}</b> stops in all, held <b class="num">{hold}</b> times, walk-away rate <b class="num">{rate}</b>.',
+    'stops in all: <b class="num">{n}</b>, held: <b class="num">{hold}</b>, walk-away rate: <b class="num">{rate}</b>.',
   '{date}：拦下 {n} 次，忍住 {hold}，没做选择 {idle}，进去了 {go}':
-    '{date}: stopped {n} times, held {hold}, no choice {idle}, went in {go}',
+    '{date}: stopped {n}, held {hold}, no choice {idle}, went in {go}',
   '哪个 App 最消耗你': 'Which app costs you most',
   '这 {days} 天还没有记录。': 'No record in these {days} days yet.',
   '最近 {days} 天，按拦下次数排。': 'The last {days} days, ordered by how often you were stopped.',
-  '<b class="num">{n}</b> 次': '<b class="num">{n}</b> stops',
+  '<b class="num">{n}</b> 次': 'stops: <b class="num">{n}</b>',
   '忍住 {hold} · 没做选择 {idle} · 进去了 {go}': 'Held {hold} · no choice {idle} · went in {go}',
   '放弃率 {rate}': 'Walk-away rate {rate}',
   '其中 {idle} 次开了呼吸页但没做选择，{go} 次撑过等待还是进去了。':
@@ -486,10 +493,48 @@ export const EN: Record<string, string> = {
   有记录的天: 'days with a record',
   '记录始于 {date}。': 'Records begin {date}.',
   '另有 {n} 次是点「继续」跳回 App 时自动化重复触发的，属于机器噪音，未计入以上任何数字。':
-    'Another {n} were the automation firing again as “Open it anyway” jumped back into the app — machine noise, counted in none of the numbers above.',
+    'Plus {n} from the automation firing again as “Open it anyway” jumped back into the app — machine noise, counted in none of the numbers above.',
   '这页只有你能看到。': 'This page is yours alone.',
   还没有记录: 'No records yet',
   '你还没有被拦下过一次。': 'You have not been stopped even once.',
   '先去 <a href="/settings">设置</a> 添加要拦的 App，再在 iPhone「快捷指令」里为它建一条「打开 App 时」自动化。之后每一次冲动都会记在这里。':
     'Go to <a href="/settings">Settings</a> first and add an app to stop, then build it a “When App Is Opened” automation in the iPhone Shortcuts app. After that every impulse is recorded here.',
+
+  // --- scheme caveats (src/schemes.ts) ---------------------------------------
+  // The reason to distrust one particular candidate, shown under it in the
+  // picker on /settings. These sentences are what keep a guess from being read
+  // as an answer, so they are the last copy in the product that could be left
+  // untranslated. Three things stay verbatim because they are strings somebody
+  // types or looks for rather than words: scheme tokens (`kwai`, `gifshow`,
+  // `moble`, the `-iphone` suffix), bundle-id vocabulary (`App/Store/iPhone`),
+  // and the `<数字>` standing in for a run of digits — guard ③ pins that one by
+  // tag parity, since `<…>` is a tag as far as the check can tell. App names
+  // are given in the spelling the table's own `aliases` already use, so a
+  // reader can find the row being pointed at.
+  'iOS-URL-Scheme 把这一条同时记给了「火山小视频」。两个 App 不可能共用一个 scheme，所以至少有一条是抄错的。':
+    'iOS-URL-Scheme files this same string under Huoshan as well. Two apps cannot share one scheme, so at least one of the two was copied down wrong.',
+  '两份清单在这个 App 上不一致，一份记 kwai、一份记 gifshow。只能两个都试。':
+    'The two collections disagree about this app: one records kwai, the other gifshow. There is nothing for it but to try both.',
+  'iOS-URL-Scheme 把同一个 scheme 记在「微博轻享版」名下。两个名字指的可能是同一个 App，也可能不是。':
+    'iOS-URL-Scheme files the same scheme under Weibo Lite. The two names may be one app, or may not.',
+  '这一条就是 bundle id 本身当 scheme 用，看着不像但清单确实这么记。':
+    'This one is the bundle id itself used as a scheme. It does not look like one, but that is how the collection records it.',
+  '这种 tencent<数字>:// 的形状是腾讯开放平台分配的 App ID，很容易随版本换掉。':
+    'The digits in a tencent<数字>:// are an App ID handed out by the Tencent open platform, and a release can change them easily enough.',
+  '两份清单不一致。qiyi-iphone:// 看着像更老的那一版，但没人验证过。':
+    'The two collections disagree. qiyi-iphone:// looks like the older of the two, but nobody has checked.',
+  '两份清单不一致，差一个 -iphone 后缀。': 'The two collections disagree, by one -iphone suffix.',
+  '结尾的 ap 看着像 app 被截断了，但清单就是这么记的。':
+    'The ap at the end looks like a truncated app, but that is how the collection records it.',
+  '两份清单都把 moble 写成了这样（不是 mobile）。可能是京东自己拼错的，也可能是一份抄错了另一份跟着传。照抄试一次就知道。':
+    'Both collections spell it moble, not mobile. It may be JD’s own misspelling, or one collection’s slip that the other copied. Type it as written and one try settles it.',
+  'tencentlaunch<数字>:// 里的数字是腾讯开放平台的 App ID，换版本就可能变。':
+    'The digits in a tencentlaunch<数字>:// are a Tencent open-platform App ID, and a new release can change them.',
+  'bundle id 的最后一段，去掉 App/Store/iPhone 这类后缀。这一类猜对过（起点读书就是这么来的），也错过很多次。':
+    'The last segment of the bundle id, with a suffix like App/Store/iPhone taken off. This kind of guess has been right before — Qidian came from it — and wrong many times.',
+  'bundle id 的最后一段，原样。': 'The last segment of the bundle id, as it stands.',
+  'bundle id 倒数第二段——通常是公司或产品名（知乎、豆瓣都对上了）。':
+    'The second-to-last segment of the bundle id — usually the company or the product name. It matched for Zhihu and for Douban.',
+  '整个 bundle id 当 scheme（百度贴吧就是这么记的）。':
+    'The whole bundle id used as the scheme. That is how Baidu Tieba is recorded.',
 }
