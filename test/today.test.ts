@@ -11,7 +11,7 @@ const NOW = Date.now()
 const TODAY = shanghaiDate(NOW)
 const IPHONE_SAFARI =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
-const IPHONE_WECHAT = IPHONE_SAFARI.replace('Safari/604.1', 'MicroMessenger/8.0.50 NetType/WIFI Language/zh_CN')
+const IPHONE_WECHAT = `${IPHONE_SAFARI} MicroMessenger/8.0.50 NetType/WIFI Language/zh_CN`
 
 async function reset(): Promise<void> {
   await env.DB.batch([

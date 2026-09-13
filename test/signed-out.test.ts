@@ -28,7 +28,7 @@ function post(path: string, fields: Record<string, string>): Promise<Response> {
 beforeEach(reset)
 
 describe('signed-out visitors', () => {
-  const consolePages = ['/review', '/settings', '/probe', '/setup', '/account', '/admin']
+  const consolePages = ['/review', '/settings', '/probe', '/setup', '/account', '/admin', '/today', '/goals']
 
   it('sends every console page to the sign-in screen, not a bare 401', async () => {
     for (const path of consolePages) {
@@ -106,6 +106,15 @@ describe('signed-out visitors', () => {
       expect((await get(path)).status, path).toBe(200)
     }
   })
+
+  it('serves the home-screen files without a login', async () => {
+    const m = await get('/manifest.webmanifest')
+    expect(m.status).toBe(200)
+    expect(m.headers.get('content-type')).toMatch(/manifest\+json/)
+    const i = await get('/icon.png')
+    expect(i.status).toBe(200)
+    expect(i.headers.get('content-type')).toBe('image/png')
+  })
 })
 
 describe('registering an address that already exists', () => {
@@ -163,6 +172,8 @@ describe('robots.txt', () => {
       '/b',
       '/gate',
       '/mock',
+      '/today',
+      '/goals',
       '/review',
       '/setup',
       '/settings',

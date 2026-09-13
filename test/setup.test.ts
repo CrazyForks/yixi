@@ -291,4 +291,14 @@ describe('/setup', () => {
     const res = await renderSetup(new Request(`${BASE}/setup?k=secret123`), env, user)
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
+
+  it('teaches the home-screen and Shortcut entrances to /today', async () => {
+    const user = await seedUser()
+    const html = await render(user)
+    expect(html).toContain('让今日页一按就开')
+    expect(html).toContain('添加到主屏幕')
+    expect(html).toContain('/today')
+    expect(html).toContain('再登录一次')
+    expect(html).toContain('特定时间')
+  })
 })

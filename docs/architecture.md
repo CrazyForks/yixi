@@ -29,7 +29,7 @@ The entire application is one `fetch` handler and one `scheduled` handler in `sr
                         D1 (SQLite)
 ```
 
-`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else.
+`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart.
 
 ## Request lifecycle
 
@@ -185,7 +185,7 @@ The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was cheaper
 
 ## D1 tables
 
-Three migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary.
+Four migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/goals`, touching nothing that existed before.
 
 ### `users`
 
@@ -270,6 +270,12 @@ RETURNING count, window_start
 The first version read the count and then incremented it. Under concurrency that does not leak a little — thirty simultaneous requests all read a count below the limit and all pass, which is the entire limiter gone. Since PBKDF2 is capped at 100k rounds *precisely because* this is meant to be the outer defense, that handed an attacker unlimited-concurrency password guessing. It was caught by a concurrency test, not by review.
 
 The upsert both resets a lapsed window and increments a live one, so the decision is made from a value that cannot have changed underneath. Requests past the limit still increment but do not extend `window_start`, so the window still closes on schedule.
+
+### `goals`, `goal_tasks`, `goal_checkins` — behind `/today` and `/goals`
+
+Three tables, added in `0004_goals.sql`, touching nothing that came before. `goals` is the short list of things that matter over the next while; `goal_tasks` are one-off to-dos hung off a goal; `goal_checkins` is a per-day check-in, primary-keyed `(user_id, goal_id, date)` so tapping the check button twice in one day writes nothing twice.
+
+`goal_checkins.date` is the same **Asia/Shanghai** calendar string as `events.date` — same computation, same format — so a check-in and a gate interception attribute to the same day rather than drifting across a UTC boundary. Every write against all three tables carries `user_id` explicitly, rather than trusting a join through `goal_id` alone, so a `goal_id` guessed or borrowed from another account can never land a write in someone else's row.
 
 ## The anti-loop mechanism
 

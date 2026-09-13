@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleGoals, addDays, isExpired } from '../src/ui/goals'
-import { createGoal, createTask, listGoals, listTasks, shanghaiDate } from '../src/db'
+import { createGoal, listGoals, listTasks, shanghaiDate } from '../src/db'
 import type { User } from '../src/types'
 
 const user: User = { id: 1, name: '张三', is_owner: 0, created_at: 0 }

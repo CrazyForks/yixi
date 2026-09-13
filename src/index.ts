@@ -5,6 +5,9 @@ import { renderBreathe } from './ui/breathe'
 import { renderMock } from './ui/mock'
 import { renderReview } from './ui/review'
 import { renderSetup } from './ui/setup'
+import { handleToday } from './ui/today'
+import { handleGoals } from './ui/goals'
+import { iconResponse, manifestResponse } from './ui/pwa'
 import { handleCandidates } from './api/candidates'
 import {
   handleAccount,
@@ -53,6 +56,11 @@ export default {
       // pages named here are the ones whose URLs carry a session or a token.
       if (path === '/robots.txt' && method === 'GET') return robotsTxt()
 
+      // Home-screen files. Public and cacheable: iOS fetches them without a
+      // cookie when the icon is added, and nothing in them is per-user.
+      if (path === '/manifest.webmanifest' && method === 'GET') return manifestResponse()
+      if (path === '/icon.png' && method === 'GET') return iconResponse()
+
       // Sign-up and sign-in must answer before authenticate(), or the only way
       // to get an account would be to already have one. Registration being open
       // to anyone, the POSTs are throttled per IP — GETs are just pages and are
@@ -91,7 +99,9 @@ export default {
       const { user, seededFromToken } = auth
 
       let res: Response
-      if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
+      if (path === '/today') res = await handleToday(request, env, user)
+      else if (path === '/goals') res = await handleGoals(request, env, user)
+      else if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
       else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request)
       // /lookup and /probe were pages; both are now the URL scheme field on
@@ -182,6 +192,8 @@ function robotsTxt(): Response {
     'Disallow: /b',
     'Disallow: /gate',
     'Disallow: /mock',
+    'Disallow: /today',
+    'Disallow: /goals',
     'Disallow: /review',
     'Disallow: /setup',
     'Disallow: /settings',

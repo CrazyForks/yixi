@@ -77,6 +77,7 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 - No client framework, no runtime dependencies. The `package.json` has five devDependencies and nothing else.
 - The interception log is never deleted. Sessions, logins and rate-limit windows are trimmed nightly; `events` is the product and stays forever.
 - Accounts are email + password, and the password is only ever a convenience. The real credential is a 128-bit random **gate token** that the Shortcut carries.
+- `/today` is the page meant to be opened every morning: your top three goals, each with its next task, a seven-day dot strip instead of a streak number, and a one-tap jump into whichever app the goal is actually about. `/goals` behind it is where they get added, edited and archived. Add `/today` to the home screen from `/setup` and it opens full-screen with no address bar — a real login is still needed the first time, since the home-screen copy does not share Safari's session.
 
 ### Pages
 
@@ -87,6 +88,8 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/b?s=<sid>` | sid | the breathing page |
 | `POST /resolve` | sid | records proceed / abandon, opens the grace window |
 | `/register` `/login` `/claim` `/recover` | anyone | sign up, sign in, bind an old token, reset a password with a token |
+| `/today` | you | the one page to open every morning: your top goals, the next task, a seven-day dot strip |
+| `/goals` | you | add, edit, reorder and archive goals — everything `/today` shows but does not let you change |
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
 | `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings`; not a page |
@@ -95,6 +98,7 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/account` | you | read your gate token back, change your password, sign out |
 | `/mock?v=1\|2` | anyone | the two candidate visual skins, side by side |
 | `/admin` | owner | mint a token for someone offline; see per-user attempt counts |
+| `/manifest.webmanifest` `/icon.png` | anyone | the home-screen files — public and cacheable, nothing per-user in either |
 
 Anything else is a 404. There is no detail endpoint under `/admin` to guess at — see [SECURITY.md](SECURITY.md).
 
@@ -342,7 +346,7 @@ Read these before deploying. Some of them cannot be fixed in code.
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 350 tests over 16 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 456 tests over 23 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
@@ -361,8 +365,13 @@ src/scheme.ts       the URL-scheme denylist — one authority, three call sites
 src/schemes.ts      frozen snapshot of two public scheme collections (60 apps)
 src/types.ts        Env, User, event kinds, the shared constants
 src/ui/*.ts         one module per page, all server-rendered
+src/ui/schemefield.ts  the URL-scheme picker field shared by /settings and /goals
+src/ui/pwa.ts       the home-screen manifest and icon — public, no per-user data
+src/ui/today.ts     /today — the morning page: goals, next task, seven-day dots
+src/ui/goals.ts     /goals — add, edit, reorder and archive goals
 src/api/admin.ts    the owner's ticket window, and the privacy line
-migrations/*.sql    D1 schema, three migrations
+migrations/*.sql    D1 schema, four migrations
+scripts/icon.mjs    regenerates the base64 PNG baked into src/ui/pwa.ts
 pages/              Pages entry point (one line) + its own wrangler.toml
 shortcut/README.md  why the Shortcut is shaped the way it is
 docs/architecture.md  request lifecycle, tables, accounting semantics

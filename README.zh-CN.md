@@ -78,6 +78,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 - 没有前端框架，没有运行时依赖。`package.json` 里只有五个 devDependencies。
 - 拦截记录永不删除。session、登录态、限流窗口每晚清理，`events` 表是这个产品本身，一直留着。
 - 账号是邮箱加密码，但密码只是方便。真正的身份是一把 128 位随机的 **gate token**，快捷指令拿它认人。
+- `/today` 是每天早上要开的那一页：最重要的三个目标，各自的下一步，七天墨点代替连续打卡数字，还有一键跳进目标对应的那个 App。背后的 `/goals` 用来增删改目标。从 `/setup` 把 `/today` 添加到主屏幕就能全屏打开、没有地址栏——第一次打开仍要重新登录一次，因为主屏幕副本不和 Safari 共享登录状态。
 
 ### 页面
 
@@ -88,6 +89,8 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | `/b?s=<sid>` | sid | 呼吸页 |
 | `POST /resolve` | sid | 记 proceed／abandon，开免打扰窗口 |
 | `/register` `/login` `/claim` `/recover` | 所有人 | 注册、登录、给老 token 绑账号、用 token 重置密码 |
+| `/today` | 本人 | 每天早上要开的那一页：最重要的目标、下一步、七天墨点 |
+| `/goals` | 本人 | 增删改目标——`/today` 展示但不让改的那部分 |
 | `/review` | 本人 | 今天、七天、哪个 App 最消耗你 |
 | `/settings` | 本人 | 增删改自己要拦的 App |
 | `GET /api/candidates` | 本人 | JSON：输入 App 名字，给出带来源的 scheme 候选。由 `/settings` 的 URL scheme 字段直接 fetch，不是页面 |
@@ -96,6 +99,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | `/account` | 本人 | 看回自己的 gate token、改密码、退出登录 |
 | `/mock?v=1\|2` | 所有人 | 两版呼吸页视觉对比 |
 | `/admin` | owner | 线下发号，看每个人的 attempt 计数 |
+| `/manifest.webmanifest` `/icon.png` | 所有人 | 主屏幕文件——公开、可缓存，两个都不含任何个人数据 |
 
 其余一律 404。`/admin` 下面没有别的地址可以猜——见 [SECURITY.md](SECURITY.md)。
 
@@ -342,7 +346,7 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 16 个文件 350 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 23 个文件 456 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
@@ -361,8 +365,13 @@ src/scheme.ts       URL scheme 黑名单 —— 一份正本，三处调用
 src/schemes.ts      两份公开 scheme 清单的固化快照（60 个 App）
 src/types.ts        Env、User、事件类型、共享常量
 src/ui/*.ts         一个页面一个模块，全部服务端渲染
+src/ui/schemefield.ts  /settings 与 /goals 共用的 URL scheme 选择字段
+src/ui/pwa.ts       主屏幕的 manifest 和图标——公开，不含任何个人数据
+src/ui/today.ts     /today —— 每天早上打开的那一页：目标、下一步、七天墨点
+src/ui/goals.ts     /goals —— 增删改、排序、归档目标
 src/api/admin.ts    owner 的发号台，以及那条隐私红线
-migrations/*.sql    D1 schema，三个 migration
+migrations/*.sql    D1 schema，四个 migration
+scripts/icon.mjs    重新生成 src/ui/pwa.ts 里那份 base64 PNG
 pages/              Pages 入口（一行）加它自己的 wrangler.toml
 shortcut/README.md  快捷指令为什么长这样
 docs/architecture.md  请求生命周期、表结构、记账语义
