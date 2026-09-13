@@ -204,7 +204,7 @@ p.flat{margin:0}
 .add > summary.addbtn{
   display:flex;align-items:center;justify-content:center;gap:9px;
   border:1px dashed var(--rule);border-radius:14px;padding:15px;
-  color:var(--dim);font-size:16px;letter-spacing:.04em;cursor:pointer;list-style:none;
+  color:var(--fg);font-size:16px;letter-spacing:.04em;cursor:pointer;list-style:none;
 }
 .add > summary.addbtn::-webkit-details-marker{display:none}
 .add > summary.addbtn::marker{content:""}
@@ -221,23 +221,23 @@ details.app{margin:0 0 10px;border:1px solid var(--rule);border-radius:14px;over
 details.app.off{opacity:.62}
 details.app > summary{
   display:flex;align-items:baseline;gap:9px;padding:14px 16px;
-  cursor:pointer;list-style:none;
+  cursor:pointer;list-style:none;color:var(--fg);
 }
 details.app > summary::-webkit-details-marker{display:none}
 details.app > summary::marker{content:""}
 details.app > summary:active{background:var(--ring-track)}
 details.app[open] > summary{border-bottom:1px solid var(--rule)}
 .sname{font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
-.skey{font-size:13px;color:var(--faint);flex:0 0 auto}
+.skey{font-size:13px;color:var(--dim);flex:0 0 auto}
 .mini{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;
-  font-size:13px;color:var(--faint);white-space:nowrap}
+  font-size:13px;color:var(--dim);white-space:nowrap}
 .mini .ic{width:14px;height:14px}
 .mini .ic:not(:first-child){margin-left:5px}
 details.app > summary .badge{margin-left:auto}
 /* Without this nothing on a collapsed row says it opens. The row went from
    「a form you scroll past」 to 「a line you tap」, and a line that looks like
    plain text is a line nobody taps. */
-details.app > summary .chev{flex:0 0 auto;width:14px;height:14px;color:var(--faint);
+details.app > summary .chev{flex:0 0 auto;width:14px;height:14px;color:var(--dim);
   margin-left:8px;transition:transform .18s ease}
 details.app[open] > summary .chev{transform:rotate(90deg)}
 /* The form inside carries the card's padding but not its border — the <details>

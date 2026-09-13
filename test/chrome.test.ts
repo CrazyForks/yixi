@@ -299,6 +299,29 @@ describe('type scale', () => {
       expect(Number(m[1]), `input at ${m[1]}px`).toBeGreaterThanOrEqual(16)
     }
   })
+
+  it('keeps row titles in full ink — the fold summary colour must not leak into details.app', () => {
+    // The global summary rule in icons.ts (13px, --faint) is for small fold
+    // summaries. But details.app > summary on /settings and /today/goals must
+    // read in full ink (--fg), not inherit the --faint rule. Check that the CSS
+    // includes the override.
+    expect(CONSOLE_CSS).toContain('details.app > summary{')
+    const detailsSummaryRule = CONSOLE_CSS.match(/details\.app\s*>\s*summary\s*\{[^}]*\}/)?.[0]
+    expect(detailsSummaryRule, 'details.app > summary rule exists').toBeTruthy()
+    expect(detailsSummaryRule, 'details.app > summary has full ink').toContain('color:var(--fg)')
+
+    // .skey and .mini are secondary labels on collapsed rows, so they should
+    // be --dim (medium grey), not --faint (30% ink).
+    const skeyRule = CONSOLE_CSS.match(/\.skey\{[^}]*\}/)?.[0]
+    expect(skeyRule, '.skey rule exists').toBeTruthy()
+    expect(skeyRule, '.skey must not have --faint').not.toContain('var(--faint)')
+    expect(skeyRule, '.skey must have --dim').toContain('color:var(--dim)')
+
+    const miniRule = CONSOLE_CSS.match(/\.mini\{[^}]*\}/)?.[0]
+    expect(miniRule, '.mini rule exists').toBeTruthy()
+    expect(miniRule, '.mini must not have --faint').not.toContain('var(--faint)')
+    expect(miniRule, '.mini must have --dim').toContain('color:var(--dim)')
+  })
 })
 
 /**
