@@ -87,6 +87,7 @@ describe('goals', () => {
     await toggleCheckin(env.DB, 1, id, '2026-09-13', NOW)
     expect(await deleteGoal(env.DB, 2, id)).toBe(false)
     expect(await deleteGoal(env.DB, 1, id)).toBe(true)
+    expect(await getGoal(env.DB, 1, id)).toBeNull()
     expect(await listTasks(env.DB, 1)).toEqual([])
     expect(await listCheckins(env.DB, 1, '2026-09-01', '2026-09-30')).toEqual([])
   })
@@ -144,5 +145,18 @@ describe('checkins', () => {
     await toggleCheckin(env.DB, 1, id, '2026-09-13', NOW)
     await toggleCheckin(env.DB, 1, id, '2026-09-06', NOW)
     expect((await listCheckins(env.DB, 1, '2026-09-07', '2026-09-13')).map((r) => r.date).sort()).toEqual(['2026-09-07', '2026-09-13'])
+  })
+
+  it('two near-simultaneous toggles never throw and leave exactly one row', async () => {
+    const id = await goal(1, '健身')
+    const [r1, r2] = await Promise.all([
+      toggleCheckin(env.DB, 1, id, '2026-09-13', NOW),
+      toggleCheckin(env.DB, 1, id, '2026-09-13', NOW + 1),
+    ])
+    // 单 worker 的测试 D1 绑定下两次调用可能被串行化，具体谁先谁后不保证，
+    // 只保证两者都是合法结果、都没抛异常。
+    expect(['checked', 'unchecked']).toContain(r1)
+    expect(['checked', 'unchecked']).toContain(r2)
+    expect(await listCheckins(env.DB, 1, '2026-09-13', '2026-09-13')).toHaveLength(1)
   })
 })

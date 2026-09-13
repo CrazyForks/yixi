@@ -736,6 +736,11 @@ export async function deleteTask(db: D1Database, userId: number, id: number): Pr
 /**
  * 按天幂等的打卡：有则删（取消），无则插。主键 (user_id, goal_id, date)
  * 保证同一天永远只有一行，重复点不会重复计数。
+ *
+ * INSERT 用 OR IGNORE：两次近乎同时的调用都可能在对方插入前跑完「不存在」的
+ * DELETE 检查，第二次 INSERT 撞主键。OR IGNORE 让撞车的那次静默失败而不是抛
+ * 异常；这种情况下 meta.changes 为 0，但行确实已经被另一次调用插入，所以仍
+ * 按 'checked' 返回——对调用方而言，此刻这一天确实是已打卡状态。
  */
 export async function toggleCheckin(
   db: D1Database,
@@ -752,7 +757,7 @@ export async function toggleCheckin(
     .run()
   if ((removed.meta.changes ?? 0) > 0) return 'unchecked'
   await db
-    .prepare('INSERT INTO goal_checkins (user_id, goal_id, date, ts) VALUES (?1, ?2, ?3, ?4)')
+    .prepare('INSERT OR IGNORE INTO goal_checkins (user_id, goal_id, date, ts) VALUES (?1, ?2, ?3, ?4)')
     .bind(userId, goalId, date, now)
     .run()
   return 'checked'
