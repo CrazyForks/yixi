@@ -46,7 +46,7 @@ The open instance is the quickest way in. If you would rather not keep a minute-
 
 Three that apply to the whole product. The per-face lists are in [docs/breathe.md](docs/breathe.md#known-limits) and [docs/today.md](docs/today.md#known-limits), and both are worth reading before you deploy.
 
-- **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
+- **The UI is bilingual (Chinese and English).** Switch it from the footer on the landing, login and register pages, from the language section on `/account`, or by adding `?lang=en` / `?lang=zh` to any page; Chinese is the default whenever nothing else says otherwise. The 「怎么配」 Shortcut tutorial at `/setup` is still Chinese only.
 - **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
 - **This is a nudge, not a blocker.** Anyone can disable the automation in two taps. That is by design — the whole system fails open — and it means the tool only works for someone who wants it to.
 
@@ -230,7 +230,7 @@ npx wrangler d1 execute yixi --remote --command \
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 509 tests over 28 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 611 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout

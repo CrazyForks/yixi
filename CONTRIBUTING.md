@@ -95,5 +95,5 @@ Concrete examples from this repo's history: dropping the same-site check on the 
 
 - TypeScript, `strict`, `noUncheckedIndexedAccess`. No runtime dependencies — additions to `dependencies` need a real argument.
 - Comments explain *why*, and specifically why an obvious-looking alternative is wrong. Several modules would be rewritten into a bug within a month without theirs; that is the bar for adding one.
-- UI copy is Chinese. Comments and documentation are English. An i18n layer would be a welcome change, but a half-translated UI is worse than a consistent one.
+- UI copy is bilingual. Chinese stays the source text you write inline, wrapped in `t('中文原文')` (or `msg(...)` for a string built outside a page); `src/i18n/en.ts` is the English dictionary, keyed by that same Chinese string. `test/i18n.test.ts`'s guards fail the build if a `t()`/`msg()` source has no English entry, if Chinese leaks into a converted file outside `t()`/`msg()`, or if a translation drops a `{placeholder}` or picks up Chinese characters of its own. The 「怎么配」 Shortcut tutorial at `/setup` has not been converted yet — a half-translated UI is worse than a consistent one, so it stays Chinese-only until it is. Comments and documentation are English.
 - Commit messages: `type(scope): description`.
