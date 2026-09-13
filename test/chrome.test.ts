@@ -313,6 +313,16 @@ describe('type scale', () => {
     }
   })
 
+  it('stacks the header into two rows on a phone rather than squeezing one', () => {
+    // iPhone 14 (390px): with brand, face name, user, face switch and five tabs
+    // on one row, 「一息」 broke across two lines and 「账号」 fell to a third.
+    const m = CONSOLE_CSS.match(/@media \(max-width:479px\)\{([\s\S]*?)\n\}/)
+    expect(m, 'no narrow-width header rule').toBeTruthy()
+    expect(m![1]).toMatch(/header\{[^}]*flex-wrap:wrap/)
+    expect(m![1]).toMatch(/header nav\{[^}]*flex-basis:100%/)
+    expect(CONSOLE_CSS).toMatch(/\.brand\{[^}]*white-space:nowrap/)
+  })
+
   it('sets body text at 17px, the size iOS itself uses', async () => {
     expect(CONSOLE_CSS).toContain('body{font-size:17px')
   })

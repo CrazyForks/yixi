@@ -131,7 +131,7 @@ export const CONSOLE_CSS = `
 body{font-size:17px;line-height:1.75}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
 header{display:flex;align-items:center;gap:10px;padding-top:22px;padding-bottom:12px}
-.brand{font-size:20px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
+.brand{font-size:20px;font-weight:600;letter-spacing:.24em;text-indent:.24em;flex:none;white-space:nowrap}
 .facename{font-size:13px;color:var(--faint);margin-left:4px;flex:none;white-space:nowrap}
 .who{font-size:13px;color:var(--faint);flex:none;white-space:nowrap}
 /* padding, not just line-height, gets the tap target to 44px without making
@@ -154,6 +154,16 @@ header nav a{flex:none;display:inline-flex;flex-direction:column;align-items:cen
   padding:5px 5px;border-radius:8px;color:var(--faint);text-decoration:none}
 header nav a .lb{font-size:11px;line-height:1.3;letter-spacing:0;white-space:nowrap}
 header nav a.on{color:var(--fg);background:var(--ring-track)}
+/* On a phone the header is two rows, not one squeezed row: brand, face name,
+   user and the face switch on the first; the tabs on their own line below,
+   aligned with the content. Measured on an iPhone 14 viewport (390px): the
+   one-row layout broke 「一息」 across two lines and pushed 「账号」 onto a
+   third. Wrapping is the layout here, not a safety net. */
+@media (max-width:479px){
+  header{flex-wrap:wrap;row-gap:6px}
+  header nav{flex-basis:100%;margin-left:0;justify-content:flex-start;gap:6px}
+  header nav a{padding:5px 7px}
+}
 main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 h1{font-size:20px;font-weight:600;margin:8px 0 6px}
 h2{margin:0 0 10px;font-size:14px;font-weight:400;color:var(--dim);letter-spacing:.12em}
