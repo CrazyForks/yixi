@@ -36,6 +36,9 @@ export type IconName =
   | 'fetch'
   | 'branch'
   | 'today'
+  | 'goals'
+  | 'progress'
+  | 'todaysetup'
   | 'review'
   | 'settings'
   | 'lookup'
@@ -70,11 +73,23 @@ const ICONS: Record<IconName, string> = {
   branch: '<path d="M11.6 3.8l5.8 5.8-5.8 5.8-5.8-5.8z"/><path d="M11.6 15.4v4.8"/><path d="M17.4 9.6h3.4"/>',
   // A ring with the day's one mark inside it: today, and the dot you leave on it.
   today: '<circle cx="12" cy="12" r="8.2"/><circle class="fillmark" cx="12" cy="12" r="2.4"/>',
+  // A list, each line with its own dot: three goals, not one running total.
+  goals:
+    '<path d="M8.6 7.4h10.8M8.6 12h10.8M8.6 16.6h10.8"/><circle class="fillmark" cx="5" cy="7.4" r="1.3"/><circle class="fillmark" cx="5" cy="12" r="1.3"/><circle class="fillmark" cx="5" cy="16.6" r="1.3"/>',
+  // review's three bars, plus a dot on the tallest: the today face's 回看
+  // looks back at goal days rather than interceptions.
+  progress:
+    '<path d="M4.4 19.6h15.2"/><path d="M7.6 16.6v-3.4M12 16.6V9.2M16.4 16.6v-5.6"/><circle class="fillmark" cx="16.4" cy="6.4" r="1.4"/>',
   review: '<path d="M4.4 19.6h15.2"/><path d="M7.6 16.6v-4.4M12 16.6V5.8M16.4 16.6v-7.2"/>',
   settings:
     '<path d="M4.4 8.6h15.2M4.4 15.4h15.2"/><circle cx="9.4" cy="8.6" r="2.2"/><circle cx="14.8" cy="15.4" r="2.2"/>',
   lookup: '<circle cx="10.8" cy="10.8" r="5.6"/><path d="M15 15l4.4 4.4"/>',
   setup: '<path d="M4.6 7.8l1.7 1.7 2.7-3"/><path d="M4.6 15.6l1.7 1.7 2.7-3"/><path d="M12.4 8.6h7M12.4 16.4h7"/>',
+  // Same mark as setup: the today face's 「怎么配」 is the same idea (make the
+  // page one tap away) applied to a different shortcut, not a different concept
+  // that happens to share a name.
+  todaysetup:
+    '<path d="M4.6 7.8l1.7 1.7 2.7-3"/><path d="M4.6 15.6l1.7 1.7 2.7-3"/><path d="M12.4 8.6h7M12.4 16.4h7"/>',
   // A key rather than a person: this account IS a token.
   account: '<circle cx="8.8" cy="12" r="3.4"/><path d="M12.2 12h7.4"/><path d="M16.6 12v2.8M19.2 12v2"/>',
   admin: '<path d="M4.8 11.2l6.4-6.4h7.6v7.6l-6.4 6.4z"/><circle cx="15.4" cy="8.6" r="1.3"/>',

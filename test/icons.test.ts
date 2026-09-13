@@ -21,6 +21,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderSetup } from '../src/ui/setup'
 import { handleSettings } from '../src/ui/settings'
+import { handleToday } from '../src/ui/today'
 import { upsertUserApp } from '../src/db'
 import type { User } from '../src/types'
 
@@ -57,6 +58,9 @@ async function setup(): Promise<string> {
 }
 async function settings(): Promise<string> {
   return await (await handleSettings(new Request(`${BASE}/settings`), env, user)).text()
+}
+async function today(u: User = user): Promise<string> {
+  return await (await handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, u)).text()
 }
 
 /** Every icon-bearing page, keyed for readable failure messages. */
@@ -130,29 +134,48 @@ describe('the nav the merge shrank', () => {
     return m![1]!
   }
 
-  it('is five tabs for a normal user and six for the owner', async () => {
+  // The nav that merge shrank has since split into two faces (test/chrome.test.ts
+  // §两面 owns the full cross-page shape check); what stays here is the tab
+  // count and owner-only tab per face, on the two pages this file already
+  // renders.
+
+  it('is four tabs for a normal user and five for the owner, on the 拦截 face', async () => {
     const nav = navOf(await settings())
-    expect(nav.match(/<a /g)).toHaveLength(5)
+    expect(nav.match(/<a /g)).toHaveLength(4)
 
     const ownerNav = navOf(
       await (await handleSettings(new Request(`${BASE}/settings`), env, owner)).text(),
     )
-    expect(ownerNav.match(/<a /g)).toHaveLength(6)
+    expect(ownerNav.match(/<a /g)).toHaveLength(5)
     expect(ownerNav).toContain('/admin')
   })
 
+  it('is five tabs on the 今日 face, account included, and no 发号 even for the owner', async () => {
+    const nav = navOf(await today())
+    expect(nav.match(/<a /g)).toHaveLength(5)
+
+    const ownerNav = navOf(await today(owner))
+    expect(ownerNav.match(/<a /g)).toHaveLength(5)
+    expect(ownerNav).not.toContain('/admin')
+  })
+
   it('no longer offers 实测 or 候选 as their own tabs, and every tab keeps its word', async () => {
-    const nav = navOf(await settings())
+    const breatheNav = navOf(await settings())
     // Three tabs left, all the same mistake: a step of one job given a
     // destination of its own. 「候选」 was the last to go — it is the URL scheme
     // field on /settings now.
-    expect(nav).not.toContain('/probe')
-    expect(nav).not.toContain('/lookup')
-    for (const label of ['今日', '回顾', '设置', '怎么配', '账号']) {
-      expect(nav, label).toContain(`<span class="lb">${label}</span>`)
+    expect(breatheNav).not.toContain('/probe')
+    expect(breatheNav).not.toContain('/lookup')
+    for (const label of ['回顾', '设置', '怎么配', '账号']) {
+      expect(breatheNav, label).toContain(`<span class="lb">${label}</span>`)
     }
     // The current tab is marked for assistive tech, not only with a background.
-    expect(nav).toContain('aria-current="page"')
+    expect(breatheNav).toContain('aria-current="page"')
+
+    const todayNav = navOf(await today())
+    for (const label of ['今日', '目标', '回看', '怎么配', '账号']) {
+      expect(todayNav, label).toContain(`<span class="lb">${label}</span>`)
+    }
   })
 })
 

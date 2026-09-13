@@ -1,16 +1,28 @@
-// Shared chrome for every signed-in page — /review, /settings, /setup,
+// Shared chrome for every signed-in page — /today, /review, /settings, /setup,
 // /account, /admin. They must read as one surface that people tab between, not
-// five separate designs.
+// six separate designs.
 //
 // /review used to render its own header, and that is exactly the failure this
 // module now prevents: its private copy had drifted to three text-only tabs, so
 // tabbing to 「回顾」 visibly changed the furniture AND stranded the reader —
 // 「怎么配」, 「账号」 and 「发号」 had no link on that page at all. The nav is
-// shared code now, and a test renders all six pages and diffs their navs.
+// shared code now, and a test renders every page and diffs their navs.
 //
 // This lives in its own module rather than inside any one page: a page module
 // that doubles as the shared library for its siblings is a dependency direction
 // that only gets worse as pages are added.
+//
+// --- two faces, one header ---------------------------------------------------
+//
+// 「今日」 (goal-tending: /today, /today/goals, /today/review, /today/setup) and
+// 「拦截」 (the original interception console: /review, /settings, /setup) grew
+// into two different jobs sharing one nav row, and a five-to-six tab row was
+// already the ceiling for what fits a phone width without wrapping. Splitting
+// the tabs by face keeps each row at four or five, at the cost of one more tap
+// to cross faces — which is the right trade, because nobody bounces between
+// them mid-task. 「账号」 stays on both, because it is not either face's; the
+// owner's 「发号」 stays only on 拦截, because a ticket window for someone
+// else's interceptions has nothing to do with today's three goals.
 
 import type { User } from '../types'
 import { escapeHtml } from './layout'
@@ -24,39 +36,70 @@ import { ICON_CSS, icon, type IconName } from './icons'
  */
 export type ConsolePage = Extract<
   IconName,
-  'today' | 'review' | 'settings' | 'setup' | 'account' | 'admin'
+  'today' | 'goals' | 'progress' | 'todaysetup' | 'review' | 'settings' | 'setup' | 'account' | 'admin'
 >
 
+/** The two faces one account can be on. `account` and `admin` are not of either. */
+export type Face = 'today' | 'breathe'
+
+/** Which face a page's tab belongs to — the only place that mapping is decided. */
+export function faceOf(page: ConsolePage): Face {
+  return page === 'today' || page === 'goals' || page === 'progress' || page === 'todaysetup' ? 'today' : 'breathe'
+}
+
+/** 今日: look, jump, tick — three goals and how they got there. */
+const TODAY_TABS: Array<[href: string, name: ConsolePage, label: string]> = [
+  ['/today', 'today', '今日'],
+  ['/today/goals', 'goals', '目标'],
+  ['/today/review', 'progress', '回看'],
+  ['/today/setup', 'todaysetup', '怎么配'],
+]
+
+/** 拦截: the original console — open an app, get one breath first. */
+const BREATHE_TABS: Array<[href: string, name: ConsolePage, label: string]> = [
+  ['/review', 'review', '回顾'],
+  ['/settings', 'settings', '设置'],
+  ['/setup', 'setup', '怎么配'],
+]
+
+const FACE_HOME: Record<Face, { href: string; label: string }> = {
+  today: { href: '/today', label: '今日' },
+  breathe: { href: '/review', label: '拦截' },
+}
+const OTHER_FACE: Record<Face, Face> = { today: 'breathe', breathe: 'today' }
+
 /**
- * Five tabs, six for the owner. It was seven.
+ * Four or five tabs a face, plus 账号 on both and 发号 for the owner on 拦截
+ * only. It was one row of up to seven.
  *
- * The three that left were all the same mistake: a step of one job given a
- * destination of its own. 「实测」 merged into 「候选」 (finding a string and
- * trying it are two halves of one task), and then 「候选」 itself merged into
- * the URL scheme field on /settings — nobody ever wanted to go look at a list
- * of candidates; they wanted to fill in that one box, and being sent away from
- * a half-typed form to do it lost the form.
+ * The three that used to share this row with everything else were all the same
+ * mistake: a step of one job given a destination of its own. 「实测」 merged
+ * into 「候选」 (finding a string and trying it are two halves of one task), and
+ * then 「候选」 itself merged into the URL scheme field on /settings — nobody
+ * ever wanted to go look at a list of candidates; they wanted to fill in that
+ * one box, and being sent away from a half-typed form to do it lost the form.
  *
- * 「今日」 is in the first position because it is the page users open every time.
- * The /goals page is reached from /today, not as its own tab.
+ * 「今日」 is in the first position of its face because it is the page users
+ * open every time.
  *
- * Every remaining tab keeps its word: 「回顾」 and 「怎么配」 have no icon
- * anyone would guess, and an icon-only nav would trade a scroll nobody can see
- * for a guess nobody can make. The current tab sits on a pale ink disc.
+ * Every remaining tab keeps its word: 「回顾」 、「回看」 and 「怎么配」 have no
+ * icon anyone would guess, and an icon-only nav would trade a scroll nobody can
+ * see for a guess nobody can make. The current tab sits on a pale ink disc.
  */
 export function consoleHeader(user: User, active: ConsolePage): string {
+  const face = faceOf(active)
   const tab = (href: string, name: ConsolePage, text: string): string =>
     `<a href="${href}"${active === name ? ' class="on" aria-current="page"' : ''}>${icon(name)}<span class="lb">${text}</span></a>`
+  const faceTabs = face === 'today' ? TODAY_TABS : BREATHE_TABS
+  const other = FACE_HOME[OTHER_FACE[face]]
   return `<header>
-  <span class="brand">一息</span>
+  <span class="brand">一息</span><span class="facename">· ${FACE_HOME[face].label}</span>
   <span class="who">${escapeHtml(user.name)}</span>
+  <a class="face" href="${other.href}">${other.label} ›</a>
   <nav aria-label="导航">
-    ${tab('/today', 'today', '今日')}
-    ${tab('/review', 'review', '回顾')}
-    ${tab('/settings', 'settings', '设置')}
-    ${tab('/setup', 'setup', '怎么配')}
+    ${faceTabs.map(([href, name, label]) => tab(href, name, label)).join('\n    ')}
     ${tab('/account', 'account', '账号')}
-    ${user.is_owner ? tab('/admin', 'admin', '发号') : ''}
+    ${user.is_owner && face === 'breathe' ? tab('/admin', 'admin', '发号') : ''}
   </nav>
 </header>`
 }
@@ -89,7 +132,13 @@ body{font-size:17px;line-height:1.75}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
 header{display:flex;align-items:center;gap:10px;padding-top:22px;padding-bottom:12px}
 .brand{font-size:20px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
+.facename{font-size:13px;color:var(--faint);margin-left:4px}
 .who{font-size:13px;color:var(--faint)}
+/* padding, not just line-height, gets the tap target to 44px without making
+   the link itself look like a button — it is one line of quiet text next to
+   the username, not a call to action. */
+a.face{font-size:13px;color:var(--faint);text-decoration:none;display:inline-flex;
+  align-items:center;padding:14px 4px;min-height:44px;box-sizing:border-box}
 /* Wrapping is the safety net, not the design: six items at this size fit one
    row inside a 375px phone, and a wrap only ever beats the horizontal scroll
    this used to need — that scrollbar is hidden, so nothing announced it. */

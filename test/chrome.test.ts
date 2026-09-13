@@ -11,9 +11,21 @@
 // nav. The bug lived in the page the test never asked about.
 //
 // So the assertion here is not "the nav is right on some page". It is that
-// every signed-in page emits the SAME nav, diffed against every other, with the
-// page list derived from the router rather than hand-copied. A seventh page
-// that renders its own chrome fails this file on the day it is added.
+// every signed-in page emits the SAME nav *as the rest of its own face*, diffed
+// against every sibling, with the page list derived from the router rather than
+// hand-copied. A page that renders its own chrome fails this file on the day it
+// is added — and so does a page that quietly leaks the other face's tabs.
+//
+// --- two faces ---------------------------------------------------------------
+//
+// The nav is now two navs: 今日 (/today, /today/goals, /today/review,
+// /today/setup) and 拦截 (/review, /settings, /setup). Only /today exists as a
+// page today — the other three 今日 hrefs are asserted as links in the shared
+// nav even though nothing serves them yet (tasks 4-5 build the pages; the nav
+// shape is this task's job). So the shape-equality check runs within each
+// face's own page set rather than across all six pages, and a handful of
+// checks (which hrefs a face may and may not offer, the owner's extra tab, the
+// a.face switch link) are asserted per face explicitly.
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -62,20 +74,26 @@ async function reset(): Promise<void> {
 }
 beforeEach(reset)
 
-/**
- * Every page reachable from the nav, rendered the way the router renders it.
- * Keyed by the tab that should be marked current.
- */
-const PAGES: Record<string, (u: User) => Promise<Response>> = {
+type PageFn = (u: User) => Promise<Response>
+
+/** The 今日 face. Only /today exists so far — tasks 4-5 add the other three. */
+const TODAY_PAGES: Record<string, PageFn> = {
   today: (u) => handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, u),
+}
+
+/** The 拦截 face — the original console. */
+const BREATHE_PAGES: Record<string, PageFn> = {
   review: (u) => renderReview(new Request(`${BASE}/review`), env, u),
   settings: (u) => handleSettings(new Request(`${BASE}/settings`), env, u),
   setup: (u) => renderSetup(new Request(`${BASE}/setup`), env, u),
   account: (u) => handleAccount(new Request(`${BASE}/account`), env, u),
 }
 
-async function html(name: string, u: User = user): Promise<string> {
-  const res = await PAGES[name]!(u)
+/** Every page reachable from either face's nav, for checks that don't care which face. */
+const ALL_PAGES: Record<string, PageFn> = { ...TODAY_PAGES, ...BREATHE_PAGES }
+
+async function html(pages: Record<string, PageFn>, name: string, u: User = user): Promise<string> {
+  const res = await pages[name]!(u)
   return await res.text()
 }
 
@@ -90,61 +108,106 @@ function shape(nav: string): string {
   return nav.replace(/ class="on" aria-current="page"/g, '').replace(/\s+/g, ' ')
 }
 
-describe('one nav, on every signed-in page', () => {
-  it('renders byte-identical tabs everywhere, marker aside', async () => {
-    const names = Object.keys(PAGES)
-    const shapes = new Map<string, string>()
-    for (const name of names) shapes.set(name, shape(navOf(await html(name), name)))
+describe('one nav a face, on every signed-in page', () => {
+  it('renders byte-identical tabs within a face, marker aside', async () => {
+    for (const pages of [TODAY_PAGES, BREATHE_PAGES]) {
+      const names = Object.keys(pages)
+      const shapes = new Map<string, string>()
+      for (const name of names) shapes.set(name, shape(navOf(await html(pages, name), name)))
 
-    const [first, ...rest] = names
-    for (const name of rest) {
-      // Diffed against a sibling rather than a golden string: the point is that
-      // they agree, not that they match something written down here.
-      expect(shapes.get(name), `${name} nav differs from ${first}`).toBe(shapes.get(first!))
+      const [first, ...rest] = names
+      for (const name of rest) {
+        // Diffed against a sibling rather than a golden string: the point is
+        // that they agree, not that they match something written down here.
+        expect(shapes.get(name), `${name} nav differs from ${first}`).toBe(shapes.get(first!))
+      }
     }
   })
 
-  it('offers all five destinations from every page, /review included', async () => {
-    for (const name of Object.keys(PAGES)) {
-      const nav = navOf(await html(name), name)
-      for (const href of ['/today', '/review', '/settings', '/setup', '/account']) {
-        // The failure this replaces: from /review these three did not exist.
+  it('offers /account from every page, whichever face it is on', async () => {
+    for (const name of Object.keys(ALL_PAGES)) {
+      const nav = navOf(await html(ALL_PAGES, name), name)
+      expect(nav, `${name} has no link to /account`).toContain('href="/account"')
+    }
+  })
+
+  it('gives the 今日 face its four hrefs and none of 拦截’s', async () => {
+    for (const name of Object.keys(TODAY_PAGES)) {
+      const nav = navOf(await html(TODAY_PAGES, name), name)
+      for (const href of ['/today', '/today/goals', '/today/review', '/today/setup']) {
         expect(nav, `${name} has no link to ${href}`).toContain(`href="${href}"`)
       }
+      expect(nav, `${name} leaked a 拦截 href`).not.toMatch(/href="\/review"/)
+      expect(nav, `${name} leaked a 拦截 href`).not.toMatch(/href="\/settings"/)
+      expect(nav, `${name} leaked a 拦截 href`).not.toMatch(/href="\/setup"/)
       expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(5)
     }
   })
 
-  it('marks the page you are on, and only that one', async () => {
-    for (const name of Object.keys(PAGES)) {
-      const nav = navOf(await html(name), name)
-      expect(nav.match(/aria-current="page"/g), `${name} current tab`).toHaveLength(1)
-      const current = nav.match(/<a href="([^"]+)"[^>]*aria-current="page"/)
-      expect(current?.[1], `${name} marks the wrong tab`).toBe(`/${name}`)
+  it('gives the 拦截 face its three hrefs and none of 今日’s', async () => {
+    for (const name of Object.keys(BREATHE_PAGES)) {
+      const nav = navOf(await html(BREATHE_PAGES, name), name)
+      for (const href of ['/review', '/settings', '/setup']) {
+        expect(nav, `${name} has no link to ${href}`).toContain(`href="${href}"`)
+      }
+      expect(nav, `${name} leaked a 今日 href`).not.toMatch(/href="\/today"/)
+      expect(nav, `${name} leaked a 今日 href`).not.toMatch(/href="\/today\/goals"/)
+      expect(nav, `${name} leaked a 今日 href`).not.toMatch(/href="\/today\/review"/)
+      expect(nav, `${name} leaked a 今日 href`).not.toMatch(/href="\/today\/setup"/)
+      expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(4)
     }
   })
 
-  it('gives the owner a sixth tab, on every page including /review', async () => {
-    for (const name of Object.keys(PAGES)) {
-      const nav = navOf(await html(name, owner), `${name} (owner)`)
-      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(6)
+  it('marks the page you are on, and only that one', async () => {
+    for (const name of Object.keys(ALL_PAGES)) {
+      const nav = navOf(await html(ALL_PAGES, name), name)
+      expect(nav.match(/aria-current="page"/g), `${name} current tab`).toHaveLength(1)
+    }
+  })
+
+  it('offers a small a.face link to the other face’s home, beside the brand', async () => {
+    for (const name of Object.keys(TODAY_PAGES)) {
+      const page = await html(TODAY_PAGES, name)
+      expect(page, `${name} a.face`).toMatch(/<a class="face" href="\/review">拦截\s*›<\/a>/)
+    }
+    for (const name of Object.keys(BREATHE_PAGES)) {
+      const page = await html(BREATHE_PAGES, name)
+      expect(page, `${name} a.face`).toMatch(/<a class="face" href="\/today">今日\s*›<\/a>/)
+    }
+  })
+
+  it('gives the owner an extra 发号 tab only on the 拦截 face', async () => {
+    for (const name of Object.keys(BREATHE_PAGES)) {
+      const nav = navOf(await html(BREATHE_PAGES, name, owner), `${name} (owner)`)
+      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(5)
       expect(nav, `${name} owner`).toContain('/admin')
     }
+    for (const name of Object.keys(TODAY_PAGES)) {
+      const nav = navOf(await html(TODAY_PAGES, name, owner), `${name} (owner)`)
+      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(5)
+      expect(nav, `${name} owner should have no 发号`).not.toContain('/admin')
+    }
     const adminNav = navOf(await (await handleAdmin(new Request(`${BASE}/admin`), env, owner)).text(), 'admin')
-    expect(adminNav.match(/<a /g)).toHaveLength(6)
+    expect(adminNav.match(/<a /g)).toHaveLength(5)
+    expect(adminNav).toContain('/admin')
   })
 
   it('draws an icon in every tab — a text-only nav is the old /review', async () => {
-    for (const name of Object.keys(PAGES)) {
-      const nav = navOf(await html(name), name)
+    for (const name of Object.keys(TODAY_PAGES)) {
+      const nav = navOf(await html(TODAY_PAGES, name), name)
       expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(5)
       expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(5)
+    }
+    for (const name of Object.keys(BREATHE_PAGES)) {
+      const nav = navOf(await html(BREATHE_PAGES, name), name)
+      expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(4)
+      expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(4)
     }
   })
 
   it('lets no page ship a second <header> of its own', async () => {
-    for (const name of Object.keys(PAGES)) {
-      const page = await html(name)
+    for (const name of Object.keys(ALL_PAGES)) {
+      const page = await html(ALL_PAGES, name)
       expect(page.match(/<header>/g), `${name} header count`).toHaveLength(1)
       // /review's private copy is gone; nobody may style the nav back down.
       expect(page.split('${')[0]).not.toMatch(/header nav\s*\{[^}]*font-size/)
@@ -165,11 +228,11 @@ describe('type scale', () => {
   async function everyStylesheet(): Promise<Array<[string, string]>> {
     const out: Array<[string, string]> = [['CONSOLE_CSS', CONSOLE_CSS]]
     const rendered: Array<[string, string]> = []
-    for (const name of Object.keys(PAGES)) rendered.push([name, await html(name)])
-    // The two pages with no nav, and so not in PAGES — which is exactly why the
-    // first version of this test missed them. They are the two pages a user
-    // sees most: the breathing page every single interception, and the landing
-    // page before they have an account.
+    for (const name of Object.keys(ALL_PAGES)) rendered.push([name, await html(ALL_PAGES, name)])
+    // The two pages with no nav, and so not in ALL_PAGES — which is exactly why
+    // the first version of this test missed them. They are the two pages a
+    // user sees most: the breathing page every single interception, and the
+    // landing page before they have an account.
     rendered.push([
       'breathe',
       await breathePage({
@@ -253,7 +316,7 @@ describe('what may be indexed', () => {
 
   async function privatePages(): Promise<Array<[string, string]>> {
     const out: Array<[string, string]> = []
-    for (const name of Object.keys(PAGES)) out.push([name, await html(name)])
+    for (const name of Object.keys(ALL_PAGES)) out.push([name, await html(ALL_PAGES, name)])
     out.push([
       'breathe',
       await breathePage({
