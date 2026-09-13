@@ -90,3 +90,37 @@ export const SESSION_TTL_MS = 10 * 60 * 1000
 
 export const DEFAULT_WAIT_SECONDS = 10
 export const DEFAULT_GRACE_SECONDS = 90
+
+// --- goals（/today、/goals）--------------------------------------------------
+
+export interface Goal {
+  id: number
+  user_id: number
+  title: string
+  /** 触发时机，「早饭后」「地铁上」，纯展示。 */
+  cue: string
+  /** 跳转目标：自定义 scheme 或 https 网址；'' 表示没绑。 */
+  target: string
+  /** 「B 站」；按钮显示「去 B 站」，空则「去做」。 */
+  target_label: string
+  position: number
+  /** YYYY-MM-DD；NULL = 长期。 */
+  until: string | null
+  created_at: number
+  archived_at: number | null
+}
+
+export interface GoalTask {
+  id: number
+  goal_id: number
+  user_id: number
+  title: string
+  position: number
+  created_at: number
+  done_at: number | null
+}
+
+/** /today 只展示排前面的这几个；其余折叠。产品立场，不是技术限制。 */
+export const TODAY_GOAL_LIMIT = 3
+/** 到期目标「续一期」的长度。 */
+export const GOAL_EXTEND_DAYS = 28

@@ -1,4 +1,4 @@
-import type { EventKind, Session, User, UserApp, WebSession } from './types'
+import type { EventKind, Goal, GoalTask, Session, User, UserApp, WebSession } from './types'
 import type { PasswordRecord, SealedToken } from './crypto'
 
 /**
@@ -578,4 +578,196 @@ export async function setGrace(db: D1Database, userId: number, app: string, unti
     )
     .bind(userId, app, until)
     .run()
+}
+
+// --- goals（/today、/goals）--------------------------------------------------
+//
+// 每条写语句都带 user_id：goal 与 task 的 id 是全局自增，能挡住「A 改 B 的
+// 任务」的只有这一个条件。返回 boolean 的函数用 meta.changes 判断是否真改了行。
+
+export async function listGoals(db: D1Database, userId: number): Promise<Goal[]> {
+  const res = await db
+    .prepare(
+      `SELECT id, user_id, title, cue, target, target_label, position, until, created_at, archived_at
+       FROM goals WHERE user_id = ?1
+       ORDER BY archived_at IS NOT NULL, position, id`,
+    )
+    .bind(userId)
+    .all<Goal>()
+  return res.results
+}
+
+export async function getGoal(db: D1Database, userId: number, id: number): Promise<Goal | null> {
+  return await db
+    .prepare(
+      `SELECT id, user_id, title, cue, target, target_label, position, until, created_at, archived_at
+       FROM goals WHERE user_id = ?1 AND id = ?2`,
+    )
+    .bind(userId, id)
+    .first<Goal>()
+}
+
+export async function createGoal(
+  db: D1Database,
+  g: { userId: number; title: string; cue: string; target: string; targetLabel: string; until: string | null; now: number },
+): Promise<number> {
+  const res = await db
+    .prepare(
+      `INSERT INTO goals (user_id, title, cue, target, target_label, position, until, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5,
+         (SELECT COALESCE(MAX(position), 0) + 1 FROM goals WHERE user_id = ?1),
+         ?6, ?7)`,
+    )
+    .bind(g.userId, g.title, g.cue, g.target, g.targetLabel, g.until, g.now)
+    .run()
+  return Number(res.meta.last_row_id)
+}
+
+export async function updateGoal(
+  db: D1Database,
+  userId: number,
+  id: number,
+  g: { title: string; cue: string; target: string; targetLabel: string; until: string | null },
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE goals SET title = ?3, cue = ?4, target = ?5, target_label = ?6, until = ?7
+       WHERE user_id = ?1 AND id = ?2`,
+    )
+    .bind(userId, id, g.title, g.cue, g.target, g.targetLabel, g.until)
+    .run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+export async function setGoalArchived(
+  db: D1Database,
+  userId: number,
+  id: number,
+  archivedAt: number | null,
+): Promise<boolean> {
+  const res = await db
+    .prepare('UPDATE goals SET archived_at = ?3 WHERE user_id = ?1 AND id = ?2')
+    .bind(userId, id, archivedAt)
+    .run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+/** 级联删：一个 batch，要么全删要么不删。 */
+export async function deleteGoal(db: D1Database, userId: number, id: number): Promise<boolean> {
+  const own = await getGoal(db, userId, id)
+  if (!own) return false
+  await db.batch([
+    db.prepare('DELETE FROM goal_checkins WHERE user_id = ?1 AND goal_id = ?2').bind(userId, id),
+    db.prepare('DELETE FROM goal_tasks WHERE user_id = ?1 AND goal_id = ?2').bind(userId, id),
+    db.prepare('DELETE FROM goals WHERE user_id = ?1 AND id = ?2').bind(userId, id),
+  ])
+  return true
+}
+
+/**
+ * 与相邻的未归档目标交换 position。到顶／到底返回 false，不报错——
+ * 手机上连点两次「上移」不该看到错误页。
+ */
+export async function moveGoal(db: D1Database, userId: number, id: number, dir: 'up' | 'down'): Promise<boolean> {
+  const me = await getGoal(db, userId, id)
+  if (!me || me.archived_at !== null) return false
+  const neighbour = await db
+    .prepare(
+      dir === 'up'
+        ? `SELECT id, position FROM goals WHERE user_id = ?1 AND archived_at IS NULL AND position < ?2
+           ORDER BY position DESC LIMIT 1`
+        : `SELECT id, position FROM goals WHERE user_id = ?1 AND archived_at IS NULL AND position > ?2
+           ORDER BY position ASC LIMIT 1`,
+    )
+    .bind(userId, me.position)
+    .first<{ id: number; position: number }>()
+  if (!neighbour) return false
+  await db.batch([
+    db.prepare('UPDATE goals SET position = ?3 WHERE user_id = ?1 AND id = ?2').bind(userId, me.id, neighbour.position),
+    db.prepare('UPDATE goals SET position = ?3 WHERE user_id = ?1 AND id = ?2').bind(userId, neighbour.id, me.position),
+  ])
+  return true
+}
+
+export async function listTasks(db: D1Database, userId: number): Promise<GoalTask[]> {
+  const res = await db
+    .prepare(
+      `SELECT id, goal_id, user_id, title, position, created_at, done_at
+       FROM goal_tasks WHERE user_id = ?1
+       ORDER BY goal_id, done_at IS NOT NULL, position, id`,
+    )
+    .bind(userId)
+    .all<GoalTask>()
+  return res.results
+}
+
+/** goal 不属于该用户 → null，不插入。 */
+export async function createTask(
+  db: D1Database,
+  t: { userId: number; goalId: number; title: string; now: number },
+): Promise<number | null> {
+  const own = await getGoal(db, t.userId, t.goalId)
+  if (!own) return null
+  const res = await db
+    .prepare(
+      `INSERT INTO goal_tasks (goal_id, user_id, title, position, created_at)
+       VALUES (?1, ?2, ?3,
+         (SELECT COALESCE(MAX(position), 0) + 1 FROM goal_tasks WHERE goal_id = ?1),
+         ?4)`,
+    )
+    .bind(t.goalId, t.userId, t.title, t.now)
+    .run()
+  return Number(res.meta.last_row_id)
+}
+
+export async function setTaskDone(db: D1Database, userId: number, id: number, doneAt: number | null): Promise<boolean> {
+  const res = await db
+    .prepare('UPDATE goal_tasks SET done_at = ?3 WHERE user_id = ?1 AND id = ?2')
+    .bind(userId, id, doneAt)
+    .run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+export async function deleteTask(db: D1Database, userId: number, id: number): Promise<boolean> {
+  const res = await db.prepare('DELETE FROM goal_tasks WHERE user_id = ?1 AND id = ?2').bind(userId, id).run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+/**
+ * 按天幂等的打卡：有则删（取消），无则插。主键 (user_id, goal_id, date)
+ * 保证同一天永远只有一行，重复点不会重复计数。
+ */
+export async function toggleCheckin(
+  db: D1Database,
+  userId: number,
+  goalId: number,
+  date: string,
+  now: number,
+): Promise<'checked' | 'unchecked' | 'nogoal'> {
+  const own = await getGoal(db, userId, goalId)
+  if (!own) return 'nogoal'
+  const removed = await db
+    .prepare('DELETE FROM goal_checkins WHERE user_id = ?1 AND goal_id = ?2 AND date = ?3')
+    .bind(userId, goalId, date)
+    .run()
+  if ((removed.meta.changes ?? 0) > 0) return 'unchecked'
+  await db
+    .prepare('INSERT INTO goal_checkins (user_id, goal_id, date, ts) VALUES (?1, ?2, ?3, ?4)')
+    .bind(userId, goalId, date, now)
+    .run()
+  return 'checked'
+}
+
+/** 闭区间；一次取整个用户的，调用方按 goal 分组，不做 N+1。 */
+export async function listCheckins(
+  db: D1Database,
+  userId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<{ goal_id: number; date: string }[]> {
+  const res = await db
+    .prepare('SELECT goal_id, date FROM goal_checkins WHERE user_id = ?1 AND date >= ?2 AND date <= ?3')
+    .bind(userId, fromDate, toDate)
+    .all<{ goal_id: number; date: string }>()
+  return res.results
 }
