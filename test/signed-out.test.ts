@@ -38,9 +38,8 @@ describe('signed-out visitors', () => {
       const res = await get(path)
       // A plain-text "unauthorized" is indistinguishable from a broken site, and
       // these paths are exactly what the nav offers first. authenticate() runs
-      // before the router even looks at the path, so this holds for /today/review
-      // too — its page does not exist yet (task 5), but a signed-out visitor never
-      // gets far enough to find that out.
+      // before the router even looks at the path, so this holds for
+      // /today/review too, same as every other console page.
       expect(res.status, path).toBe(303)
       expect(res.headers.get('location'), path).toContain('/login')
     }

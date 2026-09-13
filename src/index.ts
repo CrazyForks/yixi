@@ -8,6 +8,7 @@ import { renderSetup } from './ui/setup'
 import { handleToday } from './ui/today'
 import { handleGoals } from './ui/goals'
 import { renderTodaySetup } from './ui/todaysetup'
+import { renderProgress } from './ui/progress'
 import { iconResponse, manifestResponse } from './ui/pwa'
 import { handleCandidates } from './api/candidates'
 import {
@@ -104,6 +105,7 @@ export default {
       if (path === '/today') res = await handleToday(request, env, user)
       else if (path === '/today/goals') res = await handleGoals(request, env, user)
       else if (path === '/today/setup' && method === 'GET') res = await renderTodaySetup(request, env, user)
+      else if (path === '/today/review' && method === 'GET') res = await renderProgress(request, env, user)
       else if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
       else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request)

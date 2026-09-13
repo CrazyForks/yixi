@@ -848,3 +848,29 @@ export async function countTasksDoneOn(db: D1Database, userId: number, date: str
     .first<{ n: number }>()
   return row?.n ?? 0
 }
+
+/**
+ * Same +08:00 day-window idea as `countTasksDoneOn`, over an inclusive range
+ * of Shanghai days instead of a single one. `/today/review`'s "this week" is
+ * the one number on that page that is not read off a goal_days snapshot: a
+ * snapshot's `shown` set can no longer name a goal that was later archived or
+ * deleted, but the task it was done under still happened this week, so this
+ * queries `goal_tasks` directly.
+ */
+export async function countTasksDoneBetween(
+  db: D1Database,
+  userId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<number> {
+  const from = Date.parse(`${fromDate}T00:00:00+08:00`)
+  const to = Date.parse(`${toDate}T00:00:00+08:00`) + 86_400_000
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM goal_tasks
+       WHERE user_id = ?1 AND done_at >= ?2 AND done_at < ?3`,
+    )
+    .bind(userId, from, to)
+    .first<{ n: number }>()
+  return row?.n ?? 0
+}
