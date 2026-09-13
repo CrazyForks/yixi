@@ -203,6 +203,25 @@ describe('?lang= handling in the router', () => {
     return worker.fetch(new Request(`${BASE}${path}`), env)
   }
 
+  function post(path: string, fields: Record<string, string>): Promise<Response> {
+    return worker.fetch(
+      new Request(`${BASE}${path}`, { method: 'POST', body: new URLSearchParams(fields) }),
+      env,
+    )
+  }
+
+  it('does not intercept a POST — /login?lang=en must reach handleLogin with its body intact, not 303 with it dropped', async () => {
+    const fields = { email: 'nobody@example.com', password: 'whatever-wrong-1' }
+    const withLang = await post('/login?lang=en', fields)
+    const withoutLang = await post('/login', fields)
+
+    expect(withLang.status).not.toBe(303)
+    expect(withLang.headers.get('set-cookie') ?? '').not.toContain(LANG_COOKIE)
+    // Same outcome (both 401: readForm still saw email+password) whether or
+    // not `?lang=en` rode along — the param must be invisible to a POST.
+    expect(withLang.status).toBe(withoutLang.status)
+  })
+
   it('sets the cookie and 303s to the same path with lang stripped, for a signed-out visitor', async () => {
     const res = await get('/?lang=en')
     expect(res.status).toBe(303)
@@ -327,6 +346,25 @@ const ALL_SOURCES: Record<string, string> = {
   'src/ui/today.ts': uiTodayRaw,
   'src/ui/todaysetup.ts': uiTodaysetupRaw,
 }
+
+/**
+ * `ALL_SOURCES` above, pinned. The workers pool cannot read the filesystem at
+ * runtime, so there is no way to enumerate `src/**‍/*.ts` here and diff it
+ * against the map — a file added under `src/` (that isn't one of the three
+ * exclusions) and never given a `?raw` import + `ALL_SOURCES` entry would
+ * silently fall outside guard ②'s coverage forever. This constant cannot
+ * catch that omission either, but it does force the *other* direction to be
+ * deliberate: whoever edits `ALL_SOURCES` — adding or removing an entry —
+ * must also bump this number in the same diff, or "guard rail: ALL_SOURCES
+ * count" below goes red. Bump both together.
+ */
+const ALL_SOURCES_EXPECTED_COUNT = 32
+
+describe('guard rail: ALL_SOURCES has not silently drifted from its pinned count', () => {
+  it('covers exactly as many files as it is pinned to', () => {
+    expect(Object.keys(ALL_SOURCES).length).toBe(ALL_SOURCES_EXPECTED_COUNT)
+  })
+})
 
 const CJK_RE = /[一-鿿]/
 const CHINESE_PUNCT_RE = /[「」，。！？；：（）]/

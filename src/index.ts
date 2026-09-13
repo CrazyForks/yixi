@@ -64,8 +64,13 @@ export default {
       // on the next hop. An invalid value is left alone entirely and the
       // request falls through to the router below as if `lang` had never
       // been there.
+      //
+      // GET only: a POST whose URL happens to carry `?lang=` — /login,
+      // /register, /claim, /recover all take one — must reach its own
+      // handler with its body intact, not get 303'd into losing it. A link
+      // is always a GET; nothing here ever needs to catch a POST.
       const lang = url.searchParams.get('lang')
-      if (lang !== null && isLocale(lang)) {
+      if (lang !== null && isLocale(lang) && method === 'GET') {
         const langAuth = await authenticate(request, env)
         if (langAuth) await setUserLocale(env.DB, langAuth.user.id, lang)
         const clean = new URL(url)
