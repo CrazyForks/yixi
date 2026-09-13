@@ -346,7 +346,7 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 23 个文件 456 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 23 个文件 461 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
@@ -364,6 +364,7 @@ src/turnstile.ts    /register 上那道可选的人机验证，以及它的 fail
 src/scheme.ts       URL scheme 黑名单 —— 一份正本，三处调用
 src/schemes.ts      两份公开 scheme 清单的固化快照（60 个 App）
 src/types.ts        Env、User、事件类型、共享常量
+src/dates.ts        /today 与 /goals 共用的 'YYYY-MM-DD' 日期运算
 src/ui/*.ts         一个页面一个模块，全部服务端渲染
 src/ui/schemefield.ts  /settings 与 /goals 共用的 URL scheme 选择字段
 src/ui/pwa.ts       主屏幕的 manifest 和图标——公开，不含任何个人数据

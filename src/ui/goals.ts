@@ -18,19 +18,7 @@ import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
 import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
 import { safeScheme } from '../scheme'
-
-// --- shared helpers (also used by /today) -----------------------------------
-
-export function isExpired(goal: Pick<Goal, 'until'>, today: string): boolean {
-  return goal.until !== null && goal.until < today
-}
-
-/** 'YYYY-MM-DD' ± n days, computed in UTC on the date parts so no zone drifts it. */
-export function addDays(date: string, days: number): string {
-  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
-  const t = Date.UTC(y, m - 1, d) + days * 86_400_000
-  return new Date(t).toISOString().slice(0, 10)
-}
+import { addDays, isExpired } from '../dates'
 
 // --- route handler -----------------------------------------------------------
 
@@ -144,8 +132,8 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
       if (goal.archived_at === null) return await render(env, user, { error: '先归档，再删除。', status: 400 })
       await deleteGoal(env.DB, user.id, id)
       return seeOther('/goals')
-    case 'up': await moveGoal(env.DB, user.id, id, 'up'); break     // edge → false, still a redirect
-    case 'down': await moveGoal(env.DB, user.id, id, 'down'); break
+    case 'up': await moveGoal(env.DB, user.id, id, 'up', today); break     // edge → false, still a redirect
+    case 'down': await moveGoal(env.DB, user.id, id, 'down', today); break
     case 'extend':
       await updateGoal(env.DB, user.id, id, {
         title: goal.title, cue: goal.cue, target: goal.target, targetLabel: goal.target_label,
@@ -302,14 +290,12 @@ function archivedBlock(goals: Goal[]): string {
 const GOALS_CSS = `
 .banner.expired{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .banner.expired .acts{margin-left:auto;display:flex;gap:12px}
-.banner.expired button.linky{padding:6px 0;min-height:0}
 details.app > .card.tasks{border:0;border-top:1px solid var(--rule);border-radius:0;margin:0}
 .tl{list-style:none;margin:0 0 10px;padding:0}
 .tl li{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--rule)}
 .tl li span{flex:1;min-width:0}
 .tl li.done span{color:var(--faint);text-decoration:line-through}
 .tl li form{margin:0}
-.tl button.linky{padding:6px 0;min-height:0}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
 details.archived{margin:24px 0 0}

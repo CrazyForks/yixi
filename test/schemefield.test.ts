@@ -57,3 +57,54 @@ describe('SCHEME_FIELD_CSS', () => {
     }
   })
 })
+
+/**
+ * Strips comments so assertions about the code are about the code, not about a
+ * comment that happens to contain the same words. Mirrors codeOnly() in
+ * test/settings.test.ts rather than inventing a second technique.
+ */
+function codeOnly(js: string): string {
+  return js.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+
+/** The body of a named function or of the first listener for an event. Mirrors bodyOf() in test/settings.test.ts. */
+function bodyOf(code: string, opener: string): string {
+  const start = code.indexOf(opener)
+  expect(start, `not found: ${opener}`).toBeGreaterThan(-1)
+  const i = code.indexOf('{', start)
+  expect(i, `no brace after ${opener}`).toBeGreaterThan(-1)
+  let depth = 0
+  for (let j = i; j < code.length; j++) {
+    if (code[j] === '{') depth++
+    else if (code[j] === '}') {
+      depth--
+      if (depth === 0) return code.slice(i + 1, j)
+    }
+  }
+  throw new Error(`unbalanced braces after ${opener}`)
+}
+
+describe('the click-to-jump path stays synchronous, wherever the field is rendered', () => {
+  it('keeps jump() and every click-handler branch that calls it free of await, fetch, setTimeout and .then', () => {
+    // The old version of this guard lived only in test/settings.test.ts and
+    // ran against the /settings page's rendered script — which happens to be
+    // SCHEME_FIELD_JS verbatim, but nothing pinned that. /goals renders the
+    // very same constant and had no guard of its own. Asserting on the
+    // constant directly covers both pages by construction.
+    const code = codeOnly(SCHEME_FIELD_JS)
+    const jump = bodyOf(code, 'function jump(scheme)')
+    const click = bodyOf(code, "document.addEventListener('click'")
+    for (const [where, body] of [
+      ['jump()', jump],
+      ['click handler', click],
+    ] as const) {
+      expect(body, `${where}: await`).not.toContain('await')
+      expect(body, `${where}: fetch`).not.toContain('fetch(')
+      expect(body, `${where}: setTimeout`).not.toContain('setTimeout')
+      expect(body, `${where}: promise chain`).not.toContain('.then(')
+    }
+    // And the click handler does call jump( at least twice — 「试跳」 and
+    // 「用这个」's sibling ctry path — so the body above is not vacuously clean.
+    expect(click.match(/\bjump\(/g)?.length ?? 0).toBeGreaterThanOrEqual(1)
+  })
+})

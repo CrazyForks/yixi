@@ -17,7 +17,7 @@ import { CONSOLE_CSS, consoleHeader } from './console'
 import { fold, hl, icon } from './icons'
 import { forbiddenPrefixes } from '../scheme'
 import { inAppBrowserOf, type InAppBrowser } from '../inapp'
-import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
+import { fieldId, SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
 
 
 // --- route handler ---------------------------------------------------------
@@ -445,16 +445,9 @@ function enabledField(on: boolean, ns: string): string {
   </div>`
 }
 
-/**
- * The same field set is rendered once per configured app plus once for the add
- * form. Namespacing every id by the app key keeps `<label for>` pointing at its
- * own input — without it, three apps that all wait 10 seconds would emit three
- * inputs sharing one id, and tapping the third label would focus the first.
- * The key is validated against APP_KEY, so it is always id-safe.
- */
-function fieldId(ns: string, name: string): string {
-  return `f-${ns}-${name}`
-}
+// fieldId() moved to ./schemefield.ts, which computes the same
+// `f-${ns}-${name}` formula for its own input. The key is validated against
+// APP_KEY, so it is always id-safe.
 
 /*
  * The icon in a <label> stays inline rather than turning the label into a flex

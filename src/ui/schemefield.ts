@@ -54,8 +54,18 @@ const DEFAULT_HINT =
  * reader's actual question is 「这个格子里该填什么形状的东西」, and one real
  * answer settles it faster than any explanation of where to look it up.
  */
+/**
+ * The one formula for a namespaced field id: `f-${ns}-${name}`. /settings and
+ * /goals both render the same field set once per row plus once for the add
+ * form, so every id has to be namespaced or same-named inputs across rows
+ * would collide and `<label for>` would point at the wrong one.
+ */
+export function fieldId(ns: string, name: string): string {
+  return `f-${ns}-${name}`
+}
+
 export function schemeField(o: SchemeFieldOptions): string {
-  const id = `f-${o.ns}-${o.name}`
+  const id = fieldId(o.ns, o.name)
   const required = o.required === false ? '' : ' required'
   return `<div class="field scheme" data-label-for="${escapeHtml(o.labelFor)}">
     <label for="${id}">${o.label}</label>

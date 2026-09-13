@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { handleGoals, addDays, isExpired } from '../src/ui/goals'
+import { handleGoals } from '../src/ui/goals'
+import { addDays, isExpired } from '../src/dates'
 import { createGoal, listGoals, listTasks, shanghaiDate } from '../src/db'
 import type { User } from '../src/types'
 
@@ -187,5 +188,21 @@ describe('POST /goals', () => {
   it('answers an unknown op with 400, and a non-numeric id with 400', async () => {
     expect((await post({ op: 'explode' })).status).toBe(400)
     expect((await post({ op: 'archive', goal: 'abc' })).status).toBe(400)
+  })
+})
+
+describe('44pt tap-target floor (design §9)', () => {
+  it('never shrinks a .linky button below console.ts’s 44px floor', async () => {
+    const h = await html()
+    const m = h.match(/<style>([\s\S]*?)<\/style>/)
+    expect(m, 'style block missing').toBeTruthy()
+    const css = m![1]!
+    const rules = css.match(/[^{}]+\{[^{}]*\}/g) ?? []
+    for (const rule of rules) {
+      const i = rule.indexOf('{')
+      const selector = rule.slice(0, i)
+      const body = rule.slice(i + 1, -1)
+      if (selector.includes('.linky')) expect(body, selector).not.toMatch(/min-height:\s*0\b/)
+    }
   })
 })

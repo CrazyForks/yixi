@@ -2,10 +2,11 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins, listGoals, listTasks,
-  moveGoal, setGoalArchived, setTaskDone, toggleCheckin, updateGoal,
+  moveGoal, setGoalArchived, setTaskDone, shanghaiDate, toggleCheckin, updateGoal,
 } from '../src/db'
 
 const NOW = 1_800_000_000_000
+const TODAY = shanghaiDate(NOW)
 
 async function reset(): Promise<void> {
   await env.DB.batch([
@@ -63,12 +64,12 @@ describe('goals', () => {
     const a = await goal(1, '健身')
     const b = await goal(1, '英语')
     const c = await goal(1, '阅读')
-    expect(await moveGoal(env.DB, 1, a, 'up')).toBe(false)
-    expect(await moveGoal(env.DB, 1, c, 'up')).toBe(true)
+    expect(await moveGoal(env.DB, 1, a, 'up', TODAY)).toBe(false)
+    expect(await moveGoal(env.DB, 1, c, 'up', TODAY)).toBe(true)
     expect((await listGoals(env.DB, 1)).map((g) => g.id)).toEqual([a, c, b])
-    expect(await moveGoal(env.DB, 1, a, 'down')).toBe(true)
+    expect(await moveGoal(env.DB, 1, a, 'down', TODAY)).toBe(true)
     expect((await listGoals(env.DB, 1)).map((g) => g.id)).toEqual([c, a, b])
-    expect(await moveGoal(env.DB, 2, a, 'down')).toBe(false)
+    expect(await moveGoal(env.DB, 2, a, 'down', TODAY)).toBe(false)
   })
 
   it('move skips archived rows', async () => {
@@ -76,9 +77,21 @@ describe('goals', () => {
     const b = await goal(1, '英语')
     const c = await goal(1, '阅读')
     await setGoalArchived(env.DB, 1, b, NOW)
-    expect(await moveGoal(env.DB, 1, c, 'up')).toBe(true)
+    expect(await moveGoal(env.DB, 1, c, 'up', TODAY)).toBe(true)
     const live = (await listGoals(env.DB, 1)).filter((g) => g.archived_at === null).map((g) => g.id)
     expect(live).toEqual([c, a])
+  })
+
+  it('move skips an expired neighbour too, swapping with the nearest live goal', async () => {
+    const a = await goal(1, '健身')
+    const x = await goal(1, '过期')
+    const c = await goal(1, '阅读')
+    await updateGoal(env.DB, 1, x, { title: '过期', cue: '', target: '', targetLabel: '', until: '2000-01-01' })
+    // order by position is [a, x(expired), c]; moving c up must swap with a,
+    // skipping the expired x in between, or the button would silently do
+    // nothing (x is still "in the way" positionally).
+    expect(await moveGoal(env.DB, 1, c, 'up', TODAY)).toBe(true)
+    expect((await listGoals(env.DB, 1)).map((g) => g.id)).toEqual([c, x, a])
   })
 
   it('delete takes tasks and checkins with it, for the owner only', async () => {

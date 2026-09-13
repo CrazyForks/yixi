@@ -346,7 +346,7 @@ Read these before deploying. Some of them cannot be fixed in code.
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 456 tests over 23 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 461 tests over 23 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
@@ -364,6 +364,7 @@ src/turnstile.ts    the optional /register challenge, and its fail-open rules
 src/scheme.ts       the URL-scheme denylist — one authority, three call sites
 src/schemes.ts      frozen snapshot of two public scheme collections (60 apps)
 src/types.ts        Env, User, event kinds, the shared constants
+src/dates.ts        'YYYY-MM-DD' arithmetic shared by /today and /goals
 src/ui/*.ts         one module per page, all server-rendered
 src/ui/schemefield.ts  the URL-scheme picker field shared by /settings and /goals
 src/ui/pwa.ts       the home-screen manifest and icon — public, no per-user data

@@ -1,6 +1,10 @@
 // Generates the 512x512 home-screen icon: one ink dot on paper, the same mark
 // the breathing page's 「息」 skin uses. Prints base64 to stdout; paste it into
 // src/ui/pwa.ts as ICON_PNG_BASE64. Run: node scripts/icon.mjs
+//
+// Requires Node >= 22.2 — `crc32` was added to node:zlib in that release. On an
+// older Node this import silently succeeds but `crc32` is `undefined`, and the
+// script fails at the call site with "crc32 is not a function".
 import { deflateSync, crc32 } from 'node:zlib'
 
 const SIZE = 512

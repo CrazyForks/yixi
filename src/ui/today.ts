@@ -18,7 +18,7 @@ import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
 import { inAppBrowserOf } from '../inapp'
 import { safeScheme } from '../scheme'
-import { addDays, isExpired } from './goals'
+import { addDays, isExpired } from '../dates'
 
 const DOTS = 7
 const TITLE_MAX = 40
@@ -244,8 +244,8 @@ const TODAY_CSS = `
 .goal.checked .ck i::after,.ck.bloom i::after{transform:scale(1);opacity:1}
 .ck.bloom i::after{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
 .next{display:flex;align-items:center;gap:10px;margin:14px 0 0}
-.tk{width:36px;height:36px;display:grid;place-items:center;margin-left:-6px}
-.tk i{display:block;width:18px;height:18px;border-radius:5px;border:1.3px solid var(--ring-prog)}
+.tk{width:44px;height:44px;display:grid;place-items:center;margin-left:-8px}
+.tk i{display:block;width:22px;height:22px;border-radius:6px;border:1.3px solid var(--ring-prog)}
 .nl{font-size:12px;color:var(--faint);letter-spacing:.1em;flex:none}
 .nt{font-size:15px;flex:1;min-width:0}
 .more{margin:6px 0 0 30px;font-size:13px;color:var(--faint)}
@@ -253,7 +253,7 @@ const TODAY_CSS = `
 .donel{list-style:none;margin:8px 0 0 30px;padding:0}
 .donel li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--faint);text-decoration:line-through}
 .donel li form{margin:0}
-.donel button.linky{padding:4px 0;min-height:0;font-size:12px;text-decoration:none}
+.donel button.linky{padding:11px 0;font-size:12px;text-decoration:none}
 .dots{display:flex;gap:8px;margin:16px 0 0}
 .dots .d{display:block;width:9px;height:9px;border-radius:50%;border:1px solid var(--ring-prog)}
 .dots .d.on{background:var(--dot);border-color:var(--dot)}
@@ -288,7 +288,9 @@ details.rest li a{text-decoration:none}
  *
  * bloom: a check tap paints the dot immediately, then submits the form after
  * the 260ms transition, so the 303 lands on a page that already looks the way
- * the tap did. Without JS the form submits normally.
+ * the tap did. Without JS the form submits normally. A second tap while the
+ * button still carries `.bloom` is a no-op — nothing re-arms the timer or
+ * resubmits — or a fast double tap would fire check, then uncheck.
  *
  * a2hs: the banner is server-rendered hidden for iPhone Safari; the client
  * shows it only outside standalone mode and only until dismissed.
@@ -313,6 +315,7 @@ document.addEventListener('click',function(e){
     var form=ck.closest('form');
     if(!form||!form.requestSubmit)return;
     e.preventDefault();
+    if(ck.classList.contains('bloom'))return;
     ck.classList.add('bloom');
     setTimeout(function(){form.requestSubmit(ck)},260);
     return;

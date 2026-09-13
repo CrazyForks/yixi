@@ -29,7 +29,7 @@ The entire application is one `fetch` handler and one `scheduled` handler in `sr
                         D1 (SQLite)
 ```
 
-`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart.
+`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts` and `src/account.ts` are the two pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart. `src/dates.ts` is the same pattern one level up: `addDays`/`isExpired` used to live inside `src/ui/goals.ts` with `/today` importing a page module just to reach two pure date-string functions; both now import them from `src/dates.ts` instead, and neither `src/ui/goals.ts` nor `src/ui/today.ts` re-exports them.
 
 ## Request lifecycle
 
@@ -401,7 +401,7 @@ The button hierarchy on a candidate is deliberate: 「试跳」 is the filled da
 
 ## Tests
 
-281 tests over 13 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+461 tests over 23 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
 
 The files worth knowing about before you change something:
 
@@ -416,5 +416,6 @@ The files worth knowing about before you change something:
 | `test/stats.test.ts` | the accounting semantics, including the midnight boundary |
 | `test/ratelimit.test.ts` | concurrency, which is how the original limiter was found to be useless |
 | `test/signed-out.test.ts` | that the login redirect cannot be turned into an open redirect |
+| `test/today.test.ts` | that only the first `TODAY_GOAL_LIMIT` live goals get a card and the first is the hero, that a checked card sinks below the unchecked ones, that the check button's ink-bloom guards against a double tap filing two POSTs (check, then uncheck), that the jump script holds exactly one synchronous `location.href=` assignment, and — the newest addition — that no rendered `.linky` button or the `.tk` completion box slips back under the 44px tap-target floor |
 
-Two of these strip comments from the rendered inline scripts before asserting on them, because the scripts *carry* comments containing the very words being searched for and a naive match would go green on the bug.
+Three of these strip comments from the rendered inline scripts before asserting on them, because the scripts *carry* comments containing the very words being searched for and a naive match would go green on the bug.

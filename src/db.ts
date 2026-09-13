@@ -668,18 +668,30 @@ export async function deleteGoal(db: D1Database, userId: number, id: number): Pr
  * 与相邻的未归档目标交换 position。到顶／到底返回 false，不报错——
  * 手机上连点两次「上移」不该看到错误页。
  */
-export async function moveGoal(db: D1Database, userId: number, id: number, dir: 'up' | 'down'): Promise<boolean> {
+export async function moveGoal(
+  db: D1Database,
+  userId: number,
+  id: number,
+  dir: 'up' | 'down',
+  today: string,
+): Promise<boolean> {
   const me = await getGoal(db, userId, id)
   if (!me || me.archived_at !== null) return false
+  // An expired goal sits in the list (lifted to the top of /goals, not hidden)
+  // but is not a candidate to swap with: the up/down neighbour has to be
+  // another live goal, or the button silently does nothing whenever an
+  // expired row happens to sit between two live ones.
   const neighbour = await db
     .prepare(
       dir === 'up'
         ? `SELECT id, position FROM goals WHERE user_id = ?1 AND archived_at IS NULL AND position < ?2
+           AND (until IS NULL OR until >= ?3)
            ORDER BY position DESC LIMIT 1`
         : `SELECT id, position FROM goals WHERE user_id = ?1 AND archived_at IS NULL AND position > ?2
+           AND (until IS NULL OR until >= ?3)
            ORDER BY position ASC LIMIT 1`,
     )
-    .bind(userId, me.position)
+    .bind(userId, me.position, today)
     .first<{ id: number; position: number }>()
   if (!neighbour) return false
   await db.batch([

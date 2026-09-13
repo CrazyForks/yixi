@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleToday } from '../src/ui/today'
-import { addDays } from '../src/ui/goals'
+import { addDays } from '../src/dates'
 import { createGoal, createTask, listGoals, listTasks, shanghaiDate, toggleCheckin } from '../src/db'
 import type { User } from '../src/types'
 
@@ -153,10 +153,17 @@ describe('the three cards', () => {
 
   it('escapes titles, cues and labels, and never lets a target become markup', async () => {
     await createGoal(env.DB, { userId: 1, title: '<i>x</i>', cue: '"c"', target: 'foo://"><script>', targetLabel: '<b>', until: null, now: NOW })
+    // The goal above is rejected outright by safeScheme (it never reaches
+    // data-target), so it never exercises escapeHtml on a target string. A
+    // second goal with a target safeScheme *accepts* — but that still needs
+    // HTML-escaping — is the one that actually tests that path.
+    await seed('合法目标', { target: 'foo://a&b' })
     const h = await html()
     expect(h).not.toContain('<i>x</i>')
     expect(h).not.toContain('"><script>')
     expect(h).toContain('&lt;i&gt;x&lt;/i&gt;')
+    expect(h).toContain('data-target="foo://a&amp;b"')
+    expect(h).not.toContain('data-target="foo://a&b"')
   })
 
   it('never shows another user’s goals', async () => {
@@ -235,6 +242,12 @@ describe('check-in', () => {
     expect(js).toContain('requestSubmit')
     expect(js).toContain('prefers-reduced-motion')
   })
+
+  it('guards the check button against a double tap firing two POSTs inside the bloom window', async () => {
+    await seed('健身')
+    const js = scriptOf(await html())
+    expect(js).toContain("if(ck.classList.contains('bloom'))return;")
+  })
 })
 
 describe('add-to-home-screen banner', () => {
@@ -250,5 +263,24 @@ describe('add-to-home-screen banner', () => {
     await seed('健身')
     expect(await html(IPHONE_WECHAT)).not.toContain('id="a2hs"')
     expect(await html()).not.toContain('id="a2hs"')
+  })
+})
+
+describe('44pt tap-target floor (design §9)', () => {
+  it('never shrinks a .linky button below console.ts’s 44px floor, and keeps .tk at 44px', async () => {
+    const h = await html()
+    const m = h.match(/<style>([\s\S]*?)<\/style>/)
+    expect(m, 'style block missing').toBeTruthy()
+    const css = m![1]!
+    const rules = css.match(/[^{}]+\{[^{}]*\}/g) ?? []
+    for (const rule of rules) {
+      const i = rule.indexOf('{')
+      const selector = rule.slice(0, i)
+      const body = rule.slice(i + 1, -1)
+      if (selector.includes('.linky')) expect(body, selector).not.toMatch(/min-height:\s*0\b/)
+    }
+    const tk = css.match(/\.tk\{[^}]*\}/)
+    expect(tk, '.tk rule missing').toBeTruthy()
+    expect(tk![0]).toContain('44px')
   })
 })
