@@ -1,4 +1,4 @@
-import type { EventKind, Goal, GoalTask, Session, User, UserApp, WebSession } from './types'
+import type { EventKind, Goal, GoalDay, GoalTask, Session, User, UserApp, WebSession } from './types'
 import type { PasswordRecord, SealedToken } from './crypto'
 
 /**
@@ -652,12 +652,15 @@ export async function setGoalArchived(
   return (res.meta.changes ?? 0) > 0
 }
 
-/** 级联删：一个 batch，要么全删要么不删。 */
+/**
+ * 一个 batch，要么全删要么不删——但只删 goal_tasks 与 goals。打卡历史是账本，
+ * 目标删了账还在：goal_checkins 不动，/review 回看按目标的那一栏只对仍存在
+ * 的目标算，历史总量（listCheckins 不带 goal 过滤的用法）不因为删目标而缩水。
+ */
 export async function deleteGoal(db: D1Database, userId: number, id: number): Promise<boolean> {
   const own = await getGoal(db, userId, id)
   if (!own) return false
   await db.batch([
-    db.prepare('DELETE FROM goal_checkins WHERE user_id = ?1 AND goal_id = ?2').bind(userId, id),
     db.prepare('DELETE FROM goal_tasks WHERE user_id = ?1 AND goal_id = ?2').bind(userId, id),
     db.prepare('DELETE FROM goals WHERE user_id = ?1 AND id = ?2').bind(userId, id),
   ])
@@ -787,4 +790,61 @@ export async function listCheckins(
     .bind(userId, fromDate, toDate)
     .all<{ goal_id: number; date: string }>()
   return res.results
+}
+
+// --- goal_days（每日快照，由 00:00 Asia/Shanghai 的 cron 写入）------------
+
+/** 写了就不改：cron 每天只跑一次，同一天再来一次就是覆盖重算，不是追加。 */
+export async function upsertGoalDay(db: D1Database, row: GoalDay): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO goal_days (user_id, date, shown, done, tasks_done, ts)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    )
+    .bind(row.user_id, row.date, row.shown, row.done, row.tasks_done, row.ts)
+    .run()
+}
+
+/** 闭区间，按 date 升序——/review 直接按时间顺序画点，不用在 JS 里再排一次。 */
+export async function listGoalDays(
+  db: D1Database,
+  userId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<GoalDay[]> {
+  const res = await db
+    .prepare(
+      `SELECT user_id, date, shown, done, tasks_done, ts FROM goal_days
+       WHERE user_id = ?1 AND date >= ?2 AND date <= ?3
+       ORDER BY date`,
+    )
+    .bind(userId, fromDate, toDate)
+    .all<GoalDay>()
+  return res.results
+}
+
+/** 午夜 cron 的驱动列表：谁今天有仍存活的目标，就该给谁写一行快照。 */
+export async function listUsersWithLiveGoals(db: D1Database): Promise<number[]> {
+  const res = await db
+    .prepare('SELECT DISTINCT user_id FROM goals WHERE archived_at IS NULL ORDER BY user_id')
+    .all<{ user_id: number }>()
+  return res.results.map((r) => r.user_id)
+}
+
+/**
+ * 某个上海日里该用户划掉了几条子任务。上海全年 +08:00、无夏令时，所以日界
+ * 直接用固定偏移的毫秒区间 [from, to) 算，不需要挂 Intl/时区库到 SQL 层：
+ * from = 该日 00:00+08:00 对应的 UTC 毫秒，to = from 起满 24 小时。
+ */
+export async function countTasksDoneOn(db: D1Database, userId: number, date: string): Promise<number> {
+  const from = Date.parse(`${date}T00:00:00+08:00`)
+  const to = from + 86_400_000
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM goal_tasks
+       WHERE user_id = ?1 AND done_at >= ?2 AND done_at < ?3`,
+    )
+    .bind(userId, from, to)
+    .first<{ n: number }>()
+  return row?.n ?? 0
 }

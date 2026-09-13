@@ -120,6 +120,20 @@ export interface GoalTask {
   done_at: number | null
 }
 
+/**
+ * 一天的快照，由 00:00（Asia/Shanghai）的 cron 写入一次后不再改：那天
+ * /today 展示了几个目标（shown）、打了几个卡（done）、划掉几条子任务
+ * （tasks_done）。没跑到的日子在 goal_days 里就是空位，不是这个类型的值。
+ */
+export interface GoalDay {
+  user_id: number
+  date: string
+  shown: number
+  done: number
+  tasks_done: number
+  ts: number
+}
+
 /** /today 只展示排前面的这几个；其余折叠。产品立场，不是技术限制。 */
 export const TODAY_GOAL_LIMIT = 3
 /** 到期目标「续一期」的长度。 */

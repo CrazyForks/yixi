@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins, listGoals, listTasks,
-  moveGoal, setGoalArchived, setTaskDone, shanghaiDate, toggleCheckin, updateGoal,
+  countTasksDoneOn, createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins, listGoalDays, listGoals,
+  listTasks, listUsersWithLiveGoals, moveGoal, setGoalArchived, setTaskDone, shanghaiDate, toggleCheckin, updateGoal,
+  upsertGoalDay,
 } from '../src/db'
 
 const NOW = 1_800_000_000_000
@@ -10,6 +11,7 @@ const TODAY = shanghaiDate(NOW)
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_days'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
     env.DB.prepare('DELETE FROM goals'),
@@ -94,7 +96,7 @@ describe('goals', () => {
     expect((await listGoals(env.DB, 1)).map((g) => g.id)).toEqual([c, x, a])
   })
 
-  it('delete takes tasks and checkins with it, for the owner only', async () => {
+  it('delete takes tasks with it but keeps the check-in history', async () => {
     const id = await goal(1, '健身')
     await createTask(env.DB, { userId: 1, goalId: id, title: '买垫子', now: NOW })
     await toggleCheckin(env.DB, 1, id, '2026-09-13', NOW)
@@ -102,7 +104,7 @@ describe('goals', () => {
     expect(await deleteGoal(env.DB, 1, id)).toBe(true)
     expect(await getGoal(env.DB, 1, id)).toBeNull()
     expect(await listTasks(env.DB, 1)).toEqual([])
-    expect(await listCheckins(env.DB, 1, '2026-09-01', '2026-09-30')).toEqual([])
+    expect(await listCheckins(env.DB, 1, '2026-09-01', '2026-09-30')).toEqual([{ goal_id: id, date: '2026-09-13' }])
   })
 })
 
@@ -171,5 +173,33 @@ describe('checkins', () => {
     expect(['checked', 'unchecked']).toContain(r1)
     expect(['checked', 'unchecked']).toContain(r2)
     expect(await listCheckins(env.DB, 1, '2026-09-13', '2026-09-13')).toHaveLength(1)
+  })
+})
+
+describe('goal_days', () => {
+  it('upsert replaces the same day and lists an inclusive range in order', async () => {
+    await upsertGoalDay(env.DB, { user_id: 1, date: '2026-09-10', shown: 3, done: 1, tasks_done: 0, ts: 1 })
+    await upsertGoalDay(env.DB, { user_id: 1, date: '2026-09-10', shown: 3, done: 2, tasks_done: 1, ts: 2 })
+    await upsertGoalDay(env.DB, { user_id: 1, date: '2026-09-12', shown: 2, done: 2, tasks_done: 0, ts: 3 })
+    await upsertGoalDay(env.DB, { user_id: 2, date: '2026-09-11', shown: 1, done: 0, tasks_done: 0, ts: 4 })
+    const rows = await listGoalDays(env.DB, 1, '2026-09-10', '2026-09-12')
+    expect(rows.map((r) => [r.date, r.done, r.tasks_done])).toEqual([['2026-09-10', 2, 1], ['2026-09-12', 2, 0]])
+  })
+  it('lists users with live goals only once, and not archived-only users', async () => {
+    const a = await goal(1, '健身'); await goal(1, '英语')
+    const b = await goal(2, '阅读'); await setGoalArchived(env.DB, 2, b, NOW)
+    expect(await listUsersWithLiveGoals(env.DB)).toEqual([1])
+    expect(a).toBeGreaterThan(0)
+  })
+  it('counts tasks done on a Shanghai day', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    // 2026-09-13 23:30 Shanghai = 15:30 UTC; 2026-09-14 00:30 Shanghai = 16:30 UTC
+    await setTaskDone(env.DB, 1, t1, Date.UTC(2026, 8, 13, 15, 30))
+    await setTaskDone(env.DB, 1, t2, Date.UTC(2026, 8, 13, 16, 30))
+    expect(await countTasksDoneOn(env.DB, 1, '2026-09-13')).toBe(1)
+    expect(await countTasksDoneOn(env.DB, 1, '2026-09-14')).toBe(1)
+    expect(await countTasksDoneOn(env.DB, 2, '2026-09-13')).toBe(0)
   })
 })
