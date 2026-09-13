@@ -292,12 +292,13 @@ describe('/setup', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('points to /today/setup for the home-screen and Shortcut walkthrough, rather than carrying it itself', async () => {
+  it('no longer carries the home-screen walkthrough, and does not point at the other face either', async () => {
     const user = await seedUser()
     const html = await render(user)
     // That whole section moved to the 今日 face's own "怎么配" — /setup is the
     // 拦截 face now, and a reader here has nothing to do with home-screen icons.
     expect(html).not.toContain('让今日页一按就开')
-    expect(html).toContain('<a href="/today/setup">今日 · 怎么配</a>')
+    // The two faces stay apart: the interception walkthrough does not point at the other face.
+    expect(html).not.toContain('/today/setup')
   })
 })

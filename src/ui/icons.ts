@@ -189,10 +189,10 @@ export const ICON_CSS = `
 .ic .knock{stroke:var(--bg);stroke-width:2.6}
 details{margin:7px 0 0}
 summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;
-  font-size:13px;letter-spacing:.04em;color:var(--faint)}
+  font-size:13px;letter-spacing:.04em;color:var(--dim)}
 summary::-webkit-details-marker{display:none}
 summary::marker{content:""}
-details[open] > summary{color:var(--dim)}
+details[open] > summary{color:var(--fg)}
 summary .ic.chev{width:13px;height:13px;transition:transform .18s ease}
 details[open] > summary .ic.chev{transform:rotate(90deg)}
 details > p{margin:8px 0 0;font-size:14px;line-height:1.85;color:var(--dim)}

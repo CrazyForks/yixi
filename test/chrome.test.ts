@@ -313,6 +313,12 @@ describe('type scale', () => {
     }
   })
 
+  it('reads darker than the breathing page: console greys are retuned, notes are not faint', () => {
+    expect(CONSOLE_CSS).toMatch(/:root\{[^}]*--dim:rgba\(31,28,24,\.70\)/)
+    expect(CONSOLE_CSS).toMatch(/:root\{[^}]*--faint:rgba\(31,28,24,\.46\)/)
+    expect(CONSOLE_CSS).toMatch(/\.note\{[^}]*color:var\(--dim\)/)
+  })
+
   it('stacks the header into two rows on a phone rather than squeezing one', () => {
     // iPhone 14 (390px): with brand, face name, user, face switch and five tabs
     // on one row, 「一息」 broke across two lines and 「账号」 fell to a third.

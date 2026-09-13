@@ -126,8 +126,15 @@ export const CONSOLE_CSS = `
 :root{
   --num:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
   --danger:#a8543c;
+  /* The console pages are read, not glanced at, so their secondary greys sit
+     darker than the breathing page's: --dim carries whole paragraphs (lede,
+     notes, labels) and --faint only what is genuinely decorative. The
+     breathing page keeps layout.ts's quieter values. Measured on the paper
+     theme: .70 ≈ 6:1, .46 ≈ 3.4:1 against the ground. */
+  --dim:rgba(31,28,24,.70);
+  --faint:rgba(31,28,24,.46);
 }
-@media (prefers-color-scheme:dark){:root{--danger:#c9795c}}
+@media (prefers-color-scheme:dark){:root{--danger:#c9795c;--dim:rgba(238,235,228,.68);--faint:rgba(238,235,228,.44)}}
 body{font-size:17px;line-height:1.75}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
 header{display:flex;align-items:center;gap:10px;padding-top:22px;padding-bottom:12px}
@@ -171,7 +178,7 @@ p{margin:0 0 10px}
 .num{font-family:var(--num);font-variant-numeric:tabular-nums}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}
 .lede{font-size:15px;line-height:1.75;color:var(--dim);margin-bottom:18px}
-.note{font-size:13px;line-height:1.8;color:var(--faint);margin:10px 0 0}
+.note{font-size:14px;line-height:1.8;color:var(--dim);margin:10px 0 0}
 .note a,.lede a{color:var(--dim)}
 .card{border:1px solid var(--rule);border-radius:14px;padding:16px 16px 18px;margin:0 0 14px}
 .card.off{opacity:.6}

@@ -144,7 +144,6 @@ ${(() => {
 要每一条都改</b>。</p>
 </div>
 
-<p class="note">「今日」那一面怎么加到主屏幕、怎么一按就开，在<a href="/today/setup">今日 · 怎么配</a>。</p>
 
 <h2>你的 token</h2>
 <p>下面第一步那串网址里已经带上它了，正常配置不用单独复制。放在这里是为了你换设备、
@@ -478,7 +477,7 @@ const SETUP_CSS = `
 .doc h1{margin:0 0 .6rem;font-size:1.5rem;font-weight:400;letter-spacing:.2em}
 .doc .lede{margin:0 0 2rem;color:var(--dim);font-size:.92rem;line-height:1.8}
 .doc h2{
-  margin:2.8rem 0 1rem;font-size:.84rem;font-weight:400;color:var(--faint);
+  margin:2.8rem 0 1rem;font-size:.84rem;font-weight:400;color:var(--dim);
   letter-spacing:.3em;text-indent:.3em;
 }
 .doc h2::before{content:"";display:block;width:22px;height:1px;background:var(--rule);margin-bottom:1.2rem}
