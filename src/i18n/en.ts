@@ -144,4 +144,92 @@ export const EN: Record<string, string> = {
   '<b>每天早上自动打开</b>。「快捷指令」→「自动化」→「特定时间」，选每天早上的时刻，运行上面那条，\n    关掉「运行前询问」。这就是提醒，不用推送。':
     '<b>Open it by itself every morning</b>. “Shortcuts” → “Automation” → “Time of Day”, pick a time in the morning, run the shortcut above, and turn off “Ask Before Running”. That is the reminder, with no notification involved.',
   '拦截那边的配置在<a href="/setup">这里</a>。': 'Breathe is set up <a href="/setup">here</a>.',
+
+  // --- the breathing page (src/ui/breathe.ts) --------------------------------
+  // 「算了」 is the loud, filled button and 「继续打开」 the quiet underlined
+  // link 800ms later; English has to keep that asymmetry audible, so the exit
+  // is the short everyday phrase and proceeding is the one that admits what it
+  // is. The four parting lines are one each for a quarter of the sids — plain,
+  // no praise, no lecture.
+  '好，就到这里。': 'All right. Stopping here.',
+  '这一次，你没有点进去。': 'This time you did not go in.',
+  '省下来的几分钟是你的。': 'The few minutes you saved are yours.',
+  '放下就好。': 'Putting it down is enough.',
+  '这个链接过期了。': 'This link has expired.',
+  '回到主屏幕重新打开就好。': 'Go back to the home screen and open it again.',
+  吸气: 'Inhale',
+  呼气: 'Exhale',
+  '可以锁屏了。': 'You can lock the screen now.',
+  '正在打开{label}……': 'Opening {label}…',
+  '没有反应的话，回主屏幕手动打开就好。': 'If nothing happens, go back to the home screen and open it yourself.',
+  '这个 App 还没配 URL scheme，手动打开就好。': 'This app has no URL scheme set up yet. Open it yourself.',
+  '你正要打开<b>{label}</b>': 'You are about to open <b>{label}</b>',
+  呼吸引导: 'Breathing guide',
+  算了: 'Never mind',
+  继续打开: 'Open it anyway',
+  '这一页需要 JavaScript。回到主屏幕重新打开就好。':
+    'This page needs JavaScript. Go back to the home screen and open it again.',
+
+  // --- the two skins (src/ui/layout.ts) --------------------------------------
+  // What the /mock switcher calls them: 「墨」 the wash of ink, 「息」 the ring
+  // and the dot.
+  墨: 'Ink',
+  息: 'Breath',
+
+  // --- /mock (src/ui/mock.ts) ------------------------------------------------
+  // The example label a visitor sees when they have not named one themselves —
+  // 「小红书」 for a Chinese reader, an app an English reader would actually
+  // have for the other. A label somebody typed is data and is never touched.
+  '这里会跳回{label}。': 'This is where it would jump back to {label}.',
+  '预览页不跳转。': 'A preview page goes nowhere.',
+  小红书: 'Instagram',
+  视觉预览: 'Visual preview',
+  预览: 'Preview',
+  再看一次: 'Again',
+
+  // --- the landing page (src/ui/landing.ts) ----------------------------------
+  // The one page written for a stranger, and the only indexable one, so the
+  // title and the meta description are copy too. 一息 keeps its characters; the
+  // first mention in English carries 「yixi」 beside it so it can be said out
+  // loud.
+  '一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事':
+    '一息 (yixi) — ten seconds of breathing before an app opens, and “Today” for the three things that matter most',
+  '在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去；「今日」一页则收好未来一段时间最重要的三件事，一按就去做。自建的 One Sec 替代品：一个网页加 iOS 快捷指令，不用装 App，跑在 Cloudflare 免费额度里。':
+    'Before an app like Instagram opens on an iPhone, watch a wash of ink and breathe for ten seconds, then decide whether to go in. “Today” holds the three things that matter most in the weeks ahead, one tap from being done. A self-hosted One Sec alternative: one web page plus an iOS Shortcut, no app to install, running inside the Cloudflare free tier.',
+  '在你打开一个 App 之前，先呼吸十秒。': 'Ten seconds of breathing before you open an app.',
+  '一息做两件事。<b>拦</b>：打开小红书这类 App 之前先呼吸十秒。<b>引</b>：把未来一段时间最重要的三件事放在<a href="/today">今日</a>一页，一按就去做。两件事各自能用，共用一个账号。':
+    '一息 (yixi) does two things. <b>Breathe</b>: ten seconds before an app like Instagram opens. <b>Steer</b>: the three things that matter most in the weeks ahead sit on one page, <a href="/today">Today</a>, one tap from being done. Either half works on its own, and they share one account.',
+  '这一页是从某个 App 的内置浏览器打开的。\n逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。\n点右上角的「⋯」，选「在浏览器中打开」。':
+    'This page was opened inside the built-in browser of some app.\nReading is fine, <b>but the setup step is not</b> — a built-in browser will not let a page jump to another app, and setup depends on exactly that.\nTap the “⋯” in the top corner and choose “Open in browser”.',
+  '呼吸页示意：一团墨随呼吸涨落，外圈是倒计时':
+    'A look at the breathing page: a wash of ink swelling and fading with the breath, the ring outside it counting down',
+  '十秒之后，页面先递给你「算了」，过一会儿才递给你「继续」。\n顺序是故意的——大多数时候你会发现，那一下其实只是手指的惯性。':
+    'Ten seconds in, the page offers you “Never mind” first, and only a little later “Open it anyway”.\nThe order is deliberate — most of the time you find the tap was nothing but the habit in your thumb.',
+  怎么工作: 'How it works',
+  'iPhone 的「快捷指令」在你打开某个 App 时，先来这里问一句该不该拦。':
+    'The iPhone Shortcuts app comes here first when you open an app, and asks whether to stop you.',
+  '该拦就跳到呼吸页，倒计时期间没有任何按钮可以点。':
+    'If the answer is yes, it jumps to the breathing page, where nothing can be tapped while the ring fills.',
+  '选「继续」会放行一分半，免得刚跳回去又被自己拦住。':
+    'Choosing “Open it anyway” lets the app through for a minute and a half, so you are not stopped again the moment you land in it.',
+  它记什么: 'What it records',
+  '只记时间、哪个 App、以及你那次是继续了还是放下了。\n过一阵你能看到自己一周被拦了多少次，其中多少次没进去。':
+    'Only the time, which app, and whether you went on or put it down.\nAfter a while you can see how many times a week you were stopped, and how many of those you walked away from.',
+  关于隐私: 'On privacy',
+  '注册只要一个邮箱和一个密码。邮箱不发信、不验证，只是你下次登录的用户名。':
+    'Signing up takes an email address and a password. Nothing is ever sent to the address and it is never verified; it is only the name you sign in with next time.',
+  '真正的身份是一把 token，快捷指令拿它认人。它加密存在服务器上，\n所以你登录之后还能看回来——代价是数据库和密钥同时泄露时它会跟着泄。\n这是为了「忘了也找得回来」换的，值不值得你自己判断。':
+    'The real identity is a token, and the Shortcut uses it to know who you are. It is stored encrypted on the server,\nso you can still read it back after signing in — the price is that it leaks along with the database if the key leaks at the same time.\nThat is the trade made for “findable again after you forget it”, and whether it is worth it is yours to judge.',
+  '记录只有你自己看得到。发号的人只看得到聚合次数，看不到任何一条明细——\n不然这东西没人会真的用。':
+    'Your records are yours alone. Whoever handed out the token sees aggregate counts and not one single entry —\notherwise nobody would really use this.',
+  '上面这几句都可以自己核对：<a href="https://github.com/Defiabell/yixi" rel="noreferrer">代码是开源的</a>。\n不想把这类数据放在别人的服务器上，照 README 部署一份自己的，\n跑在 Cloudflare 免费额度里，不花钱。':
+    'You can check every line above for yourself: <a href="https://github.com/Defiabell/yixi" rel="noreferrer">the code is open source</a>.\nIf you would rather not leave this kind of data on somebody else’s server, follow the README and deploy your own,\nrunning inside the Cloudflare free tier, at no cost.',
+  长什么样: 'What it looks like',
+  '上面那团就是。倒计时期间页面上没有任何按钮，十秒之后才先出现「算了」。\n<span class="looks">整页看看：<a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></span>':
+    'That is the one above. Nothing on the page can be tapped while the ring fills; ten seconds in, “Never mind” appears first.\n<span class="looks">See a whole one: <a href="/mock?v=1">Ink</a><a href="/mock?v=2">Breath</a></span>',
+  开始用: 'Getting started',
+  注册: 'Sign up',
+  登录: 'Sign in',
+  '已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——\n重新注册会拿到一把新的，旧记录就找不回来了。<br>\n配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。<br>\n源码 · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a>':
+    'Already have a token somebody sent you? <a href="/claim">Attach an email address and a password to it</a> rather than signing up again —\nsigning up again hands you a new one, and the old records are out of reach.<br>\nThe step-by-step for setting it up on an iPhone is under <a href="/setup">Guide</a>, once you have signed in.<br>\nSource · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a>',
 }

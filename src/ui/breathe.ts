@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 import { SESSION_TTL_MS, DEFAULT_WAIT_SECONDS } from '../types'
-import { getSession, getUserApp } from '../db'
+import { getSession, getUserApp, getUserById } from '../db'
 import {
   escapeHtml,
   jsonScript,
@@ -8,6 +8,7 @@ import {
   themeFromParam,
   type ThemeName,
 } from './layout'
+import { localeOf, translator, type Locale, type T } from '../i18n'
 import { safeScheme } from '../scheme'
 
 /**
@@ -31,14 +32,23 @@ const EXHALE_MS = 6000
 
 const MAX_WAIT_SECONDS = 300
 
-/** One of these is shown after 「算了」. Quiet: no praise, no lecture. */
-const FAREWELL_LINES = [
-  '好，就到这里。',
-  '这一次，你没有点进去。',
-  '省下来的几分钟是你的。',
-  '放下就好。',
-]
-const FAREWELL_SUB = '可以锁屏了。'
+/**
+ * One of these is shown after 「算了」. Quiet: no praise, no lecture.
+ *
+ * A function of `t` rather than a constant, because every one of them has to
+ * reach the translator as a static literal (see src/i18n/index.ts). The order
+ * is load-bearing: `pickFarewell` indexes into it by a hash of the sid, so a
+ * reload keeps the same line, and the same session says the same thing in
+ * either language.
+ */
+function farewellLines(t: T): string[] {
+  return [
+    t('好，就到这里。'),
+    t('这一次，你没有点进去。'),
+    t('省下来的几分钟是你的。'),
+    t('放下就好。'),
+  ]
+}
 
 export interface BreatheView {
   theme: ThemeName
@@ -50,6 +60,11 @@ export interface BreatheView {
   /** '' when unset or unsafe; the proceed button then just says goodbye. */
   scheme: string
   farewell: string
+  /**
+   * Which language to render in. Optional and defaulting to 'zh' so an
+   * unconverted caller keeps emitting exactly the page it always did.
+   */
+  lang?: Locale
   /** Overrides for the post-proceed screen; /mock is not really going anywhere. */
   wentMain?: string
   wentSub?: string
@@ -63,77 +78,107 @@ export async function renderBreathe(request: Request, env: Env): Promise<Respons
   const theme = themeFromParam(url.searchParams.get('v'))
   const sid = url.searchParams.get('s')
 
+  // A dead end has no session, and so no account to read a language from: it
+  // answers in whatever the request itself carries.
+  const anon = localeOf(request, null)
+
   // Every dead end below renders the same quiet page. A 500 here would mean
   // staring at an error message while an automation holds your phone hostage.
-  if (!sid) return expiredPage(theme, 400)
+  if (!sid) return expiredPage(theme, anon, 400)
 
   const session = await getSession(env.DB, sid)
-  if (!session) return expiredPage(theme, 404)
-  if (session.resolved_at !== null) return expiredPage(theme, 410)
-  if (Date.now() - session.created_at > SESSION_TTL_MS) return expiredPage(theme, 410)
+  if (!session) return expiredPage(theme, anon, 404)
+  if (session.resolved_at !== null) return expiredPage(theme, anon, 410)
+  if (Date.now() - session.created_at > SESSION_TTL_MS) return expiredPage(theme, anon, 410)
 
   // The app row can legitimately be gone (deleted from /settings while the page
   // sat in a Safari tab). Fall back to something usable rather than erroring.
-  const app = await getUserApp(env.DB, session.user_id, session.app)
+  //
+  // The user row is read for one column, `locale`. This page is opened by an
+  // iOS Shortcut in whatever browser it likes, usually with no cookie of ours
+  // and often with no Accept-Language worth trusting, so the account's own
+  // choice is the only thing that can make it English for an English reader.
+  // Alongside the app row rather than after it: two independent reads.
+  const [app, user] = await Promise.all([
+    getUserApp(env.DB, session.user_id, session.app),
+    getUserById(env.DB, session.user_id),
+  ])
 
+  const loc = localeOf(request, user)
   return breathePage({
     theme,
     label: app?.label ?? session.app,
     waitSeconds: clampWait(app?.wait_seconds ?? DEFAULT_WAIT_SECONDS),
     sid: session.sid,
     scheme: safeScheme(app?.scheme ?? ''),
-    farewell: pickFarewell(session.sid),
+    farewell: pickFarewell(session.sid, translator(loc)),
+    lang: loc,
   })
 }
 
 export function breathePage(v: BreatheView): Response {
+  // The translator is derived from `v.lang` rather than carried beside it:
+  // two fields that have to agree are two fields that can disagree, and the
+  // language has to be named here anyway for `page({ lang })`.
+  const loc = v.lang ?? 'zh'
+  const t = translator(loc)
   return page({
     title: '一息',
     theme: v.theme,
+    lang: loc,
     css: BREATHE_CSS + (v.extraCss ?? ''),
     bodyAttrs: `class="t-${v.theme}" data-state="wait"`,
-    body: breatheBody(v),
+    body: breatheBody(v, t),
     script: BREATHE_JS,
   })
 }
 
-export function expiredPage(theme: ThemeName, status = 410): Response {
+export function expiredPage(theme: ThemeName, loc: Locale = 'zh', status = 410): Response {
+  const t = translator(loc)
   return page({
     title: '一息',
     theme,
+    lang: loc,
     status,
     css: BREATHE_CSS,
     bodyAttrs: 'data-state="gone"',
     body: `<div class="after in">
-<p class="a1">这个链接过期了。</p>
-<p class="a2">回到主屏幕重新打开就好。</p>
+<p class="a1">${t('这个链接过期了。')}</p>
+<p class="a2">${t('回到主屏幕重新打开就好。')}</p>
 </div>`,
   })
 }
 
-function breatheBody(v: BreatheView): string {
+function breatheBody(v: BreatheView, t: T): string {
   const cfg = {
     sid: v.sid,
     scheme: v.scheme,
     wait: v.waitSeconds,
     inhale: INHALE_MS,
     exhale: EXHALE_MS,
+    // The phase word is handed to the script the same way every other piece of
+    // copy on this page already is. The script itself is one constant shared by
+    // both skins and both languages, and must stay that way.
+    inhaleWord: t('吸气'),
+    exhaleWord: t('呼气'),
     leftMain: v.farewell,
-    leftSub: FAREWELL_SUB,
-    wentMain: v.wentMain ?? '正在打开' + v.label + '……',
+    leftSub: t('可以锁屏了。'),
+    // These two reach the page as `textContent`, never as markup, so the label
+    // goes in raw here — escaping it would show the escape.
+    wentMain: v.wentMain ?? t('正在打开{label}……', { label: v.label }),
     wentSub:
       v.wentSub ??
       (v.scheme
-        ? '没有反应的话，回主屏幕手动打开就好。'
-        : '这个 App 还没配 URL scheme，手动打开就好。'),
+        ? t('没有反应的话，回主屏幕手动打开就好。')
+        : t('这个 App 还没配 URL scheme，手动打开就好。')),
   }
   const label = escapeHtml(v.label)
 
   return `<main class="stage">
-<p class="prelude">你正要打开<b>${label}</b></p>
+<p class="prelude">${t('你正要打开<b>{label}</b>', { label })}</p>
 
 <div class="orbwrap">
-  <div class="orb" role="img" aria-label="呼吸引导">
+  <div class="orb" role="img" aria-label="${t('呼吸引导')}">
     <div class="ink" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i></div>
     <div class="dot" aria-hidden="true"></div>
     <svg class="ring" viewBox="0 0 240 240" aria-hidden="true" focusable="false">
@@ -141,12 +186,12 @@ function breatheBody(v: BreatheView): string {
       <circle class="pg" id="ring" cx="120" cy="120" r="112"></circle>
     </svg>
   </div>
-  <p class="phase" id="phase" aria-hidden="true">吸气</p>
+  <p class="phase" id="phase" aria-hidden="true">${t('吸气')}</p>
 </div>
 
 <div class="actions">
-  <button type="button" class="stop" id="stop" hidden>算了</button>
-  <button type="button" class="go" id="go" hidden>继续打开</button>
+  <button type="button" class="stop" id="stop" hidden>${t('算了')}</button>
+  <button type="button" class="go" id="go" hidden>${t('继续打开')}</button>
 </div>
 </main>
 
@@ -155,7 +200,7 @@ function breatheBody(v: BreatheView): string {
 <p class="a2" id="afterSub"></p>
 </div>
 
-<noscript><p class="ns">这一页需要 JavaScript。回到主屏幕重新打开就好。</p></noscript>
+<noscript><p class="ns">${t('这一页需要 JavaScript。回到主屏幕重新打开就好。')}</p></noscript>
 ${jsonScript('cfg', cfg)}
 ${v.extraBody ?? ''}`
 }
@@ -177,10 +222,11 @@ function clampWait(n: number): number {
 export { safeScheme }
 
 /** Deterministic per sid, so a reload does not reshuffle the parting line. */
-function pickFarewell(sid: string): string {
+function pickFarewell(sid: string, t: T): string {
+  const lines = farewellLines(t)
   let h = 0
   for (let i = 0; i < sid.length; i++) h = (h * 31 + sid.charCodeAt(i)) >>> 0
-  return FAREWELL_LINES[h % FAREWELL_LINES.length] as string
+  return lines[h % lines.length] as string
 }
 
 /* -------------------------------------------------------------------- css */
@@ -292,8 +338,10 @@ body[data-state="left"] .after,body[data-state="went"] .after,body[data-state="g
  * silently swallowed — the user taps 继续 and simply sits on a dead page.
  *
  * One rAF loop drives everything (ring, ink/dot scale, phase word) off a single
- * elapsed-time value, so the visual and the word 吸气／呼气 cannot drift apart
- * the way a CSS animation plus a JS timer eventually would.
+ * elapsed-time value, so the visual and the phase word cannot drift apart the
+ * way a CSS animation plus a JS timer eventually would. The word itself comes
+ * from the config island (`inhaleWord`/`exhaleWord`) rather than being written
+ * here, so this script is the same bytes in every language.
  */
 const BREATHE_JS = `(function(){
 var cfg=JSON.parse(document.getElementById('cfg').textContent);
@@ -325,7 +373,7 @@ function frame(now){
   var level=inhaling?e:1-e;
   root.style.setProperty('--level',calm?'0.55':level.toFixed(4));
 
-  var word=inhaling?'吸气':'呼气';
+  var word=inhaling?cfg.inhaleWord:cfg.exhaleWord;
   if(word!==last){last=word;phase.textContent=word}
 
   var prog=WAIT>0?Math.min(1,el/WAIT):1;

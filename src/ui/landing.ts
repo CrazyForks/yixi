@@ -1,5 +1,6 @@
 import { DEFAULT_THEME, page } from './layout'
 import { inAppBrowserPattern } from '../inapp'
+import { localeOf, translator } from '../i18n'
 
 /**
  * GET / — what a stranger sees, and now the front door as well: /register and
@@ -12,35 +13,55 @@ import { inAppBrowserPattern } from '../inapp'
  * only a hash, and this page says so in the same breath as the guarantee that
  * still holds — otherwise the first paragraph is doing marketing.
  */
-export function renderLanding(url: URL): Response {
+export function renderLanding(request: Request): Response {
+  const url = new URL(request.url)
+  const loc = localeOf(request, null)
+  const t = translator(loc)
+
+  // The language being read right now is plain text, not a link — a link back
+  // to the page you are already standing on is a dead end wearing a pointer.
+  // Each name is written in its own language, so neither goes through `t`.
+  const langLine =
+    loc === 'en'
+      ? 'English · <a href="?lang=zh">中文</a>'
+      : '<a href="?lang=en">English</a> · 中文'
+
   return page({
-    title: '一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事',
+    title: t('一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事'),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: LANDING_CSS,
     script: INAPP_SCRIPT,
     // The one page here a stranger is meant to find. Everything else stays
     // noindex by default — see PageOptions.indexable.
     indexable: true,
-    description:
-      '在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去；' +
-      '「今日」一页则收好未来一段时间最重要的三件事，一按就去做。' +
-      '自建的 One Sec 替代品：一个网页加 iOS 快捷指令，不用装 App，跑在 Cloudflare 免费额度里。',
+    // One literal where this used to be three concatenated ones: `t()` looks
+    // itself up by its whole first argument, so the sentence cannot be built
+    // out of pieces.
+    description: t('在 iPhone 上打开小红书这类 App 之前，先看着一团墨呼吸十秒，然后再决定进不进去；「今日」一页则收好未来一段时间最重要的三件事，一按就去做。自建的 One Sec 替代品：一个网页加 iOS 快捷指令，不用装 App，跑在 Cloudflare 免费额度里。'),
     // The live origin, not a constant: a self-hosted copy must not name this
     // instance as its canonical URL.
     canonical: url.origin + '/',
-    // Static text, no session, safe to sit in a CDN edge for a minute.
+    // Static text, no session, safe to sit in a CDN edge for a minute — but
+    // the text is no longer the same for every visitor: it now follows the
+    // language cookie and Accept-Language. `vary` is what keeps that cache
+    // honest in both places it lives. A shared cache stops handing one
+    // visitor's language to the next, and the visitor's own browser stops
+    // replaying the page they were reading a moment ago: the footer's
+    // `?lang=` link changes the cookie, the cached copy no longer matches the
+    // request, and the new language is on screen immediately rather than up
+    // to a minute later.
     cacheControl: 'public, max-age=60',
+    vary: 'Accept-Language, Cookie',
     body: `<main class="doc">
 <h1>一息</h1>
-<p class="lede">在你打开一个 App 之前，先呼吸十秒。</p>
+<p class="lede">${t('在你打开一个 App 之前，先呼吸十秒。')}</p>
 
-<p class="two">一息做两件事。<b>拦</b>：打开小红书这类 App 之前先呼吸十秒。<b>引</b>：把未来一段时间最重要的三件事放在<a href="/today">今日</a>一页，一按就去做。两件事各自能用，共用一个账号。</p>
+<p class="two">${t('一息做两件事。<b>拦</b>：打开小红书这类 App 之前先呼吸十秒。<b>引</b>：把未来一段时间最重要的三件事放在<a href="/today">今日</a>一页，一按就去做。两件事各自能用，共用一个账号。')}</p>
 
-<p class="inapp" id="inapp" hidden>这一页是从某个 App 的内置浏览器打开的。
-逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。
-点右上角的「⋯」，选「在浏览器中打开」。</p>
+<p class="inapp" id="inapp" hidden>${t('这一页是从某个 App 的内置浏览器打开的。\n逛可以，<b>但配置那一步不行</b>——内置浏览器不让网页跳去别的 App，而配置里要靠这个验证。\n点右上角的「⋯」，选「在浏览器中打开」。')}</p>
 
-<div class="peek" role="img" aria-label="呼吸页示意：一团墨随呼吸涨落，外圈是倒计时">
+<div class="peek" role="img" aria-label="${t('呼吸页示意：一团墨随呼吸涨落，外圈是倒计时')}">
   <div class="orb">
     <div class="ink" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i></div>
     <svg class="ring" viewBox="0 0 240 240" aria-hidden="true" focusable="false">
@@ -48,45 +69,35 @@ export function renderLanding(url: URL): Response {
       <circle class="pg" cx="120" cy="120" r="112"></circle>
     </svg>
   </div>
-  <p class="phase" aria-hidden="true"><span class="in">吸气</span><span class="out">呼气</span></p>
+  <p class="phase" aria-hidden="true"><span class="in">${t('吸气')}</span><span class="out">${t('呼气')}</span></p>
 </div>
 
-<p>十秒之后，页面先递给你「算了」，过一会儿才递给你「继续」。
-顺序是故意的——大多数时候你会发现，那一下其实只是手指的惯性。</p>
+<p>${t('十秒之后，页面先递给你「算了」，过一会儿才递给你「继续」。\n顺序是故意的——大多数时候你会发现，那一下其实只是手指的惯性。')}</p>
 
-<h2>怎么工作</h2>
+<h2>${t('怎么工作')}</h2>
 <ol>
-<li>iPhone 的「快捷指令」在你打开某个 App 时，先来这里问一句该不该拦。</li>
-<li>该拦就跳到呼吸页，倒计时期间没有任何按钮可以点。</li>
-<li>选「继续」会放行一分半，免得刚跳回去又被自己拦住。</li>
+<li>${t('iPhone 的「快捷指令」在你打开某个 App 时，先来这里问一句该不该拦。')}</li>
+<li>${t('该拦就跳到呼吸页，倒计时期间没有任何按钮可以点。')}</li>
+<li>${t('选「继续」会放行一分半，免得刚跳回去又被自己拦住。')}</li>
 </ol>
 
-<h2>它记什么</h2>
-<p>只记时间、哪个 App、以及你那次是继续了还是放下了。
-过一阵你能看到自己一周被拦了多少次，其中多少次没进去。</p>
+<h2>${t('它记什么')}</h2>
+<p>${t('只记时间、哪个 App、以及你那次是继续了还是放下了。\n过一阵你能看到自己一周被拦了多少次，其中多少次没进去。')}</p>
 
-<h2>关于隐私</h2>
-<p>注册只要一个邮箱和一个密码。邮箱不发信、不验证，只是你下次登录的用户名。</p>
-<p>真正的身份是一把 token，快捷指令拿它认人。它加密存在服务器上，
-所以你登录之后还能看回来——代价是数据库和密钥同时泄露时它会跟着泄。
-这是为了「忘了也找得回来」换的，值不值得你自己判断。</p>
-<p>记录只有你自己看得到。发号的人只看得到聚合次数，看不到任何一条明细——
-不然这东西没人会真的用。</p>
-<p>上面这几句都可以自己核对：<a href="https://github.com/Defiabell/yixi" rel="noreferrer">代码是开源的</a>。
-不想把这类数据放在别人的服务器上，照 README 部署一份自己的，
-跑在 Cloudflare 免费额度里，不花钱。</p>
+<h2>${t('关于隐私')}</h2>
+<p>${t('注册只要一个邮箱和一个密码。邮箱不发信、不验证，只是你下次登录的用户名。')}</p>
+<p>${t('真正的身份是一把 token，快捷指令拿它认人。它加密存在服务器上，\n所以你登录之后还能看回来——代价是数据库和密钥同时泄露时它会跟着泄。\n这是为了「忘了也找得回来」换的，值不值得你自己判断。')}</p>
+<p>${t('记录只有你自己看得到。发号的人只看得到聚合次数，看不到任何一条明细——\n不然这东西没人会真的用。')}</p>
+<p>${t('上面这几句都可以自己核对：<a href="https://github.com/Defiabell/yixi" rel="noreferrer">代码是开源的</a>。\n不想把这类数据放在别人的服务器上，照 README 部署一份自己的，\n跑在 Cloudflare 免费额度里，不花钱。')}</p>
 
-<h2>长什么样</h2>
-<p>上面那团就是。倒计时期间页面上没有任何按钮，十秒之后才先出现「算了」。
-<span class="looks">整页看看：<a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></span></p>
+<h2>${t('长什么样')}</h2>
+<p>${t('上面那团就是。倒计时期间页面上没有任何按钮，十秒之后才先出现「算了」。\n<span class="looks">整页看看：<a href="/mock?v=1">墨</a><a href="/mock?v=2">息</a></span>')}</p>
 
-<h2>开始用</h2>
-<p class="looks go"><a href="/register">注册</a><a href="/login">登录</a></p>
+<h2>${t('开始用')}</h2>
+<p class="looks go"><a href="/register">${t('注册')}</a><a href="/login">${t('登录')}</a></p>
 
-<p class="foot">已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——
-重新注册会拿到一把新的，旧记录就找不回来了。<br>
-配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。<br>
-源码 · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a></p>
+<p class="foot">${t('已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——\n重新注册会拿到一把新的，旧记录就找不回来了。<br>\n配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。<br>\n源码 · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a>')}</p>
+<p class="lang">${langLine}</p>
 </main>`,
   })
 }
@@ -189,6 +200,8 @@ li::marker{color:var(--faint)}
 .looks.go a:first-child{background:var(--stop-bg);color:var(--stop-fg);border-color:var(--stop-border)}
 .foot{margin-top:4rem;color:var(--faint);font-size:.87rem;line-height:1.9}
 .foot a{color:var(--dim);text-underline-offset:3px}
+.lang{margin:1.4rem 0 0;color:var(--faint);font-size:.85rem}
+.lang a{color:var(--dim);text-underline-offset:3px}
 `
 
 /**

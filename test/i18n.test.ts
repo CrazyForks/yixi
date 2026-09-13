@@ -298,6 +298,10 @@ export const CONVERTED: string[] = [
   'src/ui/goals.ts',
   'src/ui/progress.ts',
   'src/ui/todaysetup.ts',
+  'src/ui/breathe.ts',
+  'src/ui/landing.ts',
+  'src/ui/mock.ts',
+  'src/ui/layout.ts',
 ]
 
 /** Raw source for each CONVERTED path, keyed the same way. */
@@ -307,6 +311,10 @@ const SOURCES: Record<string, string> = {
   'src/ui/goals.ts': uiGoalsRaw,
   'src/ui/progress.ts': uiProgressRaw,
   'src/ui/todaysetup.ts': uiTodaysetupRaw,
+  'src/ui/breathe.ts': uiBreatheRaw,
+  'src/ui/landing.ts': uiLandingRaw,
+  'src/ui/mock.ts': uiMockRaw,
+  'src/ui/layout.ts': uiLayoutRaw,
 }
 
 /**

@@ -1,5 +1,6 @@
 import { breathePage } from './breathe'
 import { themeFromParam, themeParam, themeTitle, type ThemeName } from './layout'
+import { localeOf, translator, type T } from '../i18n'
 
 /**
  * /mock — the two candidate looks, side by side, so the owner can hold the phone
@@ -14,10 +15,15 @@ import { themeFromParam, themeParam, themeTitle, type ThemeName } from './layout
  *   /mock?v=1&wait=3  short wait, for iterating on the button timing
  *   /mock?v=2&label=微博
  */
-export function renderMock(url: URL): Response {
+export function renderMock(request: Request): Response {
+  const url = new URL(request.url)
+  // No session here and so no account to ask: this page follows the request,
+  // which is the `?lang=` cookie the router has already set, or the browser.
+  const loc = localeOf(request, null)
+  const t = translator(loc)
   const theme = themeFromParam(url.searchParams.get('v') ?? '1')
   const wait = parseWait(url.searchParams.get('wait'))
-  const label = parseLabel(url.searchParams.get('label'))
+  const label = parseLabel(url.searchParams.get('label'), t)
 
   return breathePage({
     theme,
@@ -25,11 +31,12 @@ export function renderMock(url: URL): Response {
     waitSeconds: wait,
     sid: null,
     scheme: '',
-    farewell: '好，就到这里。',
-    wentMain: '这里会跳回' + label + '。',
-    wentSub: '预览页不跳转。',
+    lang: loc,
+    farewell: t('好，就到这里。'),
+    wentMain: t('这里会跳回{label}。', { label }),
+    wentSub: t('预览页不跳转。'),
     extraCss: MOCK_CSS,
-    extraBody: switcher(theme, wait, label),
+    extraBody: switcher(theme, wait, label, t),
   })
 }
 
@@ -39,25 +46,27 @@ function parseWait(raw: string | null): number {
   return Math.max(0, Math.min(60, Math.round(n)))
 }
 
-function parseLabel(raw: string | null): string {
+function parseLabel(raw: string | null, t: T): string {
   const s = (raw ?? '').trim()
   // Escaped downstream by breathePage; the cap is just to keep the layout sane.
-  return s.length > 0 && s.length <= 16 ? s : '小红书'
+  // The fallback is an example rather than data, so it changes with the
+  // language — a label somebody actually typed never does.
+  return s.length > 0 && s.length <= 16 ? s : t('小红书')
 }
 
-function switcher(current: ThemeName, wait: number, label: string): string {
-  const link = (t: ThemeName): string => {
-    const q = new URLSearchParams({ v: themeParam(t), wait: String(wait), label })
-    const here = t === current
-    return `<a href="/mock?${q.toString()}"${here ? ' aria-current="true"' : ''}>${themeTitle(t)}</a>`
+function switcher(current: ThemeName, wait: number, label: string, t: T): string {
+  const link = (name: ThemeName): string => {
+    const q = new URLSearchParams({ v: themeParam(name), wait: String(wait), label })
+    const here = name === current
+    return `<a href="/mock?${q.toString()}"${here ? ' aria-current="true"' : ''}>${themeTitle(name, t)}</a>`
   }
   const again = new URLSearchParams({
     v: themeParam(current),
     wait: String(wait),
     label,
   })
-  return `<nav class="mockbar" aria-label="视觉预览">
-<span>预览</span>${link('ink')}${link('breath')}<a href="/mock?${again.toString()}">再看一次</a>
+  return `<nav class="mockbar" aria-label="${t('视觉预览')}">
+<span>${t('预览')}</span>${link('ink')}${link('breath')}<a href="/mock?${again.toString()}">${t('再看一次')}</a>
 </nav>`
 }
 

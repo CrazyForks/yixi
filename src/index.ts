@@ -85,8 +85,11 @@ export default {
         })
       }
 
-      if (path === '/mock' && method === 'GET') return renderMock(url)
-      if (path === '/' && method === 'GET') return renderLanding(url)
+      // Both take the request rather than the URL: with no session to read a
+      // language preference off, the cookie this router has just set and the
+      // browser's own Accept-Language are all there is to go on.
+      if (path === '/mock' && method === 'GET') return renderMock(request)
+      if (path === '/' && method === 'GET') return renderLanding(request)
       // robots.txt is the half of the story a meta tag cannot tell: it names
       // what may be crawled before the crawler has fetched anything. The
       // Disallow list is deliberately redundant with each page's own

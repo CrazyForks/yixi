@@ -271,7 +271,7 @@ describe('type scale', () => {
         farewell: '明天再看',
       }).text(),
     ])
-    rendered.push(['landing', await renderLanding(new URL('https://yixi.example/')).text()])
+    rendered.push(['landing', await renderLanding(new Request('https://yixi.example/')).text()])
     for (const [name, page] of rendered) {
       const styles = page.match(/<style>([\s\S]*?)<\/style>/g) ?? []
       styles.forEach((s, i) => out.push([`${name} <style> #${i + 1}`, s]))
@@ -394,7 +394,7 @@ describe('what may be indexed', () => {
         farewell: '明天再看',
       }).text(),
     ])
-    out.push(['mock', await renderMock(new URL(`${ORIGIN}/mock?v=1`)).text()])
+    out.push(['mock', await renderMock(new Request(`${ORIGIN}/mock?v=1`)).text()])
     out.push([
       'today',
       await (await handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, user)).text(),
@@ -412,13 +412,13 @@ describe('what may be indexed', () => {
   })
 
   it('lets the landing page be found', async () => {
-    const page = await renderLanding(new URL(`${ORIGIN}/`)).text()
+    const page = await renderLanding(new Request(`${ORIGIN}/`)).text()
     expect(page).not.toMatch(/name="robots"/)
     expect(page).toMatch(/<meta name="description" content="[^"]{40,}">/)
   })
 
   it('gives the landing page an entrance into the 今日 face', async () => {
-    const page = await renderLanding(new URL(`${ORIGIN}/`)).text()
+    const page = await renderLanding(new Request(`${ORIGIN}/`)).text()
     expect(page).toContain('href="/today"')
   })
 
@@ -429,7 +429,7 @@ describe('what may be indexed', () => {
    * every self-hoster would ship that bug without ever seeing it.
    */
   it('takes its canonical URL from whoever is being asked', async () => {
-    const mine = await renderLanding(new URL('https://breathe.example.org/')).text()
+    const mine = await renderLanding(new Request('https://breathe.example.org/')).text()
     expect(mine).toContain('<link rel="canonical" href="https://breathe.example.org/">')
     expect(mine).toContain('<meta property="og:url" content="https://breathe.example.org/">')
     expect(mine).not.toContain('yixi-app.pages.dev')

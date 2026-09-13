@@ -286,8 +286,8 @@ describe('nothing is fetched from anywhere', () => {
   })
 
   it('inlines everything on /mock and /', async () => {
-    assertSelfContained(await renderMock(new URL('https://yixi.example/mock?v=1')).text())
-    assertSelfContained(await renderLanding(new URL('https://yixi.example/')).text())
+    assertSelfContained(await renderMock(new Request('https://yixi.example/mock?v=1')).text())
+    assertSelfContained(await renderLanding(new Request('https://yixi.example/')).text())
   })
 })
 
@@ -342,8 +342,8 @@ function assertSelfContained(html: string): void {
 
 describe('/mock previews both looks without a session', () => {
   it('serves 墨 for v=1 and 息 for v=2', async () => {
-    const one = await renderMock(new URL('https://yixi.example/mock?v=1')).text()
-    const two = await renderMock(new URL('https://yixi.example/mock?v=2')).text()
+    const one = await renderMock(new Request('https://yixi.example/mock?v=1')).text()
+    const two = await renderMock(new Request('https://yixi.example/mock?v=2')).text()
 
     expect(one).toContain('class="t-ink"')
     expect(two).toContain('class="t-breath"')
@@ -352,7 +352,7 @@ describe('/mock previews both looks without a session', () => {
   })
 
   it('never reports, because there is no session to report', async () => {
-    const html = await renderMock(new URL('https://yixi.example/mock?v=2')).text()
+    const html = await renderMock(new Request('https://yixi.example/mock?v=2')).text()
     const cfg = configOf(html)
     expect(cfg.sid).toBeNull()
     expect(cfg.scheme).toBe('')
@@ -362,7 +362,7 @@ describe('/mock previews both looks without a session', () => {
 
   it('accepts a shorter wait and a different label for iterating', async () => {
     const html = await renderMock(
-      new URL('https://yixi.example/mock?v=1&wait=3&label=微博'),
+      new Request('https://yixi.example/mock?v=1&wait=3&label=微博'),
     ).text()
     const cfg = configOf(html)
     expect(cfg.wait).toBe(3)
@@ -371,7 +371,7 @@ describe('/mock previews both looks without a session', () => {
 
   it('clamps nonsense parameters', async () => {
     const cfg = configOf(
-      await renderMock(new URL('https://yixi.example/mock?v=9&wait=-99&label=')).text(),
+      await renderMock(new Request('https://yixi.example/mock?v=9&wait=-99&label=')).text(),
     )
     expect(cfg.wait).toBe(0)
   })
@@ -379,7 +379,7 @@ describe('/mock previews both looks without a session', () => {
 
 describe('/ explains itself', () => {
   it('renders and points at both previews', async () => {
-    const res = renderLanding(new URL('https://yixi.example/'))
+    const res = renderLanding(new Request('https://yixi.example/'))
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('一息')

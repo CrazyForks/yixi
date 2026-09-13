@@ -14,7 +14,7 @@
  */
 
 import { PWA_HEAD } from './pwa'
-import { htmlLang, type Locale } from '../i18n'
+import { htmlLang, type Locale, type T } from '../i18n'
 
 export type ThemeName = 'ink' | 'breath'
 
@@ -25,8 +25,6 @@ export type ThemeName = 'ink' | 'breath'
 export const DEFAULT_THEME: ThemeName = 'ink'
 
 interface ThemeDef {
-  /** Human-facing name, used on the /mock switcher. */
-  title: string
   /** Safari address-bar tint, per colour scheme. */
   barLight: string
   barDark: string
@@ -39,7 +37,6 @@ const THEMES: Record<ThemeName, ThemeDef> = {
   // Light mode is not a washed-out copy of that; it inverts into what ink
   // actually is on paper — dark wash on a 宣纸 ground.
   ink: {
-    title: '墨',
     barLight: '#f3f0e8',
     barDark: '#0d0f11',
     tokens: `
@@ -84,7 +81,6 @@ const THEMES: Record<ThemeName, ThemeDef> = {
 
   // v2 「息」 — no decoration at all. A hairline ring, a dot, a lot of nothing.
   breath: {
-    title: '息',
     barLight: '#fbfaf8',
     barDark: '#0f1011',
     tokens: `
@@ -127,8 +123,14 @@ const THEMES: Record<ThemeName, ThemeDef> = {
   },
 }
 
-export function themeTitle(name: ThemeName): string {
-  return THEMES[name].title
+/**
+ * What the /mock switcher calls each skin. The two names are copy rather than
+ * data — they are read, not matched on — so they go through the translator
+ * like every other string a visitor sees, which is also why they live here
+ * and not in `ThemeDef` where nothing could wrap them.
+ */
+export function themeTitle(name: ThemeName, t: T): string {
+  return name === 'ink' ? t('墨') : t('息')
 }
 
 /** `?v=1` -> ink, `?v=2` -> breath, anything else -> the current default. */
@@ -245,6 +247,18 @@ export interface PageOptions {
   /** Defaults to `no-store`; session pages must never be replayed from cache. */
   cacheControl?: string
   /**
+   * `Vary`, for the one page that is both cacheable and language-dependent.
+   *
+   * A cacheable response whose body follows the `yixi_lang` cookie or
+   * `Accept-Language` is wrong in two caches at once without this: a shared
+   * one hands the first visitor's language to the next, and the visitor's own
+   * browser replays the copy it already has after the footer's `?lang=` link
+   * has changed the cookie. Naming both request headers makes each of those a
+   * miss instead. Every other page here is `no-store`, so none of them needs
+   * it.
+   */
+  vary?: string
+  /**
    * Load the Turnstile widget script and widen the CSP by exactly one origin.
    * The only caller is /register, and only when a widget is configured. One flag
    * for both halves on purpose — a page cannot end up with the loader and no
@@ -301,19 +315,19 @@ function socialTags(o: PageOptions): string {
 }
 
 export function pageHtml(o: PageOptions): string {
-  const t = THEMES[o.theme]
+  const skin = THEMES[o.theme]
   return `<!doctype html>
 <html lang="${htmlLang(o.lang ?? 'zh')}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" media="(prefers-color-scheme:light)" content="${t.barLight}">
-<meta name="theme-color" media="(prefers-color-scheme:dark)" content="${t.barDark}">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="${skin.barLight}">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="${skin.barDark}">
 ${o.indexable ? '' : '<meta name="robots" content="noindex,nofollow">\n'}<link rel="icon" href="data:,">
 ${PWA_HEAD}
 <title>${escapeHtml(o.title)}</title>${socialTags(o)}
-<style>${t.tokens}${BASE_CSS}${o.css ?? ''}</style>${o.turnstile ? '\n' + TURNSTILE_LOADER : ''}
+<style>${skin.tokens}${BASE_CSS}${o.css ?? ''}</style>${o.turnstile ? '\n' + TURNSTILE_LOADER : ''}
 </head>
 <body${o.bodyAttrs ? ' ' + o.bodyAttrs : ''}>
 ${o.body}
@@ -328,6 +342,7 @@ export function page(o: PageOptions): Response {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': o.cacheControl ?? 'no-store',
+      ...(o.vary ? { vary: o.vary } : {}),
       'content-security-policy': contentSecurityPolicy(o.turnstile === true),
       'referrer-policy': 'no-referrer',
       'x-content-type-options': 'nosniff',

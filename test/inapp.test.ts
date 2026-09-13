@@ -170,26 +170,26 @@ describe('the landing page', () => {
   it('ships the notice hidden and reveals it in the browser, not on the server', async () => {
     // This page is edge-cacheable, so a UA-dependent body would serve one
     // visitor's answer to the next. Same HTML for everyone; the script decides.
-    const wechat = await renderLanding(new URL('https://yixi.example/')).text()
+    const wechat = await renderLanding(new Request('https://yixi.example/')).text()
     expect(wechat).toContain('id="inapp"')
     expect(wechat).toContain('hidden')
     expect(wechat).toContain('navigator.userAgent')
   })
 
   it('keeps its cache, which is the whole reason it is done client-side', async () => {
-    const cc = renderLanding(new URL('https://yixi.example/')).headers.get('cache-control') ?? ''
+    const cc = renderLanding(new Request('https://yixi.example/')).headers.get('cache-control') ?? ''
     expect(cc).toContain('max-age')
     expect(cc).not.toContain('no-store')
   })
 
   it('reveals by toggling hidden, not by writing markup from a UA string', async () => {
-    const js = (await renderLanding(new URL('https://yixi.example/')).text()).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
+    const js = (await renderLanding(new Request('https://yixi.example/')).text()).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
     expect(js).toContain('el.hidden = false')
     expect(js).not.toContain('innerHTML')
   })
 
   it('carries the same host list as the server, generated not retyped', async () => {
-    const js = (await renderLanding(new URL('https://yixi.example/')).text()).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
+    const js = (await renderLanding(new Request('https://yixi.example/')).text()).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
     expect(js).toContain('MicroMessenger')
     expect(js).toContain('AlipayClient')
   })

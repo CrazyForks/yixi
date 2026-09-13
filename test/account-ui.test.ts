@@ -427,14 +427,14 @@ describe('/setup after accounts', () => {
 
 describe('/', () => {
   it('offers the two front doors that replaced asking the owner for a token', async () => {
-    const html = await renderLanding(new URL('https://yixi.example/')).text()
+    const html = await renderLanding(new Request('https://yixi.example/')).text()
     expect(html).toContain('href="/register"')
     expect(html).toContain('href="/login"')
     expect(html).toContain('href="/claim"')
   })
 
   it('admits that a readable copy of the token is weaker than a hash', async () => {
-    const html = await renderLanding(new URL('https://yixi.example/')).text()
+    const html = await renderLanding(new Request('https://yixi.example/')).text()
     expect(html).toContain('加密存在服务器上')
     expect(html).toContain('数据库和密钥同时泄露')
     // The guarantee that did not change.
