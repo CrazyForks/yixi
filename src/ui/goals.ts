@@ -283,7 +283,7 @@ function archivedBlock(goals: Goal[]): string {
     <input type="hidden" name="goal" value="${g.id}">
     <span class="sname">${escapeHtml(g.title)}</span>
     <button class="linky" type="submit" name="op" value="restore">恢复</button>
-    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('删掉这个目标？子任务和打卡记录会一起删。')">删除</button>
+    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('删掉这个目标？子任务会一起删，打卡记录保留。')">删除</button>
   </form>`).join('\n')}
 </details>`
 }

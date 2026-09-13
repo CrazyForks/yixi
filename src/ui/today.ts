@@ -18,7 +18,7 @@ import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
 import { inAppBrowserOf } from '../inapp'
 import { safeScheme } from '../scheme'
-import { addDays, isExpired } from '../dates'
+import { addDays, liveGoals, shownGoals } from '../dates'
 
 const DOTS = 7
 const TITLE_MAX = 40
@@ -102,8 +102,8 @@ async function render(request: Request, env: Env, user: User, _o: Record<string,
     listTasks(env.DB, user.id),
     listCheckins(env.DB, user.id, days[0]!, today),
   ])
-  const live = goals.filter((g) => g.archived_at === null && !isExpired(g, today))
-  const top = live.slice(0, TODAY_GOAL_LIMIT)
+  const live = liveGoals(goals, today)
+  const top = shownGoals(goals, today)
   const rest = live.slice(TODAY_GOAL_LIMIT)
   const checked = new Set(checkins.map((c) => `${c.goal_id}:${c.date}`))
 
@@ -229,6 +229,7 @@ function banner(): string {
 const TODAY_CSS = `
 .dayline{display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 16px;color:var(--dim);font-size:14px;letter-spacing:.08em}
 .dayline .dlinks{display:flex;gap:14px}
+.dayline .dlinks a{padding:12px 0;margin:-12px 0;display:inline-block}
 .goal{position:relative;padding:18px 18px 16px}
 .goal.hero{padding:26px 20px 20px}
 .goal .head{display:flex;align-items:flex-start;gap:12px}

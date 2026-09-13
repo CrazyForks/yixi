@@ -13,7 +13,7 @@ The entire application is one `fetch` handler and one `scheduled` handler in `sr
                       │                              │
                       ▼                              ▼
         ┌─────────────────────────────────────────────────────────┐
-        │  src/index.ts — route table, three auth shapes, cron    │
+        │ src/index.ts — route table, three auth shapes, two crons│
         └─────────────────────────────────────────────────────────┘
               │                │                    │
               ▼                ▼                    ▼
@@ -29,7 +29,7 @@ The entire application is one `fetch` handler and one `scheduled` handler in `sr
                         D1 (SQLite)
 ```
 
-`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts`, `src/snapshot.ts` and `src/account.ts` are the pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else — now including `progress.ts` (`/today/review`) and `todaysetup.ts` (`/today/setup`), the two newest additions to the 今日 face. `src/snapshot.ts` sits in the same layer as `src/stats.ts`: given a database and a day, it computes what that day's `goal_days` row should hold and returns it — it does not write anything itself. It is called from exactly two places, the midnight cron in `src/index.ts` and tests, never from a page. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/today/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart. `src/dates.ts` is the same pattern one level up: `addDays`/`isExpired` used to live inside `src/ui/goals.ts` with `/today` importing a page module just to reach two pure date-string functions; both now import them from `src/dates.ts` instead, and neither `src/ui/goals.ts` nor `src/ui/today.ts` re-exports them.
+`src/db.ts` takes the `D1Database` binding rather than the whole `Env`, so nothing in it can reach a secret by accident. `src/stats.ts`, `src/snapshot.ts` and `src/account.ts` are the pure-logic layers between the routes and the database; `src/ui/*` owns rendering and nothing else — now including `progress.ts` (`/today/review`) and `todaysetup.ts` (`/today/setup`), the two newest additions to the 今日 face. `src/snapshot.ts` sits in the same layer as `src/stats.ts`: `snapshotUser` is pure — given a database and a day, it computes what that day's `goal_days` row should hold and returns it, without writing anything; `snapshotGoalDays` is the one that upserts, one row per user with a live goal, via `upsertGoalDay`. It is called from exactly two places, the midnight cron in `src/index.ts` and tests, never from a page. Within `src/ui/*.ts`, `schemefield.ts` is not a page — it is the URL-scheme picker field shared verbatim by `/settings` and `/today/goals`, so the two never grow two copies of the same jump-and-pick logic to drift apart. `src/dates.ts` is the same pattern one level up: `addDays`/`isExpired` used to live inside `src/ui/goals.ts` with `/today` importing a page module just to reach two pure date-string functions; both now import them from `src/dates.ts` instead, and neither `src/ui/goals.ts` nor `src/ui/today.ts` re-exports them.
 
 ## Request lifecycle
 
@@ -440,7 +440,7 @@ The button hierarchy on a candidate is deliberate: 「试跳」 is the filled da
 
 ## Tests
 
-494 tests over 26 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+508 tests over 28 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
 
 The files worth knowing about before you change something:
 

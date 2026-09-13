@@ -168,6 +168,30 @@ describe('one nav a face, on every signed-in page', () => {
     }
   })
 
+  /**
+   * Not just "exactly one tab is current" (the test above) but "current is
+   * the RIGHT tab" — the failure mode that check cannot catch is two pages
+   * swapping markers, each still marking exactly one.
+   */
+  it('marks the right tab, not just exactly one', async () => {
+    const expectedHref: Record<string, string> = {
+      today: '/today',
+      goals: '/today/goals',
+      progress: '/today/review',
+      todaysetup: '/today/setup',
+      review: '/review',
+      settings: '/settings',
+      setup: '/setup',
+      account: '/account',
+    }
+    for (const name of Object.keys(ALL_PAGES)) {
+      const nav = navOf(await html(ALL_PAGES, name), name)
+      const m = nav.match(/<a href="([^"]+)" class="on" aria-current="page"/)
+      expect(m, `${name}: no current-tab anchor found`).toBeTruthy()
+      expect(m![1], `${name} current tab href`).toBe(expectedHref[name])
+    }
+  })
+
   it('offers a small a.face link to the other face’s home, beside the brand', async () => {
     for (const name of Object.keys(TODAY_PAGES)) {
       const page = await html(TODAY_PAGES, name)

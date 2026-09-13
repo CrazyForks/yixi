@@ -4,9 +4,11 @@ import worker from '../src/index'
 import { snapshotDate, snapshotGoalDays, snapshotUser, SNAPSHOT_CRON } from '../src/snapshot'
 import { createGoal, createTask, listGoalDays, setGoalArchived, setTaskDone, toggleCheckin } from '../src/db'
 
-// 2026-09-13 16:00:30 UTC = 2026-09-14 00:00:30 Shanghai → 快照 2026-09-13
-const MIDNIGHT = Date.UTC(2026, 8, 13, 16, 0, 30)
-const DAY = '2026-09-13'
+// Fixture date picked far from the real date on purpose, so this file never
+// coincidentally passes only because it happens to run on 2031-03-09.
+// 2031-03-09 16:00:30 UTC = 2031-03-10 00:00:30 Shanghai → 快照 2031-03-09
+const MIDNIGHT = Date.UTC(2031, 2, 9, 16, 0, 30)
+const DAY = '2031-03-09'
 
 async function reset(): Promise<void> {
   await env.DB.batch([
@@ -26,7 +28,10 @@ beforeEach(reset)
 describe('snapshotDate', () => {
   it('names the day that just ended', () => {
     expect(snapshotDate(MIDNIGHT)).toBe(DAY)
-    expect(snapshotDate(Date.UTC(2026, 8, 13, 4, 0, 0))).toBe(DAY) // 中午跑也是同一天（但中午 cron 不调用它）
+    expect(snapshotDate(Date.UTC(2031, 2, 9, 4, 0, 0))).toBe(DAY) // 中午跑也是同一天（但中午 cron 不调用它）
+  })
+  it('names the same day at exactly 16:00:00.000 UTC, the instant the cron itself fires', () => {
+    expect(snapshotDate(Date.UTC(2031, 2, 9, 16, 0, 0))).toBe(DAY)
   })
 })
 
@@ -37,12 +42,12 @@ describe('snapshotUser', () => {
     await toggleCheckin(env.DB, 1, ids[0]!, DAY, 1)
     await toggleCheckin(env.DB, 1, ids[3]!, DAY, 1) // 第四个不在 shown 里，不算 done
     const t = (await createTask(env.DB, { userId: 1, goalId: ids[0]!, title: 'x', now: 0 }))!
-    await setTaskDone(env.DB, 1, t, Date.UTC(2026, 8, 13, 10, 0))
+    await setTaskDone(env.DB, 1, t, Date.UTC(2031, 2, 9, 10, 0))
     expect(await snapshotUser(env.DB, 1, DAY)).toMatchObject({ user_id: 1, date: DAY, shown: 3, done: 1, tasks_done: 1 })
   })
   it('judges expiry as of the snapshot day, not today', async () => {
-    await createGoal(env.DB, { userId: 1, title: '过期', cue: '', target: '', targetLabel: '', until: '2026-09-12', now: 0 })
-    await createGoal(env.DB, { userId: 1, title: '活', cue: '', target: '', targetLabel: '', until: '2026-09-13', now: 0 })
+    await createGoal(env.DB, { userId: 1, title: '过期', cue: '', target: '', targetLabel: '', until: '2031-03-08', now: 0 })
+    await createGoal(env.DB, { userId: 1, title: '活', cue: '', target: '', targetLabel: '', until: '2031-03-09', now: 0 })
     expect((await snapshotUser(env.DB, 1, DAY)).shown).toBe(1)
   })
   it('ignores archived goals', async () => {

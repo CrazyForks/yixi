@@ -114,11 +114,16 @@ export default {
       // forever, and this costs one round trip on a path nobody navigates
       // deliberately any more — it exists for bookmarks and address-bar
       // autocomplete on the phone this was built for, where a 404 would read as
-      // "the tool broke". /goals is the same shape of move — it is now
-      // /today/goals — and gets the same 302, for the same reason, for every
-      // method (a bookmarked POST is no less stale than a bookmarked GET).
+      // "the tool broke". Both are GET-only, so 302's ambiguity about whether a
+      // redirected client keeps the original method never matters here.
       else if (path === '/lookup' || path === '/probe') res = seeOtherTo('/settings')
-      else if (path === '/goals') res = seeOtherTo('/today/goals')
+      // /goals is the same shape of move — it is now /today/goals — but it
+      // used to carry POST bodies (the goal form used to live at this path),
+      // and a bookmarked POST is no less stale than a bookmarked GET. 302
+      // leaves it up to the client whether a POST survives the hop; 307 is
+      // the one redirect status that is unambiguous about preserving both the
+      // method and the body, so a stale POST bookmark still lands as a POST.
+      else if (path === '/goals') res = temporaryRedirectPreservingMethod('/today/goals')
       else if (path === '/setup' && method === 'GET') res = await renderSetup(request, env, user)
       else if (path === '/settings') res = await handleSettings(request, env, user)
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)
@@ -263,6 +268,10 @@ function toLogin(url: URL): Response {
 
 function seeOtherTo(location: string): Response {
   return new Response(null, { status: 302, headers: { location, 'cache-control': 'no-store' } })
+}
+
+function temporaryRedirectPreservingMethod(location: string): Response {
+  return new Response(null, { status: 307, headers: { location, 'cache-control': 'no-store' } })
 }
 
 function notFound(): Response {

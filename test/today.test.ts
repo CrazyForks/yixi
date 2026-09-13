@@ -266,6 +266,16 @@ describe('add-to-home-screen banner', () => {
   })
 })
 
+describe('dayline links', () => {
+  it('gives 回看/编辑目标 a ≥44px tap target without moving the baseline', async () => {
+    const h = await html()
+    const m = h.match(/<style>([\s\S]*?)<\/style>/)
+    expect(m, 'style block missing').toBeTruthy()
+    const css = m![1]!
+    expect(css).toContain('.dayline .dlinks a{padding:12px 0;margin:-12px 0;display:inline-block}')
+  })
+})
+
 describe('44pt tap-target floor (design §9)', () => {
   it('never shrinks a .linky button below console.ts’s 44px floor, and keeps .tk at 44px', async () => {
     const h = await html()

@@ -30,11 +30,10 @@
 // purpose, so the two ledgers read as siblings rather than two designs.
 
 import type { Env, Goal, User } from '../types'
-import { TODAY_GOAL_LIMIT } from '../types'
 import { countTasksDoneBetween, listCheckins, listGoalDays, listGoals, shanghaiDate } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { addDays, isExpired } from '../dates'
+import { addDays, liveGoals, shownGoals } from '../dates'
 
 const DOTS = 7
 const MONTH_DAYS = 30
@@ -64,8 +63,7 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
   }
 
   // Same selection /today renders: live (not expired), first TODAY_GOAL_LIMIT.
-  const live = nonArchived.filter((g) => !isExpired(g, today))
-  const top = live.slice(0, TODAY_GOAL_LIMIT)
+  const top = shownGoals(goals, today)
   const topIds = new Set(top.map((g) => g.id))
 
   const todayShown = top.length
@@ -85,7 +83,7 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
     dates.add(c.date)
   }
   const dotDays = Array.from({ length: DOTS }, (_, i) => addDays(today, i - (DOTS - 1)))
-  const goalRows = nonArchived
+  const goalRows = liveGoals(goals, today)
     .map((g) => goalRowHtml(g, today, dotDays, checkinsByGoal.get(g.id) ?? new Set()))
     .join('')
 
@@ -95,7 +93,7 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
   <section class="card"><h2>今天</h2><p class="hero"><b class="num">${todayDone}</b> / <span class="num">${todayShown}</span></p></section>
   <section class="card"><h2>最近 ${MONTH_DAYS} 天</h2>
     <div class="strip" aria-label="最近三十天每天的完成比例">${bars}</div>
-    <p class="note">${MONTH_DAYS} 天里有快照的 ${snapshotDays} 天，做完全部的 ${fullDays} 天。</p>
+    <p class="note">${MONTH_DAYS} 天里有记录的 ${snapshotDays} 天，做完全部的 ${fullDays} 天。</p>
   </section>
   <section class="card"><h2>每个目标</h2>${goalRows === '' ? '<p class="note flat">没有正在进行的目标。</p>' : `<ul class="gl">${goalRows}</ul>`}</section>
   <section class="card"><h2>这周</h2><p>划掉了 <b class="num">${weekTasksDone}</b> 条子任务。</p></section>
@@ -201,7 +199,7 @@ ul.gl li{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px 
 ul.gl li:first-child{border-top:0;padding-top:0}
 .gt{flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dots{display:flex;gap:6px;flex:none}
-.dots .d{display:block;width:8px;height:8px;border-radius:50%;border:1px solid var(--ring-prog)}
+.dots .d{display:block;width:9px;height:9px;border-radius:50%;border:1px solid var(--ring-prog)}
 .dots .d.on{background:var(--dot);border-color:var(--dot)}
 .rate{flex:none;font-size:12.5px;color:var(--dim);white-space:nowrap}
 `

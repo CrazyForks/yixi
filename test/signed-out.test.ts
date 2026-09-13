@@ -125,13 +125,13 @@ describe('signed-out visitors', () => {
 /**
  * `/goals` itself sits inside the cookie-authenticated block now, same as
  * `/today`, so a signed-out visitor hitting it gets the ordinary login
- * redirect (covered by consolePages above) rather than this 302 — the
+ * redirect (covered by consolePages above) rather than this 307 — the
  * simplest rule, and fine, since nobody signed out has a goal to reach
  * anyway. This block signs in first to reach the redirect the route table
  * actually adds.
  */
 describe('the retired /goals path', () => {
-  it('redirects to /today/goals, whatever the method', async () => {
+  it('redirects to /today/goals with 307, preserving method and body', async () => {
     await register(env, { email: 'goals@example.com', password: 'correct-horse-1' })
     const loginRes = await post('/login', { email: 'goals@example.com', password: 'correct-horse-1' })
     const cookie = loginRes.headers.get('set-cookie')
@@ -150,7 +150,10 @@ describe('the retired /goals path', () => {
       // A hash fragment never reaches the server, so there is nothing here to
       // preserve — /goals#goal-3 arrives as a bare /goals and leaves as a bare
       // /today/goals; the browser reattaches its own fragment to the new URL.
-      expect(res.status, method).toBe(302)
+      // 307, not 302/303: unlike those, it is unambiguous that the client
+      // must repeat the request with the same method and body, so a stale
+      // bookmarked POST lands on /today/goals as a POST, not a GET.
+      expect(res.status, method).toBe(307)
       expect(res.headers.get('location'), method).toBe('/today/goals')
     }
   })

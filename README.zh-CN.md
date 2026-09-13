@@ -95,7 +95,7 @@ iPhone 上装自制 App，用免费 Apple ID 签名只能撑 7 天，之后每�
 | `/today/goals` | 本人 | 增删改目标——`/today` 展示但不让改的那部分 |
 | `/today/review` | 本人 | 回看：今天几分之几、最近三十天一排竖条、每个目标的墨点与打卡率、本周划掉的子任务数 |
 | `/today/setup` | 本人 | 把 `/today` 加到主屏幕、配快捷指令或定时自动打开它 |
-| `/goals` | 本人 | 保留为 302 跳 `/today/goals`，旧链接和书签仍能落到有用的地方 |
+| `/goals` | 本人 | 保留为 307 跳 `/today/goals`（保留方法和请求体），旧链接和书签仍能落到有用的地方 |
 | `/review` | 本人 | 今天、七天、哪个 App 最消耗你 |
 | `/settings` | 本人 | 增删改自己要拦的 App |
 | `GET /api/candidates` | 本人 | JSON：输入 App 名字，给出带来源的 scheme 候选。由 `/settings` 的 URL scheme 字段直接 fetch，不是页面 |
@@ -351,7 +351,7 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 26 个文件 494 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 28 个文件 508 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构

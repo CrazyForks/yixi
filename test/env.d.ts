@@ -8,3 +8,10 @@ declare module 'cloudflare:test' {
     TURNSTILE_SECRET: string
   }
 }
+
+// Vite's `?raw` suffix, used by test/wrangler-config.test.ts to read
+// wrangler.toml as plain text — the workers pool has no `node:fs`.
+declare module '*?raw' {
+  const content: string
+  export default content
+}

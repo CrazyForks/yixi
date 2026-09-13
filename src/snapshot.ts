@@ -1,5 +1,5 @@
-import { isExpired } from './dates'
-import { TODAY_GOAL_LIMIT, type GoalDay } from './types'
+import { shownGoals } from './dates'
+import type { GoalDay } from './types'
 import { countTasksDoneOn, listCheckins, listGoals, listUsersWithLiveGoals, shanghaiDate, upsertGoalDay } from './db'
 
 /** 00:00 Asia/Shanghai. The other cron (noon) only trims tables; this one only snapshots. */
@@ -23,8 +23,7 @@ export function snapshotDate(now: number): string {
  */
 export async function snapshotUser(db: D1Database, userId: number, date: string): Promise<GoalDay> {
   const goals = await listGoals(db, userId)
-  const live = goals.filter((g) => g.archived_at === null && !isExpired(g, date))
-  const shown = live.slice(0, TODAY_GOAL_LIMIT)
+  const shown = shownGoals(goals, date)
   const checkins = await listCheckins(db, userId, date, date)
   const done = shown.filter((g) => checkins.some((c) => c.goal_id === g.id)).length
   const tasksDone = await countTasksDoneOn(db, userId, date)

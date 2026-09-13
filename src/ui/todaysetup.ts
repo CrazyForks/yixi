@@ -20,7 +20,7 @@ import { CONSOLE_CSS, consoleHeader } from './console'
  * the closing line changed, since this page no longer has to share space
  * with anything about interception.
  */
-export async function renderTodaySetup(request: Request, env: Env, user: User): Promise<Response> {
+export async function renderTodaySetup(request: Request, _env: Env, user: User): Promise<Response> {
   const origin = new URL(request.url).origin
 
   const body = `${consoleHeader(user, 'todaysetup')}

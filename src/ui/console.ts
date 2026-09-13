@@ -132,13 +132,17 @@ body{font-size:17px;line-height:1.75}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
 header{display:flex;align-items:center;gap:10px;padding-top:22px;padding-bottom:12px}
 .brand{font-size:20px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
-.facename{font-size:13px;color:var(--faint);margin-left:4px}
-.who{font-size:13px;color:var(--faint)}
+.facename{font-size:13px;color:var(--faint);margin-left:4px;flex:none;white-space:nowrap}
+.who{font-size:13px;color:var(--faint);flex:none;white-space:nowrap}
 /* padding, not just line-height, gets the tap target to 44px without making
    the link itself look like a button — it is one line of quiet text next to
-   the username, not a call to action. */
+   the username, not a call to action. flex:none + white-space:nowrap on this
+   and its two neighbours above keep the header's fixed labels from being
+   squeezed and wrapped by the flexbox before header nav's own tabs give way
+   — a narrow phone should crush the nav, not this row's own furniture. */
 a.face{font-size:13px;color:var(--faint);text-decoration:none;display:inline-flex;
-  align-items:center;padding:14px 4px;min-height:44px;box-sizing:border-box}
+  align-items:center;padding:14px 4px;min-height:44px;box-sizing:border-box;
+  flex:none;white-space:nowrap}
 /* Wrapping is the safety net, not the design: six items at this size fit one
    row inside a 375px phone, and a wrap only ever beats the horizontal scroll
    this used to need — that scrollbar is hidden, so nothing announced it. */

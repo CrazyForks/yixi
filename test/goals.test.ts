@@ -101,6 +101,15 @@ describe('GET /goals', () => {
     expect(h).not.toMatch(/<input[^>]*name="target"[^>]*\brequired\b/)
   })
 
+  it('keeps the archived-row delete confirm honest about what deleteGoal actually keeps', async () => {
+    const a = await seed('健身')
+    await post({ op: 'archive', goal: String(a) })
+    const h = await html()
+    const archived = h.slice(h.indexOf('<details class="archived">'))
+    expect(archived).toContain('删掉这个目标？子任务会一起删，打卡记录保留。')
+    expect(archived).not.toContain('打卡记录会一起删')
+  })
+
   it('never lists another user’s goals', async () => {
     // Not '健身': that's also the add form's placeholder copy, so it would still
     // show up on other's empty page and this assertion would pass for the wrong reason.

@@ -16,6 +16,7 @@ import { renderProgress } from '../src/ui/progress'
 import {
   createGoal,
   createTask,
+  deleteGoal,
   setGoalArchived,
   setTaskDone,
   shanghaiDate,
@@ -200,7 +201,7 @@ describe('with goals and history', () => {
     const main = mainOf(await render())
     // 4 days carry data (day -25, -20, -15, and today via live override);
     // only day -25 (2/2) is a complete day.
-    expect(main).toContain('30 天里有快照的 4 天，做完全部的 1 天。')
+    expect(main).toContain('30 天里有记录的 4 天，做完全部的 1 天。')
   })
 
   it('gives every non-archived goal 7 dots (today last) and a 30-day rate, shrinking the denominator for a new goal', async () => {
@@ -282,6 +283,34 @@ describe('with goals and history', () => {
     expect(theirs).not.toContain('健身')
     expect(theirs).not.toContain('阅读')
     expect(ids.a).toBeGreaterThan(0)
+  })
+
+  it('drops a deleted goal from the ledger without leaking its kept check-ins into another goal\'s row', async () => {
+    const kept = await createGoal(env.DB, {
+      userId: 1, title: '保留的', cue: '', target: '', targetLabel: '', until: null, now: tsAt(addDays(TODAY, -4)),
+    })
+    const gone = await createGoal(env.DB, {
+      userId: 1, title: '删掉的', cue: '', target: '', targetLabel: '', until: null, now: tsAt(addDays(TODAY, -4)),
+    })
+    await toggleCheckin(env.DB, 1, kept, TODAY, tsAt(TODAY))
+    await toggleCheckin(env.DB, 1, gone, TODAY, tsAt(TODAY))
+    await toggleCheckin(env.DB, 1, gone, addDays(TODAY, -2), tsAt(addDays(TODAY, -2)))
+
+    // deleteGoal keeps check-in history (src/db.ts); this only removes the goal.
+    expect(await deleteGoal(env.DB, 1, gone)).toBe(true)
+
+    const main = mainOf(await render())
+    expect(main).not.toContain('删掉的')
+    expect(main.match(/<li><span class="gt">/g)).toHaveLength(1)
+
+    const off = (cls: string) => `<i class="d${cls}"></i>`
+    const keptRow =
+      `<li><span class="gt">保留的</span><span class="dots" aria-label="最近七天">` +
+      off('') + off('') + off('') + off('') + off('') + off('') + off(' on') +
+      `</span><span class="rate num">5 天 · 打卡 1 天</span></li>`
+    // If the deleted goal's day -2 check-in ever leaked onto this row, either
+    // the -2 dot would be "on" or the rate would read 打卡 2 天 instead of 1.
+    expect(main).toContain(keptRow)
   })
 
   it('stays calm: no 连续, no exclamation marks, and no <script> tag anywhere', async () => {

@@ -95,7 +95,7 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/today/goals` | you | add, edit, reorder and archive goals — everything `/today` shows but does not let you change |
 | `/today/review` | you | looking back: today's ratio, a 30-day strip, every goal's own dot strip and check-in rate, this week's finished sub-tasks |
 | `/today/setup` | you | add `/today` to the home screen, a Shortcut, or a timed automation that opens it on its own |
-| `/goals` | you | kept as a 302 to `/today/goals`, so old links and bookmarks still land somewhere useful |
+| `/goals` | you | kept as a 307 to `/today/goals` (preserves method/body), so old links and bookmarks still land somewhere useful |
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
 | `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings`; not a page |
@@ -352,7 +352,7 @@ Read these before deploying. Some of them cannot be fixed in code.
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 494 tests over 26 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 508 tests over 28 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout

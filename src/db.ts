@@ -832,30 +832,23 @@ export async function listUsersWithLiveGoals(db: D1Database): Promise<number[]> 
 }
 
 /**
- * 某个上海日里该用户划掉了几条子任务。上海全年 +08:00、无夏令时，所以日界
- * 直接用固定偏移的毫秒区间 [from, to) 算，不需要挂 Intl/时区库到 SQL 层：
- * from = 该日 00:00+08:00 对应的 UTC 毫秒，to = from 起满 24 小时。
+ * 某个上海日里该用户划掉了几条子任务。就是 `countTasksDoneBetween` 的单日特例
+ * （from === to），日界算法见那边的注释。
  */
 export async function countTasksDoneOn(db: D1Database, userId: number, date: string): Promise<number> {
-  const from = Date.parse(`${date}T00:00:00+08:00`)
-  const to = from + 86_400_000
-  const row = await db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM goal_tasks
-       WHERE user_id = ?1 AND done_at >= ?2 AND done_at < ?3`,
-    )
-    .bind(userId, from, to)
-    .first<{ n: number }>()
-  return row?.n ?? 0
+  return countTasksDoneBetween(db, userId, date, date)
 }
 
 /**
- * Same +08:00 day-window idea as `countTasksDoneOn`, over an inclusive range
- * of Shanghai days instead of a single one. `/today/review`'s "this week" is
- * the one number on that page that is not read off a goal_days snapshot: a
- * snapshot's `shown` set can no longer name a goal that was later archived or
- * deleted, but the task it was done under still happened this week, so this
- * queries `goal_tasks` directly.
+ * Same query `countTasksDoneOn` delegates to for a single day, over an
+ * inclusive range of Shanghai days instead. Shanghai is +08:00 all year, no
+ * DST, so the day boundary is a fixed-offset millisecond window [from, to)
+ * rather than anything that needs Intl/timezone plumbing at the SQL layer:
+ * from = that day's 00:00+08:00 in UTC ms, to = from plus one full day.
+ * `/today/review`'s "this week" is the one number on that page that is not
+ * read off a goal_days snapshot: a snapshot's `shown` set can no longer name a
+ * goal that was later archived or deleted, but the task it was done under
+ * still happened this week, so this queries `goal_tasks` directly.
  */
 export async function countTasksDoneBetween(
   db: D1Database,
