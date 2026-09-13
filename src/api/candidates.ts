@@ -244,6 +244,10 @@ export async function handleCandidates(
       // Authenticated route: the answer is not user-specific, but the request
       // carries a session cookie and must not land in a shared cache.
       'cache-control': 'private, max-age=300',
+      // The copy (caveat, verifiedNote) follows the language, which the browser
+      // cache cannot see in the URL: same query, switched language, five
+      // minutes — without this the picker shows the previous language's text.
+      vary: 'Accept-Language, Cookie',
     },
   })
 }

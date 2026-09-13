@@ -337,6 +337,15 @@ describe('GET /api/candidates', () => {
     expect(cc).not.toContain('public')
   })
 
+  it('tells the browser cache the copy varies with the language', async () => {
+    // caveat/verifiedNote are translated per request; the URL alone does not
+    // carry the language, so a five-minute private cache would otherwise hand
+    // back the previous language's text after a switch.
+    const vary = (await get('小红书')).headers.get('vary') ?? ''
+    expect(vary).toContain('Accept-Language')
+    expect(vary).toContain('Cookie')
+  })
+
   it('truncates an absurd query instead of putting it in an outbound URL', async () => {
     const res = await get('x'.repeat(500), NEVER_CALLED)
     // 40 is /settings' own cap on a display name. Past that it is not a search.
