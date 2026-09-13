@@ -35,6 +35,7 @@ export type IconName =
   | 'chev'
   | 'fetch'
   | 'branch'
+  | 'today'
   | 'review'
   | 'settings'
   | 'lookup'
@@ -67,6 +68,8 @@ const ICONS: Record<IconName, string> = {
     '<path d="M9.4 5.2H6.6a1.4 1.4 0 0 0-1.4 1.4v10.8a1.4 1.4 0 0 0 1.4 1.4h2.8"/><path d="M14.6 5.2h2.8a1.4 1.4 0 0 1 1.4 1.4v10.8a1.4 1.4 0 0 1-1.4 1.4h-2.8"/><path d="M12 8v7.4"/><path d="M9.2 12.6L12 15.4l2.8-2.8"/>',
   // A flowchart decision: one diamond, two exits. 「如果」.
   branch: '<path d="M11.6 3.8l5.8 5.8-5.8 5.8-5.8-5.8z"/><path d="M11.6 15.4v4.8"/><path d="M17.4 9.6h3.4"/>',
+  // A ring with the day's one mark inside it: today, and the dot you leave on it.
+  today: '<circle cx="12" cy="12" r="8.2"/><circle class="fillmark" cx="12" cy="12" r="2.4"/>',
   review: '<path d="M4.4 19.6h15.2"/><path d="M7.6 16.6v-4.4M12 16.6V5.8M16.4 16.6v-7.2"/>',
   settings:
     '<path d="M4.4 8.6h15.2M4.4 15.4h15.2"/><circle cx="9.4" cy="8.6" r="2.2"/><circle cx="14.8" cy="15.4" r="2.2"/>',

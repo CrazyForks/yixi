@@ -130,14 +130,14 @@ describe('the nav the merge shrank', () => {
     return m![1]!
   }
 
-  it('is four tabs for a normal user and five for the owner', async () => {
+  it('is five tabs for a normal user and six for the owner', async () => {
     const nav = navOf(await settings())
-    expect(nav.match(/<a /g)).toHaveLength(4)
+    expect(nav.match(/<a /g)).toHaveLength(5)
 
     const ownerNav = navOf(
       await (await handleSettings(new Request(`${BASE}/settings`), env, owner)).text(),
     )
-    expect(ownerNav.match(/<a /g)).toHaveLength(5)
+    expect(ownerNav.match(/<a /g)).toHaveLength(6)
     expect(ownerNav).toContain('/admin')
   })
 
@@ -148,7 +148,7 @@ describe('the nav the merge shrank', () => {
     // field on /settings now.
     expect(nav).not.toContain('/probe')
     expect(nav).not.toContain('/lookup')
-    for (const label of ['回顾', '设置', '怎么配', '账号']) {
+    for (const label of ['今日', '回顾', '设置', '怎么配', '账号']) {
       expect(nav, label).toContain(`<span class="lb">${label}</span>`)
     }
     // The current tab is marked for assistive tech, not only with a background.

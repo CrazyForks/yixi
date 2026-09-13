@@ -98,14 +98,14 @@ describe('one nav, on every signed-in page', () => {
     }
   })
 
-  it('offers all four destinations from every page, /review included', async () => {
+  it('offers all five destinations from every page, /review included', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name), name)
-      for (const href of ['/review', '/settings', '/setup', '/account']) {
+      for (const href of ['/today', '/review', '/settings', '/setup', '/account']) {
         // The failure this replaces: from /review these three did not exist.
         expect(nav, `${name} has no link to ${href}`).toContain(`href="${href}"`)
       }
-      expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(4)
+      expect(nav.match(/<a /g), `${name} tab count`).toHaveLength(5)
     }
   })
 
@@ -118,21 +118,21 @@ describe('one nav, on every signed-in page', () => {
     }
   })
 
-  it('gives the owner a fifth tab, on every page including /review', async () => {
+  it('gives the owner a sixth tab, on every page including /review', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name, owner), `${name} (owner)`)
-      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(5)
+      expect(nav.match(/<a /g), `${name} owner tab count`).toHaveLength(6)
       expect(nav, `${name} owner`).toContain('/admin')
     }
     const adminNav = navOf(await (await handleAdmin(new Request(`${BASE}/admin`), env, owner)).text(), 'admin')
-    expect(adminNav.match(/<a /g)).toHaveLength(5)
+    expect(adminNav.match(/<a /g)).toHaveLength(6)
   })
 
   it('draws an icon in every tab — a text-only nav is the old /review', async () => {
     for (const name of Object.keys(PAGES)) {
       const nav = navOf(await html(name), name)
-      expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(4)
-      expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(4)
+      expect(nav.match(/<svg /g), `${name} tab icons`).toHaveLength(5)
+      expect(nav.match(/<span class="lb">/g), `${name} tab labels`).toHaveLength(5)
     }
   })
 

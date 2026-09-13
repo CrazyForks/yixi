@@ -24,11 +24,11 @@ import { ICON_CSS, icon, type IconName } from './icons'
  */
 export type ConsolePage = Extract<
   IconName,
-  'review' | 'settings' | 'setup' | 'account' | 'admin'
+  'today' | 'review' | 'settings' | 'setup' | 'account' | 'admin'
 >
 
 /**
- * Four tabs, five for the owner. It was seven.
+ * Five tabs, six for the owner. It was seven.
  *
  * The three that left were all the same mistake: a step of one job given a
  * destination of its own. 「实测」 merged into 「候选」 (finding a string and
@@ -36,6 +36,9 @@ export type ConsolePage = Extract<
  * the URL scheme field on /settings — nobody ever wanted to go look at a list
  * of candidates; they wanted to fill in that one box, and being sent away from
  * a half-typed form to do it lost the form.
+ *
+ * 「今日」 is in the first position because it is the page users open every time.
+ * The /goals page is reached from /today, not as its own tab.
  *
  * Every remaining tab keeps its word: 「回顾」 and 「怎么配」 have no icon
  * anyone would guess, and an icon-only nav would trade a scroll nobody can see
@@ -48,6 +51,7 @@ export function consoleHeader(user: User, active: ConsolePage): string {
   <span class="brand">一息</span>
   <span class="who">${escapeHtml(user.name)}</span>
   <nav aria-label="导航">
+    ${tab('/today', 'today', '今日')}
     ${tab('/review', 'review', '回顾')}
     ${tab('/settings', 'settings', '设置')}
     ${tab('/setup', 'setup', '怎么配')}
