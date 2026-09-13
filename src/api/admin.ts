@@ -33,6 +33,7 @@ import { countAttemptsPerUser, createUser, listUsers, shanghaiDate } from '../db
 import { randomHex, sealToken } from '../crypto'
 import { DEFAULT_THEME, escapeHtml, page } from '../ui/layout'
 import { CONSOLE_CSS, consoleHeader } from '../ui/console'
+import { translator } from '../i18n'
 
 const CSS = `
 ${CONSOLE_CSS}
@@ -159,7 +160,7 @@ async function renderAdmin(env: Env, user: User, oneTime: OneTime | null, o: Ren
     attempts: attemptsById.get(u.id) ?? 0,
   }))
 
-  const body = `${consoleHeader(user, 'admin')}
+  const body = `${consoleHeader(user, 'admin', translator('zh'))}
 <main>
   <h1>发号</h1>
   <p class="lede">现在任何人都能自己注册，这里只用于线下发号——建一个人、生成 token，把下面那个链接和 token 一起给他，他绑上邮箱和密码之后就和自助注册的人没有区别了。</p>

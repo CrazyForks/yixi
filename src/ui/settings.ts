@@ -14,6 +14,7 @@ import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { deleteUserApp, getUserApp, listUserApps, upsertUserApp } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { translator } from '../i18n'
 import { fold, hl, icon } from './icons'
 import { forbiddenPrefixes } from '../scheme'
 import { inAppBrowserOf, type InAppBrowser } from '../inapp'
@@ -240,7 +241,7 @@ async function renderSettings(request: Request, env: Env, user: User, o: RenderO
     )
     .join('\n')
 
-  const body = `${consoleHeader(user, 'settings')}
+  const body = `${consoleHeader(user, 'settings', translator('zh'))}
 <main>
   <h1>要拦哪些 App</h1>
   <p class="lede">每条对应 iPhone 上一条「打开 App 时」自动化。改完立刻生效，不用重建快捷指令。</p>

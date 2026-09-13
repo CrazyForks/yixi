@@ -1,6 +1,7 @@
 import type { Env, User } from '../types'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { translator } from '../i18n'
 import { inAppBrowserOf } from '../inapp'
 import { fold, hl, icon } from './icons'
 import { listUserApps } from '../db'
@@ -115,7 +116,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
     css: CONSOLE_CSS + SETUP_CSS,
     cacheControl: 'no-store',
     script: token ? TEST_SCRIPT : undefined,
-    body: `${consoleHeader(user, 'setup')}
+    body: `${consoleHeader(user, 'setup', translator('zh'))}
 <main class="wrap doc">
 
 <h1>怎么配</h1>

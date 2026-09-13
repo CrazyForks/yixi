@@ -20,12 +20,17 @@ import { icon } from './icons'
 import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
 import { safeScheme } from '../scheme'
 import { addDays, isExpired } from '../dates'
+import { localeOf, translator, type Locale, type T } from '../i18n'
 
 // --- route handler -----------------------------------------------------------
 
 export async function handleGoals(request: Request, env: Env, user: User): Promise<Response> {
-  if (request.method === 'GET') return await render(env, user, {})
-  if (request.method === 'POST') return await handlePost(request, env, user)
+  // One translator per request, built here and handed to both halves — never
+  // a module variable: a single isolate serves many requests at once.
+  const loc = localeOf(request, user)
+  const t = translator(loc)
+  if (request.method === 'GET') return await render(env, user, {}, loc, t)
+  if (request.method === 'POST') return await handlePost(request, env, user, loc, t)
   return new Response('method not allowed', { status: 405, headers: { allow: 'GET, POST' } })
 }
 
@@ -52,15 +57,15 @@ function validDate(s: string): boolean {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
 }
 
-/** Returns the row to write, or a Chinese error message. */
-function validate(d: Draft): { title: string; cue: string; target: string; targetLabel: string; until: string | null } | string {
-  if (d.title.length === 0) return '目标名不能空着。'
-  if (d.title.length > TITLE_MAX) return `目标名太长了，${TITLE_MAX} 个字以内。`
-  if (d.cue.length > CUE_MAX) return `触发时机太长了，${CUE_MAX} 个字以内。`
-  if (d.target_label.length > LABEL_MAX) return `App 名太长了，${LABEL_MAX} 个字以内。`
-  if (d.target.length > 200) return '跳转目标太长了。'
-  if (d.target !== '' && safeScheme(d.target) === '') return '跳转目标要长成 xxx:// 或 https:// 的样子，而且不能是脚本。'
-  if (d.until !== '' && !validDate(d.until)) return '日期要写成 2026-10-11 这样。'
+/** Returns the row to write, or a message for the reader, already translated. */
+function validate(d: Draft, t: T): { title: string; cue: string; target: string; targetLabel: string; until: string | null } | string {
+  if (d.title.length === 0) return t('目标名不能空着。')
+  if (d.title.length > TITLE_MAX) return t('目标名太长了，{n} 个字以内。', { n: TITLE_MAX })
+  if (d.cue.length > CUE_MAX) return t('触发时机太长了，{n} 个字以内。', { n: CUE_MAX })
+  if (d.target_label.length > LABEL_MAX) return t('App 名太长了，{n} 个字以内。', { n: LABEL_MAX })
+  if (d.target.length > 200) return t('跳转目标太长了。')
+  if (d.target !== '' && safeScheme(d.target) === '') return t('跳转目标要长成 xxx:// 或 https:// 的样子，而且不能是脚本。')
+  if (d.until !== '' && !validDate(d.until)) return t('日期要写成 2026-10-11 这样。')
   return { title: d.title, cue: d.cue, target: d.target, targetLabel: d.target_label, until: d.until === '' ? null : d.until }
 }
 
@@ -68,12 +73,12 @@ function seeOther(location: string): Response {
   return new Response(null, { status: 303, headers: { location, 'cache-control': 'no-store' } })
 }
 
-async function handlePost(request: Request, env: Env, user: User): Promise<Response> {
+async function handlePost(request: Request, env: Env, user: User, loc: Locale, t: T): Promise<Response> {
   let form: FormData
   try {
     form = await request.formData()
   } catch {
-    return await render(env, user, { error: '表单没读出来，重试一次。', status: 400 })
+    return await render(env, user, { error: t('表单没读出来，重试一次。'), status: 400 }, loc, t)
   }
   const op = field(form, 'op')
   const now = Date.now()
@@ -84,16 +89,16 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
       title: field(form, 'title'), cue: field(form, 'cue'), target: field(form, 'target'),
       target_label: field(form, 'target_label'), until: field(form, 'until'),
     }
-    const parsed = validate(draft)
+    const parsed = validate(draft, t)
     if (typeof parsed === 'string') {
-      return await render(env, user, { error: parsed, draft, draftGoal: op === 'save' ? intId(field(form, 'goal')) : null, status: 400 })
+      return await render(env, user, { error: parsed, draft, draftGoal: op === 'save' ? intId(field(form, 'goal')) : null, status: 400 }, loc, t)
     }
     if (op === 'add') {
       const id = await createGoal(env.DB, { userId: user.id, ...parsed, now })
       return seeOther(`/today/goals#goal-${id}`)
     }
     const id = intId(field(form, 'goal'))
-    if (id === null) return await render(env, user, { error: '目标编号不对。', status: 400 })
+    if (id === null) return await render(env, user, { error: t('目标编号不对。'), status: 400 }, loc, t)
     if (!(await updateGoal(env.DB, user.id, id, parsed))) return notFound()
     return seeOther(`/today/goals#goal-${id}`)
   }
@@ -101,9 +106,9 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   if (op === 'task_add') {
     const goalId = intId(field(form, 'goal'))
     const title = field(form, 'title')
-    if (goalId === null) return await render(env, user, { error: '目标编号不对。', status: 400 })
+    if (goalId === null) return await render(env, user, { error: t('目标编号不对。'), status: 400 }, loc, t)
     if (title.length === 0 || title.length > TITLE_MAX) {
-      return await render(env, user, { error: `子任务要有名字，${TITLE_MAX} 个字以内。`, status: 400 })
+      return await render(env, user, { error: t('子任务要有名字，{n} 个字以内。', { n: TITLE_MAX }), status: 400 }, loc, t)
     }
     const id = await createTask(env.DB, { userId: user.id, goalId, title, now })
     if (id === null) return notFound()
@@ -112,16 +117,16 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
 
   if (op === 'task_delete') {
     const taskId = intId(field(form, 'task'))
-    if (taskId === null) return await render(env, user, { error: '子任务编号不对。', status: 400 })
-    const mine = (await listTasks(env.DB, user.id)).find((t: GoalTask) => t.id === taskId)
+    if (taskId === null) return await render(env, user, { error: t('子任务编号不对。'), status: 400 }, loc, t)
+    const mine = (await listTasks(env.DB, user.id)).find((task: GoalTask) => task.id === taskId)
     if (!mine || !(await deleteTask(env.DB, user.id, taskId))) return notFound()
     return seeOther(`/today/goals#goal-${mine.goal_id}`)
   }
 
   const goalOps = new Set(['archive', 'restore', 'delete', 'up', 'down', 'extend'])
-  if (!goalOps.has(op)) return await render(env, user, { error: '不认识这个操作。', status: 400 })
+  if (!goalOps.has(op)) return await render(env, user, { error: t('不认识这个操作。'), status: 400 }, loc, t)
   const id = intId(field(form, 'goal'))
-  if (id === null) return await render(env, user, { error: '目标编号不对。', status: 400 })
+  if (id === null) return await render(env, user, { error: t('目标编号不对。'), status: 400 }, loc, t)
   const goal = await getGoal(env.DB, user.id, id)
   if (!goal) return notFound()
 
@@ -130,7 +135,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     case 'restore': await setGoalArchived(env.DB, user.id, id, null); break
     case 'delete':
       // Two steps from the list on purpose: delete only exists in the archive fold.
-      if (goal.archived_at === null) return await render(env, user, { error: '先归档，再删除。', status: 400 })
+      if (goal.archived_at === null) return await render(env, user, { error: t('先归档，再删除。'), status: 400 }, loc, t)
       await deleteGoal(env.DB, user.id, id)
       return seeOther('/today/goals')
     case 'up': await moveGoal(env.DB, user.id, id, 'up', today); break     // edge → false, still a redirect
@@ -153,7 +158,7 @@ function notFound(): Response {
 
 interface RenderOptions { error?: string; draft?: Draft; draftGoal?: number | null; status?: number }
 
-async function render(env: Env, user: User, o: RenderOptions): Promise<Response> {
+async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T): Promise<Response> {
   const today = shanghaiDate(Date.now())
   const goals = await listGoals(env.DB, user.id)
   const tasks = await listTasks(env.DB, user.id)
@@ -168,21 +173,22 @@ async function render(env: Env, user: User, o: RenderOptions): Promise<Response>
   const archived = goals.filter((g) => g.archived_at !== null)
   const addDraft = o.draft && (o.draftGoal === null || o.draftGoal === undefined) ? o.draft : undefined
 
-  const body = `${consoleHeader(user, 'goals')}
+  const body = `${consoleHeader(user, 'goals', t)}
 <main>
-  <h1>目标</h1>
-  <p class="lede">未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。</p>
+  <h1>${t('目标')}</h1>
+  <p class="lede">${t('未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。')}</p>
   ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
-  ${expired.length ? expiredBlock(expired) : ''}
-  ${addBlock(addDraft)}
-  ${live.length === 0 && expired.length === 0 ? `<p class="empty">还没有目标。<br>用上面的 ${icon('plus')} 加第一个。</p>` : ''}
-  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], { first: i === 0, last: i === live.length - 1, draft: o.draftGoal === g.id ? o.draft : undefined })).join('\n')}
-  ${archived.length ? archivedBlock(archived) : ''}
+  ${expired.length ? expiredBlock(expired, t) : ''}
+  ${addBlock(t, addDraft)}
+  ${live.length === 0 && expired.length === 0 ? `<p class="empty">${t('还没有目标。<br>用上面的 {plus} 加第一个。', { plus: icon('plus') })}</p>` : ''}
+  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], { first: i === 0, last: i === live.length - 1, draft: o.draftGoal === g.id ? o.draft : undefined }, t)).join('\n')}
+  ${archived.length ? archivedBlock(archived, t) : ''}
 </main>`
 
   return page({
-    title: '目标 · 一息',
+    title: t('目标 · 一息'),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS + SCHEME_FIELD_CSS + GOALS_CSS,
     body,
     script: SCHEME_FIELD_JS,
@@ -190,57 +196,56 @@ async function render(env: Env, user: User, o: RenderOptions): Promise<Response>
   })
 }
 
-function expiredBlock(goals: Goal[]): string {
+function expiredBlock(goals: Goal[], t: T): string {
   return goals.map((g) => `<form class="banner expired" method="post" action="/today/goals">
     <input type="hidden" name="goal" value="${g.id}">
-    <span><b>${escapeHtml(g.title)}</b> 到期了（${escapeHtml(g.until ?? '')}）。</span>
+    <span>${t('<b>{title}</b> 到期了（{until}）。', { title: escapeHtml(g.title), until: escapeHtml(g.until ?? '') })}</span>
     <span class="acts">
-      <button class="linky" type="submit" name="op" value="extend">续四周</button>
-      <button class="linky" type="submit" name="op" value="archive">归档</button>
+      <button class="linky" type="submit" name="op" value="extend">${t('续四周')}</button>
+      <button class="linky" type="submit" name="op" value="archive">${t('归档')}</button>
     </span>
   </form>`).join('\n')
 }
 
-function addBlock(d?: Draft): string {
+function addBlock(t: T, d?: Draft): string {
   return `<details class="add"${d ? ' open' : ''}>
-  <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>加一个目标</span></summary>
+  <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>${t('加一个目标')}</span></summary>
   <form class="card addform" method="post" action="/today/goals" data-ns="NEW">
-  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW')}
-  <div class="actions"><button class="primary" type="submit" name="op" value="add">添加</button></div>
+  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW', t)}
+  <div class="actions"><button class="primary" type="submit" name="op" value="add">${t('添加')}</button></div>
   </form>
 </details>`
 }
 
-function goalFields(d: Draft, ns: string): string {
+function goalFields(d: Draft, ns: string, t: T): string {
   const id = (n: string): string => `f-${ns}-${n}`
   return `<div class="field">
-    <label for="${id('title')}">目标 · 一句话</label>
-    <input id="${id('title')}" type="text" name="title" value="${escapeHtml(d.title)}" placeholder="健身" required maxlength="${TITLE_MAX}">
+    <label for="${id('title')}">${t('目标 · 一句话')}</label>
+    <input id="${id('title')}" type="text" name="title" value="${escapeHtml(d.title)}" placeholder="${t('健身')}" required maxlength="${TITLE_MAX}">
   </div>
   <div class="field">
-    <label for="${id('cue')}">什么时候做 · 可不填</label>
-    <input id="${id('cue')}" type="text" name="cue" value="${escapeHtml(d.cue)}" placeholder="早饭后" maxlength="${CUE_MAX}">
+    <label for="${id('cue')}">${t('什么时候做 · 可不填')}</label>
+    <input id="${id('cue')}" type="text" name="cue" value="${escapeHtml(d.cue)}" placeholder="${t('早饭后')}" maxlength="${CUE_MAX}">
   </div>
   ${schemeField({
     name: 'target', value: d.target, ns, required: false, labelFor: 'target_label',
-    label: '去做时跳去哪 · 可不填',
-    placeholder: 'bilibili:// 或 https://…',
-    hint: '填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。' +
-      '自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。',
+    label: t('去做时跳去哪 · 可不填'),
+    placeholder: t('bilibili:// 或 https://…'),
+    hint: t('填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
   })}
   <div class="row">
     <div class="field">
-      <label for="${id('target_label')}">按钮上叫它什么</label>
-      <input id="${id('target_label')}" type="text" name="target_label" value="${escapeHtml(d.target_label)}" placeholder="B 站" maxlength="${LABEL_MAX}">
+      <label for="${id('target_label')}">${t('按钮上叫它什么')}</label>
+      <input id="${id('target_label')}" type="text" name="target_label" value="${escapeHtml(d.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
     </div>
     <div class="field">
-      <label for="${id('until')}">做到哪天 · 可不填</label>
+      <label for="${id('until')}">${t('做到哪天 · 可不填')}</label>
       <input id="${id('until')}" type="date" name="until" value="${escapeHtml(d.until)}" class="num">
     </div>
   </div>`
 }
 
-function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean; draft?: Draft }): string {
+function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean; draft?: Draft }, t: T): string {
   const d: Draft = o.draft ?? { title: g.title, cue: g.cue, target: g.target, target_label: g.target_label, until: g.until ?? '' }
   const undone = tasks.filter((t) => t.done_at === null)
   const ns = `g${g.id}`
@@ -248,42 +253,42 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
   <summary>
     <span class="sname">${escapeHtml(g.title)}</span>
     ${g.target_label ? `<span class="skey">${escapeHtml(g.target_label)}</span>` : ''}
-    <span class="mini">${g.until ? `<span class="num">${escapeHtml(g.until)}</span>` : '长期'}${tasks.length ? ` · ${undone.length}/${tasks.length}` : ''}</span>
+    <span class="mini">${g.until ? `<span class="num">${escapeHtml(g.until)}</span>` : t('长期')}${tasks.length ? ` · ${undone.length}/${tasks.length}` : ''}</span>
     ${icon('chev', { cls: 'ic chev' })}
   </summary>
   <form class="card" method="post" action="/today/goals" data-ns="${ns}">
     <input type="hidden" name="goal" value="${g.id}">
-    ${goalFields(d, ns)}
+    ${goalFields(d, ns, t)}
     <div class="actions">
-      <button class="primary" type="submit" name="op" value="save">保存</button>
-      <button class="linky" type="submit" name="op" value="up" formnovalidate${o.first ? ' disabled' : ''}>上移</button>
-      <button class="linky" type="submit" name="op" value="down" formnovalidate${o.last ? ' disabled' : ''}>下移</button>
-      <button class="linky" type="submit" name="op" value="archive" formnovalidate>归档</button>
+      <button class="primary" type="submit" name="op" value="save">${t('保存')}</button>
+      <button class="linky" type="submit" name="op" value="up" formnovalidate${o.first ? ' disabled' : ''}>${t('上移')}</button>
+      <button class="linky" type="submit" name="op" value="down" formnovalidate${o.last ? ' disabled' : ''}>${t('下移')}</button>
+      <button class="linky" type="submit" name="op" value="archive" formnovalidate>${t('归档')}</button>
     </div>
   </form>
   <div class="card tasks">
-    <h2>子任务 · 一次性的待办</h2>
-    ${tasks.length === 0 ? '<p class="note flat">还没有。</p>' : `<ul class="tl">${tasks.map((t) => `<li class="${t.done_at === null ? '' : 'done'}">
-      <span>${escapeHtml(t.title)}</span>
-      <form method="post" action="/today/goals"><input type="hidden" name="task" value="${t.id}"><button class="linky" type="submit" name="op" value="task_delete">删</button></form>
+    <h2>${t('子任务 · 一次性的待办')}</h2>
+    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => `<li class="${task.done_at === null ? '' : 'done'}">
+      <span>${escapeHtml(task.title)}</span>
+      <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
     </li>`).join('')}</ul>`}
     <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
-      <input type="text" name="title" placeholder="加一条子任务" maxlength="${TITLE_MAX}" required aria-label="子任务">
-      <button class="linky" type="submit" name="op" value="task_add">加</button>
+      <input type="text" name="title" placeholder="${t('加一条子任务')}" maxlength="${TITLE_MAX}" required aria-label="${t('子任务')}">
+      <button class="linky" type="submit" name="op" value="task_add">${t('加')}</button>
     </form>
   </div>
 </details>`
 }
 
-function archivedBlock(goals: Goal[]): string {
+function archivedBlock(goals: Goal[], t: T): string {
   return `<details class="archived">
-  <summary>${icon('chev', { cls: 'chev' })}已归档 · ${goals.length}</summary>
+  <summary>${icon('chev', { cls: 'chev' })}${t('已归档 · {n}', { n: goals.length })}</summary>
   ${goals.map((g) => `<form class="arow" method="post" action="/today/goals" id="goal-${g.id}">
     <input type="hidden" name="goal" value="${g.id}">
     <span class="sname">${escapeHtml(g.title)}</span>
-    <button class="linky" type="submit" name="op" value="restore">恢复</button>
-    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('删掉这个目标？子任务会一起删，打卡记录保留。')">删除</button>
+    <button class="linky" type="submit" name="op" value="restore">${t('恢复')}</button>
+    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('${t('删掉这个目标？子任务会一起删，打卡记录保留。')}')">${t('删除')}</button>
   </form>`).join('\n')}
 </details>`
 }

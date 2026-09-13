@@ -4,7 +4,7 @@
 // with its own slice — this file is what keeps the merged version honest.
 
 import { describe, expect, it } from 'vitest'
-import { liveGoals, shownGoals } from '../src/dates'
+import { liveGoals, prettyDate, shownGoals, weekdayName } from '../src/dates'
 import { TODAY_GOAL_LIMIT } from '../src/types'
 
 const TODAY = '2026-09-13'
@@ -64,5 +64,27 @@ describe('shownGoals', () => {
   it('returns fewer than the limit when there are fewer live goals', () => {
     const only = g(1)
     expect(shownGoals([only], TODAY)).toEqual([only])
+  })
+})
+
+// prettyDate moved here out of src/ui/today.ts when it grew a locale: the day
+// line is the one string on /today that is not a dictionary entry, so its two
+// shapes are pinned here rather than inferred from a rendered page.
+describe('prettyDate', () => {
+  it('writes a Chinese day as 「9 月 13 日 · 周日」', () => {
+    expect(prettyDate('2026-09-13', 'zh')).toBe('9 月 13 日 · 周日')
+    expect(prettyDate('2026-01-01', 'zh')).toBe('1 月 1 日 · 周四')
+  })
+
+  it('writes an English day as 「Sep 13 · Sunday」, with no year and no leading zero', () => {
+    expect(prettyDate('2026-09-13', 'en')).toBe('Sep 13 · Sunday')
+    expect(prettyDate('2026-01-01', 'en')).toBe('Jan 1 · Thursday')
+  })
+
+  it('names the weekday in either language', () => {
+    expect(weekdayName('2026-09-13', 'zh')).toBe('周日')
+    expect(weekdayName('2026-09-13', 'en')).toBe('Sunday')
+    expect(weekdayName('2026-09-19', 'zh')).toBe('周六')
+    expect(weekdayName('2026-09-19', 'en')).toBe('Saturday')
   })
 })

@@ -34,11 +34,14 @@ import { countTasksDoneBetween, listCheckins, listGoalDays, listGoals, shanghaiD
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { addDays, shownGoals } from '../dates'
+import { localeOf, translator, type T } from '../i18n'
 
 const DOTS = 7
 const MONTH_DAYS = 30
 
-export async function renderProgress(_request: Request, env: Env, user: User): Promise<Response> {
+export async function renderProgress(request: Request, env: Env, user: User): Promise<Response> {
+  const loc = localeOf(request, user)
+  const t = translator(loc)
   const now = Date.now()
   const today = shanghaiDate(now)
   const from = addDays(today, -(MONTH_DAYS - 1))
@@ -55,10 +58,11 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
 
   if (nonArchived.length === 0 && snapshotRows.length === 0) {
     return page({
-      title: `回看 · ${user.name}`,
+      title: t('回看 · {name}', { name: user.name }),
       theme: DEFAULT_THEME,
+      lang: loc,
       css: CONSOLE_CSS + PROGRESS_CSS,
-      body: `${consoleHeader(user, 'progress')}\n<main>\n  <h1>回看</h1>\n  ${emptyState()}\n</main>`,
+      body: `${consoleHeader(user, 'progress', t)}\n<main>\n  <h1>${t('回看')}</h1>\n  ${emptyState(t)}\n</main>`,
     })
   }
 
@@ -88,25 +92,26 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
   // deciding 续四周／归档 on /today/goals wants to see. Only the "今天" row
   // above (`top`/`shownGoals`) excludes expired goals; this list does not.
   const goalRows = nonArchived
-    .map((g) => goalRowHtml(g, today, dotDays, checkinsByGoal.get(g.id) ?? new Set()))
+    .map((g) => goalRowHtml(g, today, dotDays, checkinsByGoal.get(g.id) ?? new Set(), t))
     .join('')
 
-  const body = `${consoleHeader(user, 'progress')}
+  const body = `${consoleHeader(user, 'progress', t)}
 <main>
-  <h1>回看</h1>
-  <section class="card"><h2>今天</h2><p class="hero"><b class="num">${todayDone}</b> / <span class="num">${todayShown}</span></p></section>
-  <section class="card"><h2>最近 ${MONTH_DAYS} 天</h2>
-    <div class="strip" aria-label="最近三十天每天的完成比例">${bars}</div>
-    <p class="note">${MONTH_DAYS} 天里有记录的 ${snapshotDays} 天，做完全部的 ${fullDays} 天。</p>
+  <h1>${t('回看')}</h1>
+  <section class="card"><h2>${t('今天')}</h2><p class="hero"><b class="num">${todayDone}</b> / <span class="num">${todayShown}</span></p></section>
+  <section class="card"><h2>${t('最近 {days} 天', { days: MONTH_DAYS })}</h2>
+    <div class="strip" aria-label="${t('最近三十天每天的完成比例')}">${bars}</div>
+    <p class="note">${t('{days} 天里有记录的 {n} 天，做完全部的 {full} 天。', { days: MONTH_DAYS, n: snapshotDays, full: fullDays })}</p>
   </section>
-  <section class="card"><h2>每个目标</h2>${goalRows === '' ? '<p class="note flat">没有正在进行的目标。</p>' : `<ul class="gl">${goalRows}</ul>`}</section>
-  <section class="card"><h2>这周</h2><p>划掉了 <b class="num">${weekTasksDone}</b> 条子任务。</p></section>
-  <p class="note">拦截那边的记录在<a href="/review">回顾</a>。</p>
+  <section class="card"><h2>${t('每个目标')}</h2>${goalRows === '' ? `<p class="note flat">${t('没有正在进行的目标。')}</p>` : `<ul class="gl">${goalRows}</ul>`}</section>
+  <section class="card"><h2>${t('这周')}</h2><p>${t('划掉了 <b class="num">{n}</b> 条子任务。', { n: weekTasksDone })}</p></section>
+  <p class="note">${t('拦截那边的记录在<a href="/review">回顾</a>。')}</p>
 </main>`
 
   return page({
-    title: `回看 · ${user.name}`,
+    title: t('回看 · {name}', { name: user.name }),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS + PROGRESS_CSS,
     body,
   })
@@ -155,10 +160,10 @@ function monthStrip(
 
 // --- per-goal row -------------------------------------------------------------
 
-function goalRowHtml(g: Goal, today: string, dotDays: string[], checkedDates: Set<string>): string {
+function goalRowHtml(g: Goal, today: string, dotDays: string[], checkedDates: Set<string>, t: T): string {
   const dots = dotDays.map((d) => `<i class="d${checkedDates.has(d) ? ' on' : ''}"></i>`).join('')
   const denom = Math.min(MONTH_DAYS, daysSinceInclusive(g.created_at, today))
-  return `<li><span class="gt">${escapeHtml(g.title)}</span><span class="dots" aria-label="最近七天">${dots}</span><span class="rate num">${denom} 天 · 打卡 ${checkedDates.size} 天</span></li>`
+  return `<li><span class="gt">${escapeHtml(g.title)}</span><span class="dots" aria-label="${t('最近七天')}">${dots}</span><span class="rate num">${t('{n} 天 · 打卡 {x} 天', { n: denom, x: checkedDates.size })}</span></li>`
 }
 
 /** Days from a goal's creation to `today`, both ends inclusive: created today = 1. */
@@ -176,8 +181,8 @@ function mondayOf(date: string): string {
   return addDays(date, -((dow + 6) % 7))
 }
 
-function emptyState(): string {
-  return `<p class="empty">还没有可以回看的。先去<a href="/today">今日</a>记下一件事。</p>`
+function emptyState(t: T): string {
+  return `<p class="empty">${t('还没有可以回看的。先去<a href="/today">今日</a>记下一件事。')}</p>`
 }
 
 // --- styles -------------------------------------------------------------------

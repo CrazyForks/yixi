@@ -27,6 +27,7 @@ import {
 } from '../stats'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { translator } from '../i18n'
 
 export async function renderReview(
   // No query parameters; `request` is part of the route handler contract in
@@ -40,7 +41,7 @@ export async function renderReview(
     title: `回顾 · ${user.name}`,
     theme: DEFAULT_THEME,
     css: CONSOLE_CSS + CSS,
-    body: consoleHeader(user, 'review') + '<main>' + (stats.firstDate === null ? emptyState() : sections(stats)) + '</main>',
+    body: consoleHeader(user, 'review', translator('zh')) + '<main>' + (stats.firstDate === null ? emptyState() : sections(stats)) + '</main>',
   })
 }
 

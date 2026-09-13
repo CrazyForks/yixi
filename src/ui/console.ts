@@ -25,6 +25,7 @@
 // else's interceptions has nothing to do with today's three goals.
 
 import type { User } from '../types'
+import { msg, type T } from '../i18n'
 import { escapeHtml } from './layout'
 import { ICON_CSS, icon, type IconName } from './icons'
 
@@ -47,24 +48,30 @@ export function faceOf(page: ConsolePage): Face {
   return page === 'today' || page === 'goals' || page === 'progress' || page === 'todaysetup' ? 'today' : 'breathe'
 }
 
+// The tab tables are module-level constants, so their labels cannot call a
+// per-request `t()` where they are written — `msg()` marks them instead: the
+// Chinese source is still the dictionary key, test/i18n.test.ts's guard finds
+// it exactly as it finds a `t()` call, and `consoleHeader` passes each label
+// through its own translator at render time.
+
 /** 今日: look, jump, tick — three goals and how they got there. */
 const TODAY_TABS: Array<[href: string, name: ConsolePage, label: string]> = [
-  ['/today', 'today', '今日'],
-  ['/today/goals', 'goals', '目标'],
-  ['/today/review', 'progress', '回看'],
-  ['/today/setup', 'todaysetup', '怎么配'],
+  ['/today', 'today', msg('今日')],
+  ['/today/goals', 'goals', msg('目标')],
+  ['/today/review', 'progress', msg('回看')],
+  ['/today/setup', 'todaysetup', msg('怎么配')],
 ]
 
 /** 拦截: the original console — open an app, get one breath first. */
 const BREATHE_TABS: Array<[href: string, name: ConsolePage, label: string]> = [
-  ['/review', 'review', '回顾'],
-  ['/settings', 'settings', '设置'],
-  ['/setup', 'setup', '怎么配'],
+  ['/review', 'review', msg('回顾')],
+  ['/settings', 'settings', msg('设置')],
+  ['/setup', 'setup', msg('怎么配')],
 ]
 
 const FACE_HOME: Record<Face, { href: string; label: string }> = {
-  today: { href: '/today', label: '今日' },
-  breathe: { href: '/review', label: '拦截' },
+  today: { href: '/today', label: msg('今日') },
+  breathe: { href: '/review', label: msg('拦截') },
 }
 const OTHER_FACE: Record<Face, Face> = { today: 'breathe', breathe: 'today' }
 
@@ -86,20 +93,20 @@ const OTHER_FACE: Record<Face, Face> = { today: 'breathe', breathe: 'today' }
  * icon anyone would guess, and an icon-only nav would trade a scroll nobody can
  * see for a guess nobody can make. The current tab sits on a pale ink disc.
  */
-export function consoleHeader(user: User, active: ConsolePage): string {
+export function consoleHeader(user: User, active: ConsolePage, t: T): string {
   const face = faceOf(active)
   const tab = (href: string, name: ConsolePage, text: string): string =>
     `<a href="${href}"${active === name ? ' class="on" aria-current="page"' : ''}>${icon(name)}<span class="lb">${text}</span></a>`
   const faceTabs = face === 'today' ? TODAY_TABS : BREATHE_TABS
   const other = FACE_HOME[OTHER_FACE[face]]
   return `<header>
-  <span class="brand">一息</span><span class="facename">· ${FACE_HOME[face].label}</span>
+  <span class="brand">一息</span><span class="facename">· ${t(FACE_HOME[face].label)}</span>
   <span class="who">${escapeHtml(user.name)}</span>
-  <a class="face" href="${other.href}">${other.label} ›</a>
-  <nav aria-label="导航">
-    ${faceTabs.map(([href, name, label]) => tab(href, name, label)).join('\n    ')}
-    ${tab('/account', 'account', '账号')}
-    ${user.is_owner && face === 'breathe' ? tab('/admin', 'admin', '发号') : ''}
+  <a class="face" href="${other.href}">${t(other.label)} ›</a>
+  <nav aria-label="${t('导航')}">
+    ${faceTabs.map(([href, name, label]) => tab(href, name, t(label))).join('\n    ')}
+    ${tab('/account', 'account', t('账号'))}
+    ${user.is_owner && face === 'breathe' ? tab('/admin', 'admin', t('发号')) : ''}
   </nav>
 </header>`
 }

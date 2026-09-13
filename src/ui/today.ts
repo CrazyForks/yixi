@@ -18,13 +18,19 @@ import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
 import { inAppBrowserOf } from '../inapp'
 import { safeScheme } from '../scheme'
-import { addDays, liveGoals, shownGoals } from '../dates'
+import { addDays, liveGoals, prettyDate, shownGoals } from '../dates'
+import { localeOf, translator, type Locale, type T } from '../i18n'
 
 const DOTS = 7
 const TITLE_MAX = 40
 
 export async function handleToday(request: Request, env: Env, user: User): Promise<Response> {
-  if (request.method === 'GET') return await render(request, env, user, {})
+  if (request.method === 'GET') {
+    // One translator per request, built here and handed down — never a module
+    // variable: a single isolate serves many requests at once.
+    const loc = localeOf(request, user)
+    return await render(request, env, user, loc, translator(loc))
+  }
   if (request.method === 'POST') return await handlePost(request, env, user)
   return new Response('method not allowed', { status: 405, headers: { allow: 'GET, POST' } })
 }
@@ -93,7 +99,7 @@ interface Card {
   dots: boolean[]
 }
 
-async function render(request: Request, env: Env, user: User, _o: Record<string, never>): Promise<Response> {
+async function render(request: Request, env: Env, user: User, loc: Locale, t: T): Promise<Response> {
   const now = Date.now()
   const today = shanghaiDate(now)
   const days = Array.from({ length: DOTS }, (_, i) => addDays(today, i - (DOTS - 1)))
@@ -127,43 +133,37 @@ async function render(request: Request, env: Env, user: User, _o: Record<string,
   const ua = request.headers.get('user-agent') ?? ''
   const iphoneSafari = /iPhone/.test(ua) && /Safari/.test(ua) && inAppBrowserOf(request) === null
 
-  const body = `${consoleHeader(user, 'today')}
+  const body = `${consoleHeader(user, 'today', t)}
 <main>
-  <div class="dayline"><span class="num">${escapeHtml(prettyDate(today))}</span><span class="dlinks"><a class="linky" href="/today/review">回看</a><a class="linky" href="/today/goals">编辑目标</a></span></div>
-  ${live.length === 0 ? emptyState() : ordered.map(cardHtml).join('\n')}
-  ${allDone ? `<p class="fin">今天的事都做了。<span>其余的事，明天再说。</span></p>` : ''}
-  ${rest.length ? restFold(rest) : ''}
-  ${iphoneSafari ? banner() : ''}
+  <div class="dayline"><span class="num">${escapeHtml(prettyDate(today, loc))}</span><span class="dlinks"><a class="linky" href="/today/review">${t('回看')}</a><a class="linky" href="/today/goals">${t('编辑目标')}</a></span></div>
+  ${live.length === 0 ? emptyState(t) : ordered.map((c) => cardHtml(c, t)).join('\n')}
+  ${allDone ? `<p class="fin">${t('今天的事都做了。')}<span>${t('其余的事，明天再说。')}</span></p>` : ''}
+  ${rest.length ? restFold(rest, t) : ''}
+  ${iphoneSafari ? banner(t) : ''}
 </main>
 ${jsonScript('cfg', { a2hs: iphoneSafari })}`
 
   return page({
-    title: '今日 · 一息',
+    title: t('今日 · 一息'),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS + TODAY_CSS,
     body,
     script: TODAY_JS,
   })
 }
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
-function prettyDate(ymd: string): string {
-  const [y, m, d] = ymd.split('-').map(Number) as [number, number, number]
-  const wd = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]!
-  return `${m} 月 ${d} 日 · 周${wd}`
-}
-
-function emptyState(): string {
+function emptyState(t: T): string {
   return `<form class="card quick" method="post" action="/today">
-  <p class="q1">先写一件最重要的事。</p>
+  <p class="q1">${t('先写一件最重要的事。')}</p>
   <div class="row">
-    <input type="text" name="title" placeholder="健身" maxlength="${TITLE_MAX}" required aria-label="目标">
-    <button class="primary" type="submit" name="op" value="quick_add">记下</button>
+    <input type="text" name="title" placeholder="${t('健身')}" maxlength="${TITLE_MAX}" required aria-label="${t('目标')}">
+    <button class="primary" type="submit" name="op" value="quick_add">${t('记下')}</button>
   </div>
 </form>`
 }
 
-function cardHtml(c: Card): string {
+function cardHtml(c: Card, t: T): string {
   const g = c.goal
   const cls = `card goal${c.hero ? ' hero' : ''}${c.checked ? ' checked' : ''}`
   const title = escapeHtml(g.title)
@@ -172,39 +172,46 @@ function cardHtml(c: Card): string {
     <div class="tt"><h3>${title}</h3>${g.cue ? `<p class="cue">${escapeHtml(g.cue)}</p>` : ''}</div>
     <form method="post" action="/today" class="ckf">
       <input type="hidden" name="goal" value="${g.id}">
-      <button class="ck" type="submit" name="op" value="${c.checked ? 'uncheck' : 'check'}" aria-label="${title}，${c.checked ? '已打卡，点击取消' : '今天打卡'}"><i></i></button>
+      <button class="ck" type="submit" name="op" value="${c.checked ? 'uncheck' : 'check'}" aria-label="${c.checked ? t('{title}，已打卡，点击取消', { title }) : t('{title}，今天打卡', { title })}"><i></i></button>
     </form>
   </div>
-  ${nextHtml(c)}
-  <div class="dots" aria-label="最近七天">${c.dots.map((on) => `<i class="d${on ? ' on' : ''}"></i>`).join('')}</div>
-  ${goHtml(g)}
+  ${nextHtml(c, t)}
+  <div class="dots" aria-label="${t('最近七天')}">${c.dots.map((on) => `<i class="d${on ? ' on' : ''}"></i>`).join('')}</div>
+  ${goHtml(g, t)}
 </article>`
 }
 
-function nextHtml(c: Card): string {
+function nextHtml(c: Card, t: T): string {
   const doneList = c.doneToday
-    .map((t) => `<li class="done today"><span>${escapeHtml(t.title)}</span>
-      <form method="post" action="/today"><input type="hidden" name="task" value="${t.id}"><button class="linky" type="submit" name="op" value="task_undo">撤销</button></form></li>`)
+    .map((task) => `<li class="done today"><span>${escapeHtml(task.title)}</span>
+      <form method="post" action="/today"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_undo">${t('撤销')}</button></form></li>`)
     .join('')
   if (!c.next && doneList === '') return ''
   const next = c.next
     ? `<form method="post" action="/today" class="next">
     <input type="hidden" name="task" value="${c.next.id}">
-    <button class="tk" type="submit" name="op" value="task_done" aria-label="完成：${escapeHtml(c.next.title)}"><i></i></button>
-    <span class="nl">下一步</span><span class="nt">${escapeHtml(c.next.title)}</span>
+    <button class="tk" type="submit" name="op" value="task_done" aria-label="${t('完成：{title}', { title: escapeHtml(c.next.title) })}"><i></i></button>
+    <span class="nl">${t('下一步')}</span><span class="nt">${escapeHtml(c.next.title)}</span>
   </form>`
     : ''
-  const more = c.moreUndone > 0 ? `<p class="more">还有 ${c.moreUndone} 条，去<a href="/today/goals#goal-${c.goal.id}">目标</a>里看。</p>` : ''
+  const more = c.moreUndone > 0
+    ? `<p class="more">${t('还有 {n} 条，去<a href="/today/goals#goal-{id}">目标</a>里看。', { n: c.moreUndone, id: c.goal.id })}</p>`
+    : ''
   return `${next}${more}${doneList ? `<ul class="donel">${doneList}</ul>` : ''}`
 }
 
-function goHtml(g: Goal): string {
+function goHtml(g: Goal, t: T): string {
   const target = safeScheme(g.target)
-  // 中西文之间留空，全中文不留：「去 B 站」但「去微信读书」。
-  const sep = /^[A-Za-z0-9]/.test(g.target_label) ? ' ' : ''
-  const label = g.target_label ? `去${sep}${escapeHtml(g.target_label)}` : '去做'
+  // 中西文之间留空，全中文不留：「去 B 站」但「去微信读书」。That spacing rule is
+  // Chinese typography, not a translation, so it is two sources rather than a
+  // `{sep}` param — English maps both to the same 「Open {label}」 and never
+  // has to reason about a separator it does not want.
+  const shown = escapeHtml(g.target_label)
+  const label = g.target_label
+    ? (/^[A-Za-z0-9]/.test(g.target_label) ? t('去 {label}', { label: shown }) : t('去{label}', { label: shown }))
+    : t('去做')
   if (target === '') {
-    return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}去绑一个 App，一按就开</a>`
+    return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}${t('去绑一个 App，一按就开')}</a>`
   }
   if (/^https?:/i.test(target)) {
     return `<a class="go" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
@@ -212,17 +219,17 @@ function goHtml(g: Goal): string {
   return `<button class="go" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${label}</button>`
 }
 
-function restFold(goals: Goal[]): string {
+function restFold(goals: Goal[], t: T): string {
   return `<details class="rest">
-  <summary>${icon('chev', { cls: 'chev' })}其余目标 · ${goals.length}</summary>
+  <summary>${icon('chev', { cls: 'chev' })}${t('其余目标 · {n}', { n: goals.length })}</summary>
   <ul>${goals.map((g) => `<li><a href="/today/goals#goal-${g.id}">${escapeHtml(g.title)}</a></li>`).join('')}</ul>
 </details>`
 }
 
-function banner(): string {
+function banner(t: T): string {
   return `<aside class="a2hs" id="a2hs" hidden>
-  <p><b>添加到主屏幕</b>，以后一按就开。Safari 底部「分享」→「添加到主屏幕」。装好后第一次打开要再登录一次。</p>
-  <button type="button" class="linky" id="a2hs-x">知道了</button>
+  <p>${t('<b>添加到主屏幕</b>，以后一按就开。Safari 底部「分享」→「添加到主屏幕」。装好后第一次打开要再登录一次。')}</p>
+  <button type="button" class="linky" id="a2hs-x">${t('知道了')}</button>
 </aside>`
 }
 

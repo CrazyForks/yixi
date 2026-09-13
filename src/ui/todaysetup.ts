@@ -10,6 +10,7 @@
 import type { Env, User } from '../types'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { localeOf, translator } from '../i18n'
 
 /**
  * GET /today/setup — the three ways to open /today without hunting for the
@@ -21,27 +22,29 @@ import { CONSOLE_CSS, consoleHeader } from './console'
  * with anything about interception.
  */
 export async function renderTodaySetup(request: Request, _env: Env, user: User): Promise<Response> {
-  const origin = new URL(request.url).origin
+  const origin = escapeHtml(new URL(request.url).origin)
+  const loc = localeOf(request, user)
+  const t = translator(loc)
 
-  const body = `${consoleHeader(user, 'todaysetup')}
+  // Each <li> is one source string, newline and indent included, so the
+  // Chinese renders byte for byte what it always did; English collapses the
+  // same break to a space.
+  const body = `${consoleHeader(user, 'todaysetup', t)}
 <main>
-<h1>怎么配</h1>
-<p class="lede">让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：</p>
+<h1>${t('怎么配')}</h1>
+<p class="lede">${t('让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：')}</p>
 <ol>
-  <li><b>添加到主屏幕</b>。Safari 打开 <code>${escapeHtml(origin)}/today</code>，底部「分享」→「添加到主屏幕」。
-    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。</li>
-  <li><b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填 <code>${escapeHtml(origin)}/today</code>。
-    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；
-    或「设置→辅助功能→触控→轻点背面」绑它。</li>
-  <li><b>每天早上自动打开</b>。「快捷指令」→「自动化」→「特定时间」，选每天早上的时刻，运行上面那条，
-    关掉「运行前询问」。这就是提醒，不用推送。</li>
+  <li>${t('<b>添加到主屏幕</b>。Safari 打开 <code>{origin}/today</code>，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。', { origin })}</li>
+  <li>${t('<b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填 <code>{origin}/today</code>。\n    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；\n    或「设置→辅助功能→触控→轻点背面」绑它。', { origin })}</li>
+  <li>${t('<b>每天早上自动打开</b>。「快捷指令」→「自动化」→「特定时间」，选每天早上的时刻，运行上面那条，\n    关掉「运行前询问」。这就是提醒，不用推送。')}</li>
 </ol>
-<p class="note">拦截那边的配置在<a href="/setup">这里</a>。</p>
+<p class="note">${t('拦截那边的配置在<a href="/setup">这里</a>。')}</p>
 </main>`
 
   return page({
-    title: '怎么配 · 一息',
+    title: t('怎么配 · 一息'),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS,
     body,
   })

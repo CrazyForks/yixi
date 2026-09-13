@@ -41,6 +41,7 @@ import { sessionIdFrom } from '../auth'
 import { shanghaiDate } from '../db'
 import { TURNSTILE_FIELD, turnstileKeys, verifyTurnstile } from '../turnstile'
 import { CONSOLE_CSS, consoleHeader } from './console'
+import { translator } from '../i18n'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 
 /**
@@ -477,7 +478,7 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
     theme: DEFAULT_THEME,
     css: CONSOLE_CSS + ACCOUNT_CSS,
     status: o.status ?? 200,
-    body: `${consoleHeader(user, 'account')}
+    body: `${consoleHeader(user, 'account', translator('zh'))}
 <main>
   <h1>账号</h1>
   ${banner(o.error, 'bad')}

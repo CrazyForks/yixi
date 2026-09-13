@@ -292,13 +292,21 @@ describe('?lang= handling in the router', () => {
  * entry in SOURCES below) — that two-line diff is the entire cost of
  * extending this guard to a new file.
  */
-export const CONVERTED: string[] = []
+export const CONVERTED: string[] = [
+  'src/ui/console.ts',
+  'src/ui/today.ts',
+  'src/ui/goals.ts',
+  'src/ui/progress.ts',
+  'src/ui/todaysetup.ts',
+]
 
 /** Raw source for each CONVERTED path, keyed the same way. */
 const SOURCES: Record<string, string> = {
-  // 'src/ui/today.ts': uiTodayRaw,   <- what a later task's two-line addition
-  //                                     looks like: one entry here, one path
-  //                                     pushed onto CONVERTED above.
+  'src/ui/console.ts': uiConsoleRaw,
+  'src/ui/today.ts': uiTodayRaw,
+  'src/ui/goals.ts': uiGoalsRaw,
+  'src/ui/progress.ts': uiProgressRaw,
+  'src/ui/todaysetup.ts': uiTodaysetupRaw,
 }
 
 /**
