@@ -741,6 +741,64 @@ export function findApps(query: string, limit = 8): AppEntry[] {
   return scored.slice(0, limit).map((s) => s.entry)
 }
 
+// --- reverse lookup: scheme -> app -----------------------------------------
+
+/**
+ * The protocol part of a scheme, lowercased: `QDReader://` and `qdreader:`
+ * both reduce to `qdreader`.
+ *
+ * Matching on the protocol rather than on the whole stored string is what makes
+ * this survive the shapes that are actually in `user_apps`. RFC 3986 makes the
+ * scheme case-insensitive, and a row inserted by hand (as the README's
+ * bootstrap does) may carry the `//` or not.
+ */
+function protocolOf(scheme: string): string {
+  const s = scheme.trim()
+  const colon = s.indexOf(':')
+  return (colon === -1 ? s : s.slice(0, colon)).toLowerCase()
+}
+
+/**
+ * Every scheme in the table, pointing back at the row that claims it. Built
+ * once at module load, same as the table itself is compiled in.
+ *
+ * First writer wins. That matches the table's own ordering rule — candidates
+ * are listed best-supported first — so a row that offers two spellings resolves
+ * to the same app either way. Nothing in the snapshot collides today, and
+ * test/candidates.test.ts is where a collision introduced by a later snapshot
+ * gets caught. Deliberately not a throw: a duplicate is a data typo, and a typo
+ * in a table must not take the Worker down on boot.
+ */
+const BY_PROTOCOL = new Map<string, AppEntry>()
+for (const entry of APPS) {
+  for (const c of entry.candidates) {
+    const p = protocolOf(c.scheme)
+    if (p !== '' && !BY_PROTOCOL.has(p)) BY_PROTOCOL.set(p, entry)
+  }
+}
+
+/**
+ * Which app a configured scheme belongs to, or undefined when the table has
+ * never heard of it.
+ *
+ * The inverse of `findApps`, and it exists so that counting can stop trusting
+ * the app key. That key is the string somebody had to retype inside an iOS
+ * automation, so people shorten and rename it — `dy` for one person, `douyin`
+ * for the next, both pointing at `snssdk1128://`. Grouping by it splits one app
+ * into several rows; grouping by what this returns does not, because the scheme
+ * is the part they picked off the table rather than invented.
+ *
+ * `undefined` is an answer, not a failure, and callers must keep it that way by
+ * falling back to the raw key. A hand-typed `wechat://` is in production right
+ * now and appears in neither collection this table was built from; folding it
+ * into 微信 would be exactly the unverified-string-read-as-an-answer mistake
+ * this file exists to prevent, and leaving it as its own row is what puts it in
+ * front of someone who can check it on a phone.
+ */
+export function appForScheme(scheme: string): AppEntry | undefined {
+  return BY_PROTOCOL.get(protocolOf(scheme))
+}
+
 // --- derivation from a bundle id -------------------------------------------
 
 /**

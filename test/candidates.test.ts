@@ -23,7 +23,7 @@ import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { handleCandidates, searchCandidates, type SearchOut } from '../src/api/candidates'
 import { safeScheme } from '../src/scheme'
-import { APPS, deriveFromBundleId, findApps, suggestKey } from '../src/schemes'
+import { APPS, appForScheme, deriveFromBundleId, findApps, suggestKey } from '../src/schemes'
 
 /** A fetch stand-in, so no test in this file can reach itunes.apple.com. */
 function stubFetch(handler: () => Promise<Response> | Response): typeof fetch {
@@ -88,6 +88,55 @@ describe('the table itself', () => {
         }
         // Must survive the same gate the breathing page applies at the sink.
         expect(safeScheme(c.scheme), `${a.name} ${c.scheme}`).toBe(c.scheme)
+      }
+    }
+  })
+
+  // appForScheme resolves a protocol to exactly one row and lets the first
+  // writer win. That is only honest while no two rows claim the same protocol —
+  // if a later snapshot introduces one, counting would silently file some
+  // people's app under someone else's name, and this is where it surfaces.
+  it('never lets two apps claim the same scheme', () => {
+    const owner = new Map<string, string>()
+    for (const a of APPS) {
+      for (const c of a.candidates) {
+        const proto = c.scheme.slice(0, c.scheme.indexOf(':')).toLowerCase()
+        const held = owner.get(proto)
+        expect(held ?? a.name, `${proto} is claimed by both ${held ?? ''} and ${a.name}`).toBe(a.name)
+        owner.set(proto, a.name)
+      }
+    }
+  })
+})
+
+describe('scheme -> app', () => {
+  // The whole reason this lookup exists. Both keys are real rows in production:
+  // one person typed `dy`, the next typed `douyin`, and counting by the key
+  // reported 抖音 twice at 4 and 3 people instead of once at 7.
+  it('lands two different app keys on one app when they share a scheme', () => {
+    expect(appForScheme('snssdk1128://')?.name).toBe('抖音')
+  })
+
+  it('ignores case and a missing slash, because stored rows vary in both', () => {
+    expect(appForScheme('qdreader://')?.name).toBe('起点读书')
+    expect(appForScheme('QDReader:')?.name).toBe('起点读书')
+    expect(appForScheme('  XHSDiscover://  ')?.name).toBe('小红书')
+  })
+
+  // `wechat://` is configured by someone in production and is in neither
+  // collection. Resolving it to 微信 on the strength of the name looking right
+  // would be a guess presented as an answer; undefined keeps the row separate
+  // and therefore visible.
+  it('returns undefined for a scheme no collection recorded', () => {
+    expect(appForScheme('wechat://')).toBeUndefined()
+    expect(appForScheme('firefox://')).toBeUndefined()
+    expect(appForScheme('')).toBeUndefined()
+  })
+
+  it('resolves every scheme in the table back to the row that carries it', () => {
+    for (const a of APPS) {
+      for (const c of a.candidates) {
+        expect(appForScheme(c.scheme)?.name, `${a.name} ${c.scheme}`).toBe(a.name)
       }
     }
   })
