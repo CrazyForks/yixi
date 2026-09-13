@@ -203,11 +203,13 @@ describe('goal_days', () => {
     expect(await countTasksDoneOn(env.DB, 2, '2026-09-13')).toBe(0)
   })
 
-  it('counts tasks done over an inclusive range of Shanghai days, both ends included', async () => {
+  it('counts tasks done over an inclusive range of Shanghai days, both ends included and neither exceeded', async () => {
     const id = await goal(1, '健身')
     const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
     const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
     const t3 = (await createTask(env.DB, { userId: 1, goalId: id, title: '三', now: NOW }))!
+    const t4 = (await createTask(env.DB, { userId: 1, goalId: id, title: '四', now: NOW }))!
+    const t5 = (await createTask(env.DB, { userId: 1, goalId: id, title: '五', now: NOW }))!
     // 2026-09-14 is a Monday, 2026-09-20 the Sunday ending that same week.
     // 2026-09-14 00:30 Shanghai = 2026-09-13 16:30 UTC (start of range, inclusive)
     await setTaskDone(env.DB, 1, t1, Date.UTC(2026, 8, 13, 16, 30))
@@ -215,7 +217,15 @@ describe('goal_days', () => {
     await setTaskDone(env.DB, 1, t2, Date.UTC(2026, 8, 20, 15, 30))
     // 2026-09-16 12:00 Shanghai = 2026-09-16 04:00 UTC (a day inside the range)
     await setTaskDone(env.DB, 1, t3, Date.UTC(2026, 8, 16, 4, 0))
+    // 2026-09-13 23:30 Shanghai = 2026-09-13 15:30 UTC — the day before the
+    // Monday start; must NOT be counted.
+    await setTaskDone(env.DB, 1, t4, Date.UTC(2026, 8, 13, 15, 30))
+    // 2026-09-21 00:30 Shanghai = 2026-09-20 16:30 UTC — the day after the
+    // Sunday end; must NOT be counted either.
+    await setTaskDone(env.DB, 1, t5, Date.UTC(2026, 8, 20, 16, 30))
     expect(await countTasksDoneBetween(env.DB, 1, '2026-09-14', '2026-09-20')).toBe(3)
     expect(await countTasksDoneBetween(env.DB, 2, '2026-09-14', '2026-09-20')).toBe(0)
+    // Narrowing from = to = the mid-week day pins both ends independently: only t3 qualifies.
+    expect(await countTasksDoneBetween(env.DB, 1, '2026-09-16', '2026-09-16')).toBe(1)
   })
 })
