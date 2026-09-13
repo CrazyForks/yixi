@@ -2,17 +2,36 @@ English | [简体中文](README.zh-CN.md)
 
 # yixi (一息)
 
-Breathe for ten seconds before the app opens. A self-hosted stand-in for [One Sec](https://one-sec.app/), built as a web page instead of an iPhone app, running entirely on Cloudflare's free tier.
+一息 does two things, sharing one account. **Breathe** (拦): before a distracting app opens, your phone shows a page that asks you to breathe for ten seconds, then offers 「算了」 first and 「继续打开」 second, and keeps the receipt. **Today** (引): your top three goals for the coming weeks on one page you open every morning, each with its next step, seven dots for the last seven days, and a button that jumps straight into the app where the work happens — B 站 for a workout, 微信读书 for a book. Either half is useful on its own.
 
-You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone jumps to a page that asks you to watch a circle and breathe. Ten seconds later you may go in, or you may put the phone down. Either way it keeps the receipt, so a week later you can see how many times you were stopped and how many of those you let go.
+One Cloudflare Worker and one D1 database, running entirely on Cloudflare's free tier. On the interception side it is a self-hosted stand-in for [One Sec](https://one-sec.app/), built as a web page instead of an iPhone app.
 
-<p align="center">
-  <img src="docs/images/breathing-paper.png" width="300" alt="The breathing page in light mode: an ink blot on paper, 「算了」 as a filled pill, 「继续打开」 as a small underlined link">
-  &nbsp;&nbsp;
-  <img src="docs/images/breathing-ink.png" width="300" alt="The same page in dark mode: pale ink on near-black">
-</p>
+<table>
+<tr>
+<td width="50%" align="center">
 
-<p align="center"><sub>The countdown has finished, so both choices are showing. 「算了」 (give up) is a filled pill; 「继续打开」 (open anyway) is a small underlined link. That asymmetry is deliberate — the default path should be putting the phone down. Light mode is not the dark theme brightened; it inverts into ink on paper.</sub></p>
+<img src="docs/images/breathing-paper.png" width="300" alt="The breathing page in light mode: an ink blot on paper, 「算了」 as a filled pill, 「继续打开」 as a small underlined link">
+
+<sub>「算了」 is a filled pill, 「继续打开」 a small underlined link — the asymmetry is deliberate.</sub>
+
+Before a distracting app opens, the phone jumps to a page that counts ten seconds out, offers the way out first and the way in second, and keeps the receipt either way.
+
+**[Breathe →](docs/breathe.md)**
+
+</td>
+<td width="50%" align="center">
+
+<img src="docs/images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, its next step, seven dots and a wide jump button">
+
+<sub>Three goals, the first one large. No streak number anywhere.</sub>
+
+The few things that matter for the coming weeks on one page you open every morning — each with its next step, seven dots for the last seven days, and one button into the app where the work happens.
+
+**[Today →](docs/today.md)**
+
+</td>
+</tr>
+</table>
 
 <p align="center">
   <b><a href="https://yixi-app.pages.dev">Try it now →</a></b><br>
@@ -21,68 +40,17 @@ You reach for Xiaohongshu (or Instagram, or Reddit). Before it opens, your phone
 
 **Who this is for:** anyone who wants a nudge rather than a wall. It is friction, not enforcement — the automation is one toggle away from off, on purpose.
 
-一息 actually does two things, sharing one account: it **stops** you (breathe ten seconds before a distracting app opens — the whole page above) and it **points** you ([`/today`](#pages), your top three goals for the day, each one tap away). Either half is useful on its own.
-
 The open instance is the quickest way in. If you would rather not keep a minute-by-minute log of your worst impulses on someone else's server, deploy your own in fifteen minutes; it is the same code either way.
 
-```
-you tap 小红书
-   │
-   ▼
-iOS "When <app> is Opened" automation fires
-   │
-   ▼
-Shortcut: GET /gate?app=xhs&k=<token>&fmt=text
-   │
-   ├── body is "pass"            → Shortcut ends, the app opens normally
-   │                               (not watching this app / inside a grace window
-   │                                / the server is down — see "fails open" below)
-   │
-   └── body is "https://…/b?s=…" → Shortcut opens that URL
-                                     │
-                                     ▼
-                         Safari: the breathing page, counting down
-                            no buttons at all during the wait
-                                     │
-                          ┌──────────┴──────────┐
-                          ▼                     ▼
-                    「算了」 (drop it)      「继续」 (go in)
-                    shown first, loud     shown 800ms later, quiet
-                          │                     │
-                    logged, you exit      logged, grace window opens,
-                    the page yourself     jump back to the app
-                                                │
-                                                ▼
-                                   the automation fires AGAIN on arrival
-                                   → inside the grace window → "pass"
-                                   → recorded as machine noise, never
-                                     as an impulse
-```
+## Known limits
 
-That last box is the whole reason this project is more than fifty lines of code. Handing control back to the app re-triggers the same automation, and a naive implementation loops forever. See [Why the grace window lives on the server](#why-the-grace-window-lives-on-the-server).
+Three that apply to the whole product. The per-face lists are in [docs/breathe.md](docs/breathe.md#known-limits) and [docs/today.md](docs/today.md#known-limits), and both are worth reading before you deploy.
 
-## Why a web page and not an app
+- **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
+- **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
+- **This is a nudge, not a blocker.** Anyone can disable the automation in two taps. That is by design — the whole system fails open — and it means the tool only works for someone who wants it to.
 
-Sideloading your own app onto an iPhone with a free Apple ID gets you seven days before the signature expires. Then you plug into a Mac and re-sign it. Every week. Forever.
-
-The way out is an Apple Developer account at $99/year — which, for a tool whose entire job is a ten-second delay, very likely costs more than the paid app you were trying to avoid buying.
-
-So: no app. iOS Shortcuts already has an "app was opened" trigger, Safari can already open a page, and a page can already hand control back to an app through its URL scheme. Zero signing cost, nothing to renew, no Xcode.
-
-The price is that the animation is not as smooth as native, and a Safari cold start is perceptible. For a screen that exists to slow you down, that is an acceptable trade — arguably a feature.
-
-## What it is
-
-One Cloudflare Worker and one D1 database. The whole app is a single `fetch` handler plus two nightly crons: noon Shanghai trims stale sessions, logins and rate-limit windows, and 00:00 Shanghai writes yesterday's `goal_days` snapshot — one row per user with a live goal, recording how many goals were shown that day, how many got checked in, and how many sub-tasks were finished. Written once and never rewritten; a day the Worker missed is just a gap, not a wrong number.
-
-- Every page is server-rendered, with CSS and JavaScript inlined. **Zero external requests** — no CDN, no web font, not even a favicon fetch. This is enforced by a `default-src 'none'` CSP, not just intended: the moment these pages open is the moment someone is reaching for a distraction on a bad connection, and one blocking round trip would end the product. The single exception is the optional Turnstile widget on `/register`, which is a sign-up page rather than an interception page — see step 6.
-- No client framework, no runtime dependencies. The `package.json` has five devDependencies and nothing else.
-- The interception log is never deleted. Sessions, logins and rate-limit windows are trimmed nightly; `events` is the product and stays forever.
-- Accounts are email + password, and the password is only ever a convenience. The real credential is a 128-bit random **gate token** that the Shortcut carries.
-- `/today` is the page meant to be opened every morning: your top three goals, each with its next task, a seven-day dot strip instead of a streak number, and a one-tap jump into whichever app the goal is actually about. `/today/goals` behind it is where they get added, edited and archived, and `/today/review` looks back at how the days actually went. Add `/today` to the home screen from `/today/setup` and it opens full-screen with no address bar — a real login is still needed the first time, since the home-screen copy does not share Safari's session.
-- 一息 is two faces in one app: 「今日」 (`/today` and behind it) points you at what matters, and 「拦截」 (the breathing page and behind it) stops you from what doesn't. Each nav carries a small link to the other face, and both share the same login.
-
-### Pages
+## Pages
 
 | Route | Who | What |
 | --- | --- | --- |
@@ -98,15 +66,18 @@ One Cloudflare Worker and one D1 database. The whole app is a single `fetch` han
 | `/goals` | you | kept as a 307 to `/today/goals` (preserves method/body), so old links and bookmarks still land somewhere useful |
 | `/review` | you | today, the last seven days, which app costs you most |
 | `/settings` | you | which apps to intercept, and how long |
-| `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings`; not a page |
+| `GET /api/candidates` | you | JSON: type an app name, get candidate URL schemes with sources. Fetched by the URL scheme field on `/settings` and `/today/goals`; not a page |
 | `/lookup` `/probe` | — | kept as 302s to `/settings`. Both were pages once; finding and testing a scheme is now part of the field that needs it, so old links and bookmarks still land somewhere useful |
 | `/setup` | you | the Shortcut walkthrough, with your own host and token filled in |
 | `/account` | you | read your gate token back, change your password, sign out |
 | `/mock?v=1\|2` | anyone | the two candidate visual skins, side by side |
 | `/admin` | owner | mint a token for someone offline; see per-user attempt counts |
 | `/manifest.webmanifest` `/icon.png` | anyone | the home-screen files — public and cacheable, nothing per-user in either |
+| `/robots.txt` | anyone | crawl the front door, nothing else |
 
 Anything else is a 404. There is no detail endpoint under `/admin` to guess at — see [SECURITY.md](SECURITY.md).
+
+Each face carries its own nav — 「今日」 for `/today` and behind it, 「拦截」 for the breathing pages and behind them — with a small link to the other, and both share the same login.
 
 ## Why it deploys twice
 
@@ -249,99 +220,6 @@ npx wrangler d1 execute yixi --remote --command \
 3. Do this on the iPhone. Tap **试跳** on a candidate — only the one that actually opens the app counts. Then 「用这个」 writes it into the box and you save. Your half-filled form survives the jump.
 4. `/setup` — the Shortcut walkthrough, with your real host and token already pasted into the lines you need.
 
-## Wiring up the iOS Shortcut
-
-**Do the real setup from `/setup` in the app, not from a document.** That page knows your hostname, your token and your configured apps, so it prints finished strings you can long-press and copy. Any document can only print `<your-host>` and `<your-token>` and hope you substitute correctly — and mis-substitution is the single most common way this setup fails. What follows is the shape, so you know what you are aiming at.
-
-### One shortcut, three actions, zero variables to pick
-
-<p align="center">
-  <img src="docs/images/shortcut.png" width="330" alt="The finished shortcut in the iOS Shortcuts editor: Get Contents of URL with the gate URL, If Contents of URL contains https, and Open URL nested inside it, then End If">
-</p>
-
-<p align="center"><sub>The same thing on a real phone. The token is masked; yours is already filled in on <code>/setup</code>. Note that <b>Open URL sits inside the If</b> — that nesting is the one part a written list conveys badly, and getting it wrong makes the shortcut jump on every launch, including the ones the gate just told it to leave alone.</sub></p>
-
-
-**① Get Contents of URL.** Paste the whole line into the URL field:
-
-```
-https://<your-host>/gate?app=xhs&k=<your-token>&fmt=text
-```
-
-Expand "Show More" and confirm the method is `GET`. Leave headers and body empty.
-
-**② If** — `Contents of URL` **contains** `https`
-
-**③ Open URL** — `Contents of URL`, dragged *inside* the If.
-
-```
-Get Contents of URL   (the pasted line)        GET
-If   「Contents of URL」   contains   https
-    Open URL   「Contents of URL」
-End If
-```
-
-**Why not just one Open URL?** Because `/gate` answers with *text*, not a redirect: the breathing page's URL when it should intercept, the literal word `pass` when it should not. Point Open URL straight at the gate and Safari opens the gate itself — a page containing one line of text, which you would then have to tap, and which appears on *every* launch including the ones meant to leave you alone. Fetching first is what lets "don't intercept" be *nothing at all*, and a single Open URL always opens something. It is also why this fails open: a dead server, a timeout or an error page all fail to contain `https`, the If is false, the shortcut ends silently and the app you wanted starts normally.
-
-Both the If and the Open URL auto-fill their left side with the previous result. You never open the variable picker. Name it something like `一息 小红书` and save.
-
-This is what `&fmt=text` is for. In JSON mode the same logic needs a Get Dictionary Value, an If comparing a dictionary value, and a second Get Dictionary Value — six actions and three magic variables, and the If editor does not reliably offer a dictionary value as something to compare against. Real users got stuck there. Moving the parsing to the server turned six actions into three.
-
-### Then one automation per app
-
-Shortcuts app → **Automation** → **+**:
-
-1. Trigger: **App**, then tick **the one app** you want intercepted.
-2. Choose **Is Opened** (not Is Closed).
-3. When asked what to run, pick the shortcut you just made. Do not add actions, do not pass input.
-4. **Turn off "Ask Before Running."**
-5. Turn off "Notify When Run" too, or every app launch throws a banner.
-
-To add a second app: long-press the shortcut → Duplicate, change the one word after `app=` in the URL, rename it, and make a second automation. `/setup` prints the finished line for every app you have configured.
-
-### Why the condition is "contains `https`" — and why you must not invert it
-
-This one line does two jobs: it opens the breathing page when it should, and **it fails open on absolutely everything else.**
-
-`/gate` has plenty of ways to not answer properly: the token was rotated, the Worker is down, the network timed out, the response was blank, DNS was poisoned. **Not one of those replies contains `https`.** So the If is false, the Shortcut does nothing, and the app you actually wanted opens normally. Worst case: it did not stop you today.
-
-Write it the other way round — *"if it does not contain `pass`, open it"* — and the day the service goes down, every one of your watched apps starts jumping to a page that will not load. You are locked out of your own phone by your own tool, and almost certainly at a moment when you needed it.
-
-These two failure modes are not remotely symmetrical: one missed interception versus several apps bricked. So the default has to be *when in doubt, let them through.*
-
-Two corollaries:
-
-- **Do not add error handling to Get Contents of URL.** When the network fails, iOS aborts the whole shortcut — which means Open URL never runs and the app opens normally. That is exactly what you want.
-- **Do not add an Otherwise branch that opens anything.** "Otherwise" means "the server did not say to stop you," and the correct response to that is nothing at all.
-
-## Why the grace window lives on the server
-
-Tapping 「继续」 hands control to the app's URL scheme — which trips the same "when this app is opened" automation all over again. Native One Sec dodges this from inside its own process, jumping away with no user gesture. Safari cannot: it only follows a custom scheme from inside the synchronous call stack of a real tap.
-
-So the state has to live outside the page. `/resolve` writes a **grace** row (`user_id`, `app`, `until`), and the next `/gate` call inside that window answers `pass`. The user taps nothing extra and the loop terminates.
-
-The second half matters just as much. That re-fire is machine noise, not an impulse, so it is recorded as a **`grace_pass`** event and never as an `attempt`. Every ratio on `/review` uses `attempt` as its sole denominator. Count the noise and every 「继续」 quietly manufactures a fake impulse for you, and the abandon rate becomes meaningless.
-
-The default window is **90 seconds**, adjustable per app (floor 30, ceiling 3600). Long enough to cover the hand-off, the app's cold start and a mistap; short enough that picking the phone back up two minutes later gets you stopped again — which is the point.
-
-## Known limits
-
-Read these before deploying. Some of them cannot be fixed in code.
-
-- **One iOS automation per app.** "When app is opened" takes exactly one app; there is no bulk mode and no multi-select. Five apps means five automations, built by hand. One Sec and every tool like it has the same constraint. This cannot be worked around from the server.
-- **The three iOS risks are settled.** Measured on a real device on 2026-08-31: the "when app is opened" automation runs with no confirmation prompt once 「运行前询问」 is off, the network round-trip per launch is unobtrusive, and tapping 继续 does hand control back to the target app. `xhsdiscover://` and `QDReader://` are the two schemes this project has actually observed working; everything else in the table is transcribed, not tested.
-- **Some apps have removed their URL scheme entirely.** No candidate will jump for them, no matter which one you try. Your options are to stop intercepting that app, or to accept tapping its icon a second time after 「继续」 (the second tap lands inside the grace window, so it is not intercepted again).
-- **An in-app browser cannot test a scheme.** 「试跳」 opens a custom URL scheme, which apps' embedded browsers refuse — WeChat silently, which is the worst kind. Do the setup in Safari (or Chrome), not in a page opened from a chat. `/settings` and `/setup` detect the common ones and say so before you tap; the list cannot be exhaustive, so if 试跳 does nothing at all for every candidate, check which browser you are in first. **The interception itself is unaffected** — the Shortcut opens the system default browser, so the breathing page never runs inside a chat app.
-- **One network round trip on every app open.** No client cache, no offline fallback. On a weak signal it is perceptible. If it ever becomes intolerable, that is a signal to change the architecture, not the configuration.
-- **The App Store fallback does not work from the Cloudflare edge.** When an app is not in the bundled table, `/api/candidates` tries `itunes.apple.com` to confirm the app exists and get its bundle id. Apple answers Cloudflare's egress addresses with HTTP 429, so this fails in production while working fine from a laptop. Known, not yet fixed. The picker reports "could not check" — never "no such app" — and refuses to invent a scheme, so nothing is silently wrong; the main path is unaffected.
-- **From mainland China, use the Pages hostname.** See [Why it deploys twice](#why-it-deploys-twice). `pages.dev` is a shared suffix and clean today is not clean forever — your own domain is the only durable answer.
-- **The UI is in Chinese.** Every page, every button, every error message. i18n PRs welcome.
-- **A breathing page left open for hours can still be resolved.** `/resolve` deliberately has no freshness check: refusing a stale resolve means no grace window opens, so jumping back to the app gets you intercepted instantly and you are in the loop. `/b` does refuse to *render* a session older than ten minutes, so this only applies to a page that was already loaded.
-- **JavaScript is required** on the breathing page (there is a `<noscript>` telling you to go back to the home screen).
-- **JavaScript is also required to register, once Turnstile is configured.** The widget cannot produce a token without it, and a missing token is refused — the form says so in a `<noscript>` line. Not configuring Turnstile leaves `/register` working without JavaScript, as before.
-- **The two visual skins are still unresolved.** `/mock?v=1` is 「墨」 (ink washes on near-black, serif) and `?v=2` is 「息」 (a hairline ring and one dot). `DEFAULT_THEME` in `src/ui/layout.ts` is `ink`. Flip that one constant to change the product's face.
-- **This is a nudge, not a blocker.** Anyone can disable the automation in two taps. That is by design — see the fail-open discussion above — and it means the tool only works for someone who wants it to.
-
 ## Stack
 
 | | |
@@ -401,6 +279,8 @@ Before changing anything, read [CONTRIBUTING.md](CONTRIBUTING.md). It is short, 
 
 ## Docs
 
+- [docs/breathe.md](docs/breathe.md) — the Shortcut, the grace window, the fail-open rule, interception limits
+- [docs/today.md](docs/today.md) — the goal model, `/today` and the pages behind it, snapshots, the home screen
 - [SECURITY.md](SECURITY.md) — threat model, the token-storage trade-off, self-hosting caveats
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the five constraints that must not be refactored away
 - [docs/architecture.md](docs/architecture.md) — request lifecycle, D1 tables, accounting semantics
@@ -410,7 +290,7 @@ The author runs an open instance at **<https://yixi-app.pages.dev>**. Sign up th
 
 **What the operator can and cannot see.** Your records are yours: the admin page returns a per-account count of how many times you were stopped, and nothing else — no timestamps, no app names, no give-up rate, not even your email address. That is enforced in the SQL rather than in the template, and a test fails if it ever regresses. But be clear-eyed about the shape of the guarantee: whoever runs an instance holds its database, and a database can be queried directly. That is true of this instance and of every other self-hosted service you sign up for.
 
-So: use the shared one if you want to try it without work, and run your own if you would rather that sentence not apply to you. Deploying takes about fifteen minutes and the instructions are below.
+So: use the shared one if you want to try it without work, and run your own if you would rather that sentence not apply to you. Deploying takes about fifteen minutes and the instructions are above.
 
 ## License
 

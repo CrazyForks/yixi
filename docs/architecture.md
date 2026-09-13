@@ -2,6 +2,8 @@
 
 For anyone about to change the code. Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for the five constraints that must not be refactored away; this document explains the machine those constraints protect.
 
+For what each half of the product does before you read how it is built: [breathe.md](breathe.md) (the interception face) and [today.md](today.md) (the goal-tending face).
+
 ## Shape of the thing
 
 The entire application is one `fetch` handler and one `scheduled` handler in `src/index.ts`, backed by one D1 database. There is no router library, no framework, no build step beyond `wrangler`'s own bundling, and no runtime dependencies.
