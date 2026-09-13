@@ -285,6 +285,24 @@ describe('with goals and history', () => {
     expect(ids.a).toBeGreaterThan(0)
   })
 
+  it('still gives an expired-but-not-archived goal its own per-goal row, but excludes it from the today count (design §3.3)', async () => {
+    const live = await createGoal(env.DB, {
+      userId: 1, title: '在场目标', cue: '', target: '', targetLabel: '', until: null, now: tsAt(addDays(TODAY, -4)),
+    })
+    const expired = await createGoal(env.DB, {
+      userId: 1, title: '过期未归档', cue: '', target: '', targetLabel: '', until: addDays(TODAY, -1), now: tsAt(addDays(TODAY, -4)),
+    })
+    await toggleCheckin(env.DB, 1, expired, TODAY, tsAt(TODAY))
+
+    const main = mainOf(await render())
+    // Per-goal row still there, with its check-in reflected in the rate.
+    expect(main).toContain('<span class="gt">过期未归档</span>')
+    expect(main).toContain('5 天 · 打卡 1 天')
+    // "今天" only counts the still-live goal (unchecked), never the expired one.
+    expect(main).toContain('<b class="num">0</b> / <span class="num">1</span>')
+    expect(live).toBeGreaterThan(0)
+  })
+
   it('drops a deleted goal from the ledger without leaking its kept check-ins into another goal\'s row', async () => {
     const kept = await createGoal(env.DB, {
       userId: 1, title: '保留的', cue: '', target: '', targetLabel: '', until: null, now: tsAt(addDays(TODAY, -4)),

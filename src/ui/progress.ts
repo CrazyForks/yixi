@@ -33,7 +33,7 @@ import type { Env, Goal, User } from '../types'
 import { countTasksDoneBetween, listCheckins, listGoalDays, listGoals, shanghaiDate } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { addDays, liveGoals, shownGoals } from '../dates'
+import { addDays, shownGoals } from '../dates'
 
 const DOTS = 7
 const MONTH_DAYS = 30
@@ -83,7 +83,11 @@ export async function renderProgress(_request: Request, env: Env, user: User): P
     dates.add(c.date)
   }
   const dotDays = Array.from({ length: DOTS }, (_, i) => addDays(today, i - (DOTS - 1)))
-  const goalRows = liveGoals(goals, today)
+  // Per-goal rows cover every non-archived goal, expired or not — design §3.3:
+  // an expired-but-not-archived goal's history is exactly what someone
+  // deciding 续四周／归档 on /today/goals wants to see. Only the "今天" row
+  // above (`top`/`shownGoals`) excludes expired goals; this list does not.
+  const goalRows = nonArchived
     .map((g) => goalRowHtml(g, today, dotDays, checkinsByGoal.get(g.id) ?? new Set()))
     .join('')
 

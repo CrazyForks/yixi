@@ -351,7 +351,7 @@ https://<你的地址>/gate?app=xhs&k=<你的token>&fmt=text
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 28 个文件 508 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 28 个文件 509 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
