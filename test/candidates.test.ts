@@ -389,6 +389,11 @@ describe('handleCandidates — the caveats follow the reader', () => {
     return out.hits.flatMap((h) => h.candidates.map((c) => c.caveat ?? ''))
   }
 
+  function notes(out: SearchOut): string[] {
+    if (out.state !== 'table' && out.state !== 'derived') return []
+    return out.hits.flatMap((h) => h.candidates.map((c) => c.verifiedNote ?? ''))
+  }
+
   it('answers a derived candidate in English when the browser asks in English', async () => {
     const out = await hits('foobarbaz', {
       headers: { 'accept-language': 'en-US,en;q=0.9' },
@@ -434,10 +439,41 @@ describe('handleCandidates — the caveats follow the reader', () => {
     )
   })
 
+  /**
+   * `verifiedNote` sits directly above the caveat in the picker
+   * (src/ui/schemefield.ts) and is the one line in the payload that records an
+   * observation rather than a transcription — the sentence that says a real
+   * phone made this jump. Leaving it Chinese under an English caveat is how a
+   * reader ends up unable to tell which of two candidates was actually tried.
+   */
+  it('answers the verified note in the reader’s language too', async () => {
+    const en = await hits('小红书', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
+    expect(en.state).toBe('table')
+    const written = notes(en).filter((n) => n !== '')
+    expect(written.length).toBeGreaterThan(0)
+    expect(written).toContain(
+      'Tapping “Open it anyway” on the breathing page jumped successfully, on the author’s iPhone',
+    )
+    for (const n of written) expect(n, n).not.toMatch(/[一-鿿]/)
+    // The date beside it is a date, not copy.
+    if (en.state === 'table') {
+      expect(en.hits.flatMap((h) => h.candidates.map((c) => c.verifiedOn ?? ''))).toContain('2026-08-31')
+    }
+  })
+
+  it('leaves the verified note in Chinese, byte for byte, when nothing asks otherwise', async () => {
+    expect(notes(await hits('小红书'))).toContain('作者的 iPhone 上从呼吸页点「继续」跳转成功')
+    expect(notes(await hits('起点读书'))).toContain('作者的 iPhone 上从呼吸页点「继续」跳转成功')
+  })
+
   it('leaves the shared table untouched, so the next request does not inherit a language', async () => {
     await hits('搜狐视频', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
     // Straight off the module-level constant, not through the endpoint.
     const sohu = APPS.find((a) => a.key === 'sohuvideo')
     expect(sohu?.candidates.map((c) => c.caveat)).toContain('两份清单不一致，差一个 -iphone 后缀。')
+
+    await hits('小红书', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
+    const xhs = APPS.find((a) => a.key === 'xhs')
+    expect(xhs?.candidates.map((c) => c.verifiedNote)).toContain('作者的 iPhone 上从呼吸页点「继续」跳转成功')
   })
 })

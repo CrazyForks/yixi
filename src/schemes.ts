@@ -63,7 +63,14 @@ export interface Candidate {
   caveat?: string
   /** ISO date the jump was observed on a real device. Only for `verified`. */
   verifiedOn?: string
-  /** What was observed, and on what — so a reader can judge how far it carries. */
+  /**
+   * What was observed, and on what — so a reader can judge how far it carries.
+   *
+   * Copy, like `caveat` beside it and for the same reason: the picker renders
+   * it to whoever is deciding whether to trust this line, so it goes through
+   * `msg()` here and `t` in src/api/candidates.ts. `verifiedOn` next to it is a
+   * date and stays a date.
+   */
   verifiedNote?: string
 }
 
@@ -228,7 +235,7 @@ export const APPS: AppEntry[] = [
     // agreement between this project's own docs and iOS-app-info — which is
     // agreement between two transcriptions, not a phone answering.
     candidates: [
-      verified('xhsdiscover://', '2026-08-31', '作者的 iPhone 上从呼吸页点「继续」跳转成功', [APP_INFO]),
+      verified('xhsdiscover://', '2026-08-31', msg('作者的 iPhone 上从呼吸页点「继续」跳转成功'), [APP_INFO]),
     ],
   },
   {
@@ -420,7 +427,7 @@ export const APPS: AppEntry[] = [
     // the bundle's own last segment reduced to the same string — two independent
     // hints, still nobody's phone.
     candidates: [
-      verified('QDReader://', '2026-08-31', '作者的 iPhone 上从呼吸页点「继续」跳转成功', [APP_INFO]),
+      verified('QDReader://', '2026-08-31', msg('作者的 iPhone 上从呼吸页点「继续」跳转成功'), [APP_INFO]),
     ],
   },
   {

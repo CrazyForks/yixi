@@ -197,7 +197,10 @@ export async function searchCandidates(q: string, deps: CandidateDeps = {}): Pro
 }
 
 /**
- * The one part of the answer that is copy rather than data.
+ * The two parts of the answer that are copy rather than data: the caveat
+ * arguing against a candidate, and the note recording what was actually
+ * observed on a phone. Everything else — schemes, bundle ids, source labels,
+ * dates, app names — is the same bytes in both languages.
  *
  * It happens here and not in `searchCandidates` for two reasons. The table in
  * src/schemes.ts is a module-level constant shared by every request an isolate
@@ -211,11 +214,15 @@ export async function searchCandidates(q: string, deps: CandidateDeps = {}): Pro
  * caveat somebody adds without translating it degrades to Chinese on an English
  * page rather than vanishing.
  */
-function localiseCaveats(out: SearchOut, t: T): SearchOut {
+function localiseCopy(out: SearchOut, t: T): SearchOut {
   if (out.state !== 'table' && out.state !== 'derived') return out
   const hits = out.hits.map((h) => ({
     ...h,
-    candidates: h.candidates.map((c) => (c.caveat === undefined ? c : { ...c, caveat: t(c.caveat) })),
+    candidates: h.candidates.map((c) => ({
+      ...c,
+      ...(c.caveat === undefined ? {} : { caveat: t(c.caveat) }),
+      ...(c.verifiedNote === undefined ? {} : { verifiedNote: t(c.verifiedNote) }),
+    })),
   }))
   return out.state === 'table' ? { state: 'table', hits } : { state: 'derived', hits }
 }
@@ -231,7 +238,7 @@ export async function handleCandidates(
   // 40 is /settings' own cap on a display name; a longer string is not a search,
   // and passing it on would put it in an outbound URL.
   const out = await searchCandidates(q.slice(0, 40), deps)
-  return new Response(JSON.stringify(localiseCaveats(out, translator(localeOf(request, user)))), {
+  return new Response(JSON.stringify(localiseCopy(out, translator(localeOf(request, user)))), {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       // Authenticated route: the answer is not user-specific, but the request

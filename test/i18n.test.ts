@@ -622,7 +622,21 @@ function placeholdersOf(s: string): string[] {
   return [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
 }
 
-const TAG_RE = /<[^>]+>/g
+/**
+ * Something HTML-shaped: an ASCII letter after the `<`, optionally closing.
+ * `<[^>]+>` was too greedy and it cost real copy — it read the `<数字>` that a
+ * caveat in src/schemes.ts uses to stand for a run of digits as markup, so the
+ * tag-parity clause below required the English to carry that Chinese token
+ * unchanged, and an English reader was shown `tencent<数字>://`.
+ *
+ * This is as far as a regex can go, and the limit is worth stating: `<数字>`,
+ * `<3` and `a < b` are now prose, but `<digits>` is still counted as a tag,
+ * because a bare English word in angle brackets is *exactly* the shape of a
+ * real element and nothing here can tell them apart. That is why en.ts writes
+ * `tencent[digits]://` — square brackets, which no reader and no regex will
+ * mistake for markup.
+ */
+const TAG_RE = /<\/?[a-zA-Z][^>]*>/g
 
 /**
  * Every HTML tag in a string, whitespace-normalised and sorted. A `<b>` lost
@@ -665,10 +679,26 @@ describe('guard helpers', () => {
   it('tagsOf is order-independent and does not mind the spacing inside a tag', () => {
     expect(tagsOf('<b>x</b> <a href="/t">y</a>')).toEqual(tagsOf('<a  href="/t">y</a><b>x</b>'))
     expect(tagsOf('<a href="/t">y</a>')).not.toEqual(tagsOf('<a href="/other">y</a>'))
+    expect(tagsOf('<b>x</b>')).toEqual(['</b>', '<b>'])
+  })
+
+  it('reads angle brackets around prose as prose, not as a tag', () => {
+    // The reason this matters: a caveat in src/schemes.ts writes a run of
+    // digits as `tencent<数字>://`. Counted as a tag, the parity clause pins
+    // that Chinese token into the English translation, and it did — see
+    // en.ts's scheme-caveat group.
+    expect(tagsOf('tencent<数字>://')).toEqual([])
+    expect(tagsOf('3 < 5 and 5 > 3')).toEqual([])
+    // What this regex cannot tell apart, and why en.ts writes `[digits]`
+    // rather than `<digits>`: a bare word in angle brackets is exactly the
+    // shape of a real tag, so `<digits>` would be counted as markup.
+    expect(tagsOf('tencent<digits>://')).toEqual(['<digits>'])
+    expect(tagsOf('tencent[digits]://')).toEqual([])
   })
 
   it('stripTags leaves the prose and takes the markup', () => {
     expect(stripTags('<a href="/t">y</a><br>z')).toBe('yz')
+    expect(stripTags('tencent<数字>://')).toBe('tencent<数字>://')
   })
 })
 
@@ -696,18 +726,14 @@ describe('guard ②: every t()/msg() source anywhere in src/ has an EN key', () 
 
 describe('guard ③: en.ts entries are clean, faithful translations', () => {
   /**
-   * The prose, not the markup. What sits inside `<…>` is pinned byte for byte
-   * to the source by the tag-parity clause below, so it is not the
-   * translator's to change and cannot be evidence of a half-done translation —
-   * the same reasoning the straight-quote clause already runs on. It matters
-   * for one real string: a caveat in src/schemes.ts writes a run of digits as
-   * `tencent<数字>://`, which `tagsOf` reads as a tag and therefore requires
-   * the English to carry unchanged. Chinese anywhere else, including between
-   * two tags, still fails.
+   * The whole string, markup included. An `href` or a class name has no
+   * business being in Chinese either, and the one string that made this look
+   * negotiable — `tencent<数字>://` — was never markup in the first place;
+   * `TAG_RE` above now says so, and the English writes `tencent[digits]://`.
    */
   it('contains no residual Chinese characters other than 一息', () => {
     for (const [zh, translation] of Object.entries(EN)) {
-      const withoutBrand = stripTags(translation).split('一息').join('')
+      const withoutBrand = translation.split('一息').join('')
       expect(CJK_RE.test(withoutBrand), `EN[${JSON.stringify(zh)}] = ${JSON.stringify(translation)} still has Chinese`).toBe(false)
     }
   })

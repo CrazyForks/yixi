@@ -504,13 +504,18 @@ export const EN: Record<string, string> = {
   // The reason to distrust one particular candidate, shown under it in the
   // picker on /settings. These sentences are what keep a guess from being read
   // as an answer, so they are the last copy in the product that could be left
-  // untranslated. Three things stay verbatim because they are strings somebody
+  // untranslated. Two things stay verbatim because they are strings somebody
   // types or looks for rather than words: scheme tokens (`kwai`, `gifshow`,
-  // `moble`, the `-iphone` suffix), bundle-id vocabulary (`App/Store/iPhone`),
-  // and the `<数字>` standing in for a run of digits — guard ③ pins that one by
-  // tag parity, since `<…>` is a tag as far as the check can tell. App names
-  // are given in the spelling the table's own `aliases` already use, so a
-  // reader can find the row being pointed at.
+  // `moble`, the `-iphone` suffix) and bundle-id vocabulary
+  // (`App/Store/iPhone`). The Chinese 「数字」 standing in for a run of digits is
+  // *not* one of them — it is prose, and English says so in square brackets:
+  // `tencent[digits]://`. Angle brackets are deliberately not reused for it.
+  // `<数字>` was carried into English verbatim for a while because guard ③'s
+  // `TAG_RE` matched any `<…>` and tag parity then pinned it; the regex now
+  // asks for an HTML tag name, and `<digits>` would walk straight back into
+  // that trap because `digits` is a tag name as far as any regex can tell.
+  // App names are given in the spelling the table's own `aliases` already use,
+  // so a reader can find the row being pointed at.
   'iOS-URL-Scheme 把这一条同时记给了「火山小视频」。两个 App 不可能共用一个 scheme，所以至少有一条是抄错的。':
     'iOS-URL-Scheme files this same string under Huoshan as well. Two apps cannot share one scheme, so at least one of the two was copied down wrong.',
   '两份清单在这个 App 上不一致，一份记 kwai、一份记 gifshow。只能两个都试。':
@@ -520,7 +525,7 @@ export const EN: Record<string, string> = {
   '这一条就是 bundle id 本身当 scheme 用，看着不像但清单确实这么记。':
     'This one is the bundle id itself used as a scheme. It does not look like one, but that is how the collection records it.',
   '这种 tencent<数字>:// 的形状是腾讯开放平台分配的 App ID，很容易随版本换掉。':
-    'The digits in a tencent<数字>:// are an App ID handed out by the Tencent open platform, and a release can change them easily enough.',
+    'A scheme shaped like tencent[digits]:// carries an App ID handed out by the Tencent open platform, and a release can change it easily enough.',
   '两份清单不一致。qiyi-iphone:// 看着像更老的那一版，但没人验证过。':
     'The two collections disagree. qiyi-iphone:// looks like the older of the two, but nobody has checked.',
   '两份清单不一致，差一个 -iphone 后缀。': 'The two collections disagree, by one -iphone suffix.',
@@ -529,7 +534,7 @@ export const EN: Record<string, string> = {
   '两份清单都把 moble 写成了这样（不是 mobile）。可能是京东自己拼错的，也可能是一份抄错了另一份跟着传。照抄试一次就知道。':
     'Both collections spell it moble, not mobile. It may be JD’s own misspelling, or one collection’s slip that the other copied. Type it as written and one try settles it.',
   'tencentlaunch<数字>:// 里的数字是腾讯开放平台的 App ID，换版本就可能变。':
-    'The digits in a tencentlaunch<数字>:// are a Tencent open-platform App ID, and a new release can change them.',
+    'The number in a tencentlaunch[digits]:// is a Tencent open-platform App ID, and a new release can change it.',
   'bundle id 的最后一段，去掉 App/Store/iPhone 这类后缀。这一类猜对过（起点读书就是这么来的），也错过很多次。':
     'The last segment of the bundle id, with a suffix like App/Store/iPhone taken off. This kind of guess has been right before — Qidian came from it — and wrong many times.',
   'bundle id 的最后一段，原样。': 'The last segment of the bundle id, as it stands.',
@@ -537,4 +542,11 @@ export const EN: Record<string, string> = {
     'The second-to-last segment of the bundle id — usually the company or the product name. It matched for Zhihu and for Douban.',
   '整个 bundle id 当 scheme（百度贴吧就是这么记的）。':
     'The whole bundle id used as the scheme. That is how Baidu Tieba is recorded.',
+
+  // The evidence behind a `verified` row, shown in the picker directly above
+  // the caveat — the one line in the payload that is not a transcription but
+  // an observation, so it has to survive into English intact. Both rows in the
+  // table carry the same sentence, hence one entry.
+  '作者的 iPhone 上从呼吸页点「继续」跳转成功':
+    'Tapping “Open it anyway” on the breathing page jumped successfully, on the author’s iPhone',
 }
