@@ -142,7 +142,9 @@ function monthStrip(
       snapshotDays++
       if (row.shown === 0) return '<i class="bar zero"></i>'
       if (row.done === row.shown) fullDays++
-      return `<i class="bar" style="--h:${(row.done / row.shown).toFixed(2)}"></i>`
+      // Clamped: a corrupted snapshot row (done > shown, which should never
+      // happen but costs nothing to guard) must not overflow the strip.
+      return `<i class="bar" style="--h:${Math.min(1, row.done / row.shown).toFixed(2)}"></i>`
     })
     .join('')
 
@@ -189,7 +191,10 @@ const PROGRESS_CSS = `
 .strip{display:flex;align-items:flex-end;gap:3px;height:56px}
 .bar{flex:1;min-width:0;border-radius:3px 3px 1px 1px;background:var(--ring-prog);
   height:calc(8px + var(--h,0) * 48px)}
-.bar.none{height:2px;border-radius:1px;background:var(--ring-track)}
+/* A dashed slot, not a bar — design §3 calls the no-snapshot day 虚线空位,
+   distinct from .zero's faint solid baseline (a day that did have a
+   snapshot, just with nothing shown). */
+.bar.none{height:6px;border-radius:0;background:none;border-top:1px dashed var(--ring-track)}
 .bar.zero{height:4px;border-radius:1px;background:var(--ring-track)}
 ul.gl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
 ul.gl li{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--rule)}

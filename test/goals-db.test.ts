@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  countTasksDoneOn, createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins, listGoalDays, listGoals,
-  listTasks, listUsersWithLiveGoals, moveGoal, setGoalArchived, setTaskDone, shanghaiDate, toggleCheckin, updateGoal,
-  upsertGoalDay,
+  countTasksDoneBetween, countTasksDoneOn, createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins,
+  listGoalDays, listGoals, listTasks, listUsersWithLiveGoals, moveGoal, setGoalArchived, setTaskDone, shanghaiDate,
+  toggleCheckin, updateGoal, upsertGoalDay,
 } from '../src/db'
 
 const NOW = 1_800_000_000_000
@@ -201,5 +201,21 @@ describe('goal_days', () => {
     expect(await countTasksDoneOn(env.DB, 1, '2026-09-13')).toBe(1)
     expect(await countTasksDoneOn(env.DB, 1, '2026-09-14')).toBe(1)
     expect(await countTasksDoneOn(env.DB, 2, '2026-09-13')).toBe(0)
+  })
+
+  it('counts tasks done over an inclusive range of Shanghai days, both ends included', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    const t3 = (await createTask(env.DB, { userId: 1, goalId: id, title: '三', now: NOW }))!
+    // 2026-09-14 is a Monday, 2026-09-20 the Sunday ending that same week.
+    // 2026-09-14 00:30 Shanghai = 2026-09-13 16:30 UTC (start of range, inclusive)
+    await setTaskDone(env.DB, 1, t1, Date.UTC(2026, 8, 13, 16, 30))
+    // 2026-09-20 23:30 Shanghai = 2026-09-20 15:30 UTC (end of range, inclusive)
+    await setTaskDone(env.DB, 1, t2, Date.UTC(2026, 8, 20, 15, 30))
+    // 2026-09-16 12:00 Shanghai = 2026-09-16 04:00 UTC (a day inside the range)
+    await setTaskDone(env.DB, 1, t3, Date.UTC(2026, 8, 16, 4, 0))
+    expect(await countTasksDoneBetween(env.DB, 1, '2026-09-14', '2026-09-20')).toBe(3)
+    expect(await countTasksDoneBetween(env.DB, 2, '2026-09-14', '2026-09-20')).toBe(0)
   })
 })
