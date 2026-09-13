@@ -14,9 +14,10 @@ import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { deleteUserApp, getUserApp, listUserApps, upsertUserApp } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { fold, hl, icon, seal } from './icons'
-import { forbiddenPrefixes, forbiddenSchemePattern } from '../scheme'
+import { fold, hl, icon } from './icons'
+import { forbiddenPrefixes } from '../scheme'
 import { inAppBrowserOf, type InAppBrowser } from '../inapp'
+import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
 
 
 // --- route handler ---------------------------------------------------------
@@ -255,9 +256,9 @@ async function renderSettings(request: Request, env: Env, user: User, o: RenderO
   return page({
     title: `设置 · 一息`,
     theme: DEFAULT_THEME,
-    css: CONSOLE_CSS + SETTINGS_CSS,
+    css: CONSOLE_CSS + SCHEME_FIELD_CSS + SETTINGS_CSS,
     body,
-    script: SETTINGS_JS,
+    script: SCHEME_FIELD_JS,
     status: o.status ?? 200,
   })
 }
@@ -326,7 +327,13 @@ function addBlock(draft?: Draft): string {
       inputmode="latin" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" pattern="[a-z0-9_-]{1,32}">
   </div>
   ${labelField(d?.label ?? '', NEW_NS)}
-  ${schemeField(d?.scheme ?? '', NEW_NS)}
+  ${schemeField({
+    name: 'scheme',
+    value: d?.scheme ?? '',
+    ns: NEW_NS,
+    label: 'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>',
+    labelFor: 'label',
+  })}
   ${secondsFields(
     d ? (int(d.wait, DEFAULT_WAIT_SECONDS) ?? DEFAULT_WAIT_SECONDS) : DEFAULT_WAIT_SECONDS,
     d ? (int(d.grace, DEFAULT_GRACE_SECONDS) ?? DEFAULT_GRACE_SECONDS) : DEFAULT_GRACE_SECONDS,
@@ -372,7 +379,13 @@ function appRow(a: Omit<UserApp, 'user_id'>, o: { open: boolean }): string {
   <form class="card" method="post" action="/settings" data-ns="${key}">
   <input type="hidden" name="app" value="${escapeHtml(a.app)}">
   ${labelField(a.label, a.app)}
-  ${schemeField(a.scheme, a.app)}
+  ${schemeField({
+    name: 'scheme',
+    value: a.scheme,
+    ns: a.app,
+    label: 'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>',
+    labelFor: 'label',
+  })}
   ${secondsFields(a.wait_seconds, a.grace_seconds, a.app)}
   ${enabledField(a.enabled === 1, a.app)}
   <div class="actions">
@@ -391,54 +404,7 @@ function labelField(value: string, ns: string): string {
   </div>`
 }
 
-/**
- * The scheme field, and everything the 「候选」 tab used to be.
- *
- * That tab was a destination: you had to know it existed, guess what 「候选」
- * meant, and go there BEFORE filling in the form that needed the answer — and
- * if you went mid-form, the form was gone when you came back. Its two jobs both
- * belong to this one input, so they live on it now:
- *
- *   - 「试跳」 beside the box, which jumps to whatever is currently in it. One
- *     button covers a candidate you just picked, a scheme you saved months ago,
- *     and a line you pasted from a forum — the three things the standalone
- *     probe page did with three separate controls.
- *   - a folded search that lists candidates inline and writes the chosen one
- *     into the box, without a navigation and without touching the server.
- *
- * The two worked examples above the fold are load-bearing, not decoration: the
- * reader's actual question is 「这个格子里该填什么形状的东西」, and one real
- * answer settles it faster than any explanation of where to look it up.
- */
-function schemeField(value: string, ns: string): string {
-  const id = fieldId(ns, 'scheme')
-  return `<div class="field scheme">
-    <label for="${id}">URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b></label>
-    <div class="withtry">
-      <input id="${id}" type="text" name="scheme" value="${escapeHtml(value)}" placeholder="someapp://" required
-        inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" class="mono sc">
-      <button class="try" type="button" data-try>${icon('jump')}试跳</button>
-    </div>
-    <p class="hint ex">${hl(
-      'caveat',
-      '例：小红书 <code class="mono">xhsdiscover://</code>，起点读书 <code class="mono">QDReader://</code>。' +
-        '候选都<b>没验证过</b>，填完必须点<b>试跳</b>，App 真打开了才算数。',
-    )}</p>
-    ${fold(
-      '不知道填什么？按 App 名字找',
-      `<div class="pick">
-        <div class="manual">
-          <input type="text" class="pq" placeholder="起点读书" maxlength="40"
-            inputmode="search" autocapitalize="none" autocorrect="off" spellcheck="false"
-            aria-label="按 App 名字搜索候选">
-          <button type="button" class="pgo">${icon('lookup')}找</button>
-        </div>
-        <div class="pout" role="status" aria-live="polite"></div>
-      </div>`,
-      'pickwrap',
-    )}
-  </div>`
-}
+// schemeField() moved to ./schemefield.ts, which /goals also needs.
 
 /**
  * The two numbers, and the one sentence about them that may not be deleted.
@@ -497,13 +463,6 @@ function fieldId(ns: string, name: string): string {
  */
 const SETTINGS_CSS = `
 .field label .ic{width:15px;height:15px;color:var(--faint);margin-right:5px}
-.hint{font-size:14px;line-height:1.75;color:var(--dim);margin:0 0 15px}
-.hint b{color:var(--fg)}
-.hint .ic{color:var(--dim)}
-.hint code{font-size:.92em;background:var(--rule);border-radius:4px;padding:.1em .36em}
-.hint.ex{margin:9px 0 0;font-size:13px;line-height:1.7;color:var(--faint)}
-.hint.ex b{color:var(--dim)}
-.hint.ex code{font-size:.95em}
 
 /* --- add, at the top, one tap when closed --- */
 .add{margin:0 0 22px}
@@ -550,368 +509,4 @@ details.app[open] > summary .chev{transform:rotate(90deg)}
 /* The form inside carries the card's padding but not its border — the <details>
    is the card now, so a second outline would draw a box inside a box. */
 details.app > form.card{border:0;border-radius:0;margin:0}
-
-/* --- scheme field: probe button beside the box --- */
-.withtry{display:flex;gap:8px;align-items:stretch}
-.withtry input{flex:1;min-width:0}
-button.try{
-  flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;
-  background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
-  border-radius:10px;padding:0 15px;font-size:15px;font-weight:600;min-height:44px;
-}
-button.try:active{opacity:.72}
-button.try .ic{width:16px;height:16px}
-
-/* --- the inline candidate picker --- */
-/* This is the discoverability fix, so it may not look like a footnote: the
-   whole complaint was that nobody could tell what the 「候选」 tab was for.
-   Its own outline, and 「dim」 rather than 「faint」. */
-details.pickwrap{margin:12px 0 0}
-details.pickwrap > summary{border:1px solid var(--rule);border-radius:9px;
-  padding:9px 12px;font-size:14px;letter-spacing:0;color:var(--dim);width:100%;
-  box-sizing:border-box}
-details.pickwrap > summary:active{opacity:.7}
-details.pickwrap[open] > summary{color:var(--fg)}
-details.pickwrap > summary .ic.chev{width:13px;height:13px}
-.pick{margin:10px 0 0}
-.manual{display:flex;gap:8px;align-items:stretch}
-.manual input{flex:1;min-width:0}
-.manual button{
-  flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;
-  background:transparent;color:var(--fg);border:1px solid var(--rule);
-  border-radius:10px;padding:0 15px;font-size:15px;font-weight:600;min-height:44px;
-}
-.manual button:active{opacity:.72}
-.manual button[disabled]{opacity:.5}
-.pout{margin:12px 0 0}
-.pmsg{margin:0;font-size:13px;line-height:1.75;color:var(--faint)}
-.pmsg b{color:var(--fg)}
-.phit{margin:0 0 6px;font-size:14px;color:var(--dim)}
-.phit b{color:var(--fg)}
-.phit .why{color:var(--faint);font-size:13px}
-.cd{border-top:1px solid var(--rule);padding:12px 0 4px;margin:0}
-.cd:first-of-type{border-top:0}
-.cd-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 8px}
-.cd-sc{word-break:break-all;font-size:15px;-webkit-user-select:all;user-select:all}
-.sig{display:inline-flex;align-items:center;gap:5px;font-size:12px;letter-spacing:.06em;
-  white-space:nowrap;color:var(--dim)}
-.t-verified .sig{color:var(--fg)}
-.t-derived .sig{color:var(--danger)}
-.marks{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
-.mk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--dim);
-  text-decoration:none;border:1px solid var(--rule);border-radius:4px;padding:1.5px 9px;white-space:nowrap}
-.mk.when{font-variant-numeric:tabular-nums;letter-spacing:.04em}
-.cd .evidence{margin:0 0 8px;font-size:13px;color:var(--dim);line-height:1.6}
-.cd .caveat{margin:0 0 8px;font-size:13px;color:var(--faint);line-height:1.6}
-.cdacts{display:flex;gap:8px;align-items:stretch;margin:0 0 4px}
-.cdacts button{flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  border-radius:8px;font-size:15px;font-weight:600;min-height:46px;padding:0 10px}
-.cdacts .ctry{background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border)}
-.cdacts .cuse{background:transparent;color:var(--fg);border:1px solid var(--rule)}
-.cdacts button:active{opacity:.72}
-.ord{display:inline-flex;align-items:center;justify-content:center;flex:none;
-  width:18px;height:18px;border-radius:3px;border:1px solid currentColor;
-  font-family:var(--num);font-size:12px;font-weight:400;opacity:.72}
-.perr{margin:8px 0 0;font-size:13px;color:var(--danger);line-height:1.7}
-`
-
-/**
- * Icon markup the client-side renderer needs, resolved server-side.
- *
- * The alternative was a second copy of the SVG path data in a template string,
- * which is how the two-copies-of-the-denylist problem started. `icon()` stays
- * the only place any of this geometry is written down.
- */
-const PICK_ICONS = JSON.stringify({
-  jump: icon('jump'),
-  save: icon('save'),
-  source: icon('source'),
-  agree: icon('agree'),
-  clock: icon('clock'),
-  verified: seal('verified'),
-  listed: seal('listed'),
-  derived: seal('derived'),
-})
-
-/**
- * Three jobs, and the first one is a hard requirement rather than a style.
- *
- * 1. THE JUMP. `location.href` assigned synchronously inside a click handler is
- *    the same gesture-stack navigation the breathing page's 「继续」 performs. An
- *    `<a href>`, a `setTimeout`, or anything reached after an `await` is a
- *    different mechanism in Safari and would certify schemes that then fail in
- *    the one place it counts. Delegation is fine — a bubbled click is still the
- *    same synchronous dispatch — but nothing may be awaited on the way.
- *
- *    `BAD` repeats the denylist the write path already enforces, because this
- *    box accepts anything the reader types, including a line pasted from a
- *    forum, and a derived candidate is assembled from a string Apple returned.
- *
- * 2. THE DRAFT. A jump leaves the page. Coming back from the app, Safari
- *    usually still has it — but "usually" is not good enough when what is at
- *    stake is a half-filled form the reader cannot reconstruct. So every jump
- *    writes the form to localStorage first (synchronously, before the
- *    assignment), and a load restores it once and deletes it. Submitting clears
- *    it too, or a stale draft would overwrite the row that was just saved.
- *
- * 3. THE PICKER. Search hits /api/candidates and renders inline; 「用这个」 is
- *    pure DOM, no navigation and no server round trip. That is the entire
- *    reason this stopped being a separate page: the reader is standing in the
- *    form, and taking them away from it to answer one field was the bug.
- */
-const SETTINGS_JS = `
-(function () {
-  var BAD = /${forbiddenSchemePattern()}/i;
-  var OK = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
-  var ICONS = ${PICK_ICONS};
-  var TIER = { verified: '实测过', listed: '清单里有', derived: '猜的' };
-  var DRAFT_TTL = 30 * 60 * 1000;
-
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function jump(scheme) {
-    if (!scheme || !OK.test(scheme) || BAD.test(scheme)) return false;
-    location.href = scheme;
-    return true;
-  }
-
-  // --- draft ---------------------------------------------------------------
-
-  function key(ns) { return 'yixi.draft.' + ns; }
-
-  function fieldsOf(form) {
-    return {
-      app: form.querySelector('[name=app]'),
-      label: form.querySelector('[name=label]'),
-      scheme: form.querySelector('[name=scheme]'),
-      wait: form.querySelector('[name=wait_seconds]'),
-      grace: form.querySelector('[name=grace_seconds]'),
-      enabled: form.querySelector('[name=enabled]'),
-      pq: form.querySelector('.pq')
-    };
-  }
-
-  function saveDraft(form) {
-    var ns = form.getAttribute('data-ns');
-    if (!ns) return;
-    var f = fieldsOf(form);
-    try {
-      localStorage.setItem(key(ns), JSON.stringify({
-        at: Date.now(),
-        app: f.app ? f.app.value : '',
-        label: f.label ? f.label.value : '',
-        scheme: f.scheme ? f.scheme.value : '',
-        wait: f.wait ? f.wait.value : '',
-        grace: f.grace ? f.grace.value : '',
-        enabled: f.enabled ? !!f.enabled.checked : true,
-        pq: f.pq ? f.pq.value : ''
-      }));
-    } catch (e) { /* private mode, or storage disabled — the jump still matters more */ }
-  }
-
-  function clearDraft(form) {
-    var ns = form.getAttribute('data-ns');
-    if (!ns) return;
-    try { localStorage.removeItem(key(ns)); } catch (e) {}
-  }
-
-  function restoreDrafts() {
-    var forms = document.querySelectorAll('form[data-ns]');
-    for (var i = 0; i < forms.length; i++) {
-      var form = forms[i];
-      var ns = form.getAttribute('data-ns');
-      var raw = null;
-      try { raw = localStorage.getItem(key(ns)); } catch (e) { continue; }
-      if (!raw) continue;
-      try { localStorage.removeItem(key(ns)); } catch (e) {}
-      var d;
-      try { d = JSON.parse(raw); } catch (e) { continue; }
-      if (!d || typeof d.at !== 'number' || Date.now() - d.at > DRAFT_TTL) continue;
-
-      var f = fieldsOf(form);
-      if (f.app && !f.app.readOnly && f.app.type !== 'hidden') f.app.value = d.app || '';
-      if (f.label) f.label.value = d.label || '';
-      if (f.scheme) f.scheme.value = d.scheme || '';
-      if (f.wait && d.wait) f.wait.value = d.wait;
-      if (f.grace && d.grace) f.grace.value = d.grace;
-      if (f.enabled) f.enabled.checked = !!d.enabled;
-      if (f.pq && d.pq) f.pq.value = d.pq;
-
-      // Open every ancestor <details> so the restored form is actually visible;
-      // silently refilling a collapsed form would look like nothing happened.
-      var node = form.parentNode;
-      while (node && node !== document.body) {
-        if (node.tagName === 'DETAILS') node.open = true;
-        node = node.parentNode;
-      }
-    }
-  }
-
-  // --- picker rendering ----------------------------------------------------
-
-  function marksOf(c) {
-    var out = [];
-    if (c.confidence === 'verified' && c.verifiedOn) {
-      out.push('<span class="mk when">' + ICONS.clock + esc(c.verifiedOn) + '</span>');
-    }
-    if (c.corroborated) out.push('<span class="mk">' + ICONS.agree + '两份清单一致</span>');
-    var srcs = c.sources || [];
-    for (var i = 0; i < srcs.length; i++) {
-      var u = String(srcs[i].url || '');
-      // Only http(s) reaches an href. These strings come from our own table
-      // today, but that is a property of the data, not of this renderer.
-      if (!/^https?:\\/\\//i.test(u)) continue;
-      out.push('<a class="mk" href="' + esc(u) + '" rel="noreferrer">' + ICONS.source + esc(srcs[i].label) + '</a>');
-    }
-    return out.length ? '<div class="marks">' + out.join('') + '</div>' : '';
-  }
-
-  function candidateHtml(c, appName) {
-    var tier = TIER[c.confidence] || c.confidence;
-    var sealIcon = ICONS[c.confidence] || '';
-    return '<div class="cd t-' + esc(c.confidence) + '">' +
-      '<div class="cd-h"><span class="sig">' + sealIcon + esc(tier) + '</span>' +
-        '<code class="mono cd-sc">' + esc(c.scheme) + '</code></div>' +
-      marksOf(c) +
-      (c.verifiedNote ? '<p class="evidence">' + esc(c.verifiedNote) + '</p>' : '') +
-      (c.caveat ? '<p class="caveat">' + esc(c.caveat) + '</p>' : '') +
-      '<div class="cdacts">' +
-        '<button type="button" class="ctry" data-scheme="' + esc(c.scheme) + '">' +
-          '<span class="ord">1</span>' + ICONS.jump + '试跳' + '</button>' +
-        '<button type="button" class="cuse" data-scheme="' + esc(c.scheme) + '" data-label="' + esc(appName) + '">' +
-          '<span class="ord">2</span>' + ICONS.save + '用这个' + '</button>' +
-      '</div></div>';
-  }
-
-  function hitsHtml(data) {
-    var parts = [];
-    if (data.state === 'derived') {
-      parts.push('<p class="pmsg">表里没有这个 App。下面几条是<b>从 App Store 的 bundle id 猜出来的</b>，' +
-        '没人验证过 —— 一定要先试跳。</p>');
-    }
-    for (var i = 0; i < data.hits.length; i++) {
-      var h = data.hits[i];
-      parts.push('<p class="phit"><b>' + esc(h.name) + '</b>' +
-        (h.key ? ' <span class="why">建议 App 键 ' + esc(h.key) + '</span>' : '') + '</p>');
-      for (var j = 0; j < h.candidates.length; j++) {
-        parts.push(candidateHtml(h.candidates[j], h.name));
-      }
-    }
-    return parts.join('');
-  }
-
-  var UNCHECKED = {
-    refused: 'App Store 拒了我们这次查询（它会拒绝 Cloudflare 的出口地址）。表里没有的 App 只能自己找 scheme。',
-    timeout: '连 App Store 超时了。过一会儿再试，或者自己填一个 scheme 直接试跳。',
-    unreadable: 'App Store 返回的内容看不懂。自己填一个 scheme 直接试跳也行。',
-    'too-short': '名字太短了，多打几个字。'
-  };
-
-  function render(out, data) {
-    if (data.state === 'table' || data.state === 'derived') { out.innerHTML = hitsHtml(data); return; }
-    if (data.state === 'unknown') {
-      out.innerHTML = '<p class="pmsg">没找到这个 App。' +
-        '可以自己在上面的格子里填一个 scheme，再点<b>试跳</b>试试。</p>';
-      return;
-    }
-    if (data.state === 'unchecked') {
-      out.innerHTML = '<p class="pmsg">' + esc(UNCHECKED[data.reason] || '这次没查成。') + '</p>';
-      return;
-    }
-    out.innerHTML = '';
-  }
-
-  // --- wiring -------------------------------------------------------------
-
-  function search(pick) {
-    var input = pick.querySelector('.pq');
-    var btn = pick.querySelector('.pgo');
-    var out = pick.querySelector('.pout');
-    var q = (input.value || '').trim();
-    if (!q) { out.innerHTML = '<p class="pmsg">先填 App 的名字。</p>'; return; }
-    btn.disabled = true;
-    out.innerHTML = '<p class="pmsg">找…</p>';
-    fetch('/api/candidates?q=' + encodeURIComponent(q), { headers: { accept: 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(String(r.status))); })
-      .then(function (data) { render(out, data); })
-      .catch(function () {
-        out.innerHTML = '<p class="perr">没查成，网络或者服务的问题。自己填一个 scheme 直接试跳也行。</p>';
-      })
-      .then(function () { btn.disabled = false; });
-  }
-
-  document.addEventListener('click', function (e) {
-    var t = e.target;
-    var el = t && t.closest ? t : null;
-    if (!el) return;
-
-    var go = el.closest('.pgo');
-    if (go) { e.preventDefault(); search(go.closest('.pick')); return; }
-
-    // Both jump paths below assign location.href in this same synchronous
-    // dispatch. Nothing between here and the assignment may await.
-    var ctry = el.closest('.ctry');
-    if (ctry) {
-      var form = ctry.closest('form[data-ns]');
-      if (form) saveDraft(form);
-      if (!jump(ctry.getAttribute('data-scheme'))) showJumpError(ctry, '这条不像能跳的 scheme。');
-      return;
-    }
-
-    var probe = el.closest('button[data-try]');
-    if (probe) {
-      var pform = probe.closest('form[data-ns]');
-      var box = pform ? pform.querySelector('[name=scheme]') : null;
-      var v = box ? (box.value || '').trim() : '';
-      if (pform) saveDraft(pform);
-      if (!jump(v)) {
-        showJumpError(probe, v ? '这个不像能跳的 scheme，形状要是 xxx:// 。' : '先填一个 scheme。');
-      }
-      return;
-    }
-
-    var use = el.closest('.cuse');
-    if (use) {
-      var uform = use.closest('form[data-ns]');
-      if (!uform) return;
-      var f = fieldsOf(uform);
-      if (f.scheme) f.scheme.value = use.getAttribute('data-scheme') || '';
-      var name = use.getAttribute('data-label') || '';
-      if (f.label && !f.label.value && name) f.label.value = name;
-      if (f.scheme) { f.scheme.focus(); f.scheme.setSelectionRange(f.scheme.value.length, f.scheme.value.length); }
-      return;
-    }
-  });
-
-  function showJumpError(near, text) {
-    var host = near.closest('.field') || near.parentNode;
-    var p = host.querySelector('.perr');
-    if (!p) {
-      p = document.createElement('p');
-      p.className = 'perr';
-      host.appendChild(p);
-    }
-    p.textContent = text;
-  }
-
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return;
-    var t = e.target;
-    if (!t || !t.closest || !t.classList.contains('pq')) return;
-    // Enter in the search box must not submit the configuration form it sits in.
-    e.preventDefault();
-    search(t.closest('.pick'));
-  });
-
-  document.addEventListener('submit', function (e) {
-    var form = e.target;
-    if (form && form.getAttribute && form.getAttribute('data-ns')) clearDraft(form);
-  });
-
-  restoreDrafts();
-})();
 `
