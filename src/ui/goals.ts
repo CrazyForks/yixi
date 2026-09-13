@@ -14,7 +14,7 @@ import {
   createGoal, createTask, deleteGoal, deleteTask, getGoal, listGoals, listTasks,
   moveGoal, setGoalArchived, shanghaiDate, updateGoal,
 } from '../db'
-import { DEFAULT_THEME, escapeHtml, page } from './layout'
+import { DEFAULT_THEME, escapeHtml, jsSingleQuotedBody, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
 import { SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from './schemefield'
@@ -288,7 +288,7 @@ function archivedBlock(goals: Goal[], t: T): string {
     <input type="hidden" name="goal" value="${g.id}">
     <span class="sname">${escapeHtml(g.title)}</span>
     <button class="linky" type="submit" name="op" value="restore">${t('恢复')}</button>
-    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('${t('删掉这个目标？子任务会一起删，打卡记录保留。')}')">${t('删除')}</button>
+    <button class="linky danger" type="submit" name="op" value="delete" onclick="return confirm('${escapeHtml(jsSingleQuotedBody(t('删掉这个目标？子任务会一起删，打卡记录保留。')))}')">${t('删除')}</button>
   </form>`).join('\n')}
 </details>`
 }

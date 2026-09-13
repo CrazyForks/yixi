@@ -336,6 +336,17 @@ describe('the list, collapsed', () => {
     expect(page).toContain('class="app off"')
   })
 
+  it('asks before deleting, with the Chinese sentence unchanged by the escaping around it', async () => {
+    await seedXhs()
+    // The confirm argument is a translation nested inside a JavaScript string
+    // inside an HTML attribute, so it goes through jsSingleQuotedBody +
+    // escapeHtml. Neither touches a sentence with no quote, backslash or
+    // newline in it — this row must read exactly as it always has.
+    expect(await html()).toContain(
+      `onclick="return confirm('删掉这条配置？已经记下的次数不会被删。')"`,
+    )
+  })
+
   it('keeps the id, so /setup links and old #app-xhs bookmarks still land', async () => {
     await seedXhs()
     expect(await html()).toContain('id="app-xhs"')

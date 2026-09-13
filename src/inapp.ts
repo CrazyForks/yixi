@@ -30,10 +30,24 @@
 //     unconditional sentence about needing the system browser, and this only
 //     adds a specific warning when it can be specific.
 
+import { msg } from './i18n'
+
 export interface InAppBrowser {
-  /** What to call it, in the reader's words. */
+  /**
+   * What the app calls itself. Data, not copy: all seven of these are
+   * Chinese-only apps, and 「微信」 is the word on the icon whichever language
+   * the page around it is in, so this never goes through `t()`.
+   */
   name: string
-  /** How to get out of it and into the system browser, on iOS. */
+  /**
+   * How to get out of it and into the system browser, on iOS.
+   *
+   * Copy, unlike `name` — it is an instruction to the reader. The menu items
+   * it quotes do read in Chinese inside these apps, so the English says what
+   * to tap rather than pretending the menu is in English. Written here as
+   * `msg()` and passed through the page's own `t()` at render time, since a
+   * module-level table cannot hold a per-request translator.
+   */
   escape: string
 }
 
@@ -44,33 +58,33 @@ export interface InAppBrowser {
 const HOSTS: Array<{ token: RegExp; browser: InAppBrowser }> = [
   {
     token: /MicroMessenger/i,
-    browser: { name: '微信', escape: '点右上角「⋯」→「在浏览器中打开」' },
+    browser: { name: '微信', escape: msg('点右上角「⋯」→「在浏览器中打开」') },
   },
   {
     token: /AlipayClient/i,
-    browser: { name: '支付宝', escape: '点右上角「⋯」→「在浏览器打开」' },
+    browser: { name: '支付宝', escape: msg('点右上角「⋯」→「在浏览器打开」') },
   },
   {
     token: /DingTalk/i,
-    browser: { name: '钉钉', escape: '点右上角「⋯」→「在浏览器中打开」' },
+    browser: { name: '钉钉', escape: msg('点右上角「⋯」→「在浏览器中打开」') },
   },
   {
     token: /\bLark\//i,
-    browser: { name: '飞书', escape: '点右上角「⋯」→「用默认浏览器打开」' },
+    browser: { name: '飞书', escape: msg('点右上角「⋯」→「用默认浏览器打开」') },
   },
   {
     token: /XiaoHongShu|\bxhsdiscover\b/i,
-    browser: { name: '小红书', escape: '点右上角分享 →「用浏览器打开」' },
+    browser: { name: '小红书', escape: msg('点右上角分享 →「用浏览器打开」') },
   },
   {
     token: /\bWeibo\b/i,
-    browser: { name: '微博', escape: '点右上角「⋯」→「在 Safari 中打开」' },
+    browser: { name: '微博', escape: msg('点右上角「⋯」→「在 Safari 中打开」') },
   },
   // Must stay after nothing in particular, but must not match MQQBrowser —
   // hence the slash. The QQ app's UA carries `QQ/8.9.x`; QQ Browser's does not.
   {
     token: /\bQQ\/[\d.]/i,
-    browser: { name: 'QQ', escape: '点右上角「⋯」→「在浏览器中打开」' },
+    browser: { name: 'QQ', escape: msg('点右上角「⋯」→「在浏览器中打开」') },
   },
 ]
 

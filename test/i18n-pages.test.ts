@@ -25,7 +25,7 @@ import { handleToday } from '../src/ui/today'
 import { handleGoals } from '../src/ui/goals'
 import { renderProgress } from '../src/ui/progress'
 import { renderTodaySetup } from '../src/ui/todaysetup'
-import { handleAccount, handleLogin, handleRegister } from '../src/ui/account'
+import { handleAccount, handleClaim, handleLogin, handleRecover, handleRegister } from '../src/ui/account'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
 import { createGoal, createTask, shanghaiDate, toggleCheckin, upsertUserApp } from '../src/db'
@@ -318,6 +318,35 @@ describe('/login in English', () => {
   })
 })
 
+describe('the switcher in the signed-out footer', () => {
+  // The two pages a stranger actually lands on. Without this, somebody whose
+  // browser is set to Chinese and who wants English has nowhere to say so
+  // until after they have an account.
+  const pages: Array<[string, (r: Request) => Promise<Response>]> = [
+    ['/login', (r) => handleLogin(r, env)],
+    ['/register', (r) => handleRegister(r, env)],
+  ]
+
+  it('offers the other language and never links the one being read', async () => {
+    for (const [path, handler] of pages) {
+      const en = await (await handler(req(path))).text()
+      expect(en, path).toContain('<p class="lang">English · <a href="?lang=zh">中文</a></p>')
+
+      const zh = await (await handler(req(path, false))).text()
+      expect(zh, path).toContain('<p class="lang"><a href="?lang=en">English</a> · 中文</p>')
+    }
+  })
+
+  it('leaves /claim and /recover without one — by then the language is settled', async () => {
+    for (const html of [
+      await (await handleClaim(req('/claim'), env)).text(),
+      await (await handleRecover(req('/recover'), env)).text(),
+    ]) {
+      expect(html).not.toContain('class="lang"')
+    }
+  })
+})
+
 describe('/account in English', () => {
   function accountHtml(path = '/account', en = true): Promise<string> {
     return handleAccount(req(path, en), env, user).then((r) => r.text())
@@ -341,13 +370,13 @@ describe('/account in English', () => {
   it('offers both languages and never links the one being read', async () => {
     const en = mainOf(await accountHtml())
     expect(en).toContain('<h2>Language</h2>')
-    expect(en).toContain('<a class="linky" href="/account?lang=en" aria-current="true">English</a>')
-    expect(en).toContain('<a class="linky" href="/account?lang=zh">中文</a>')
+    expect(en).toContain('<a class="linky tap" href="/account?lang=en" aria-current="page">English</a>')
+    expect(en).toContain('<a class="linky tap" href="/account?lang=zh">中文</a>')
 
     const zh = mainOf(await accountHtml('/account', false))
     expect(zh).toContain('<h2>语言</h2>')
-    expect(zh).toContain('<a class="linky" href="/account?lang=en">English</a>')
-    expect(zh).toContain('<a class="linky" href="/account?lang=zh" aria-current="true">中文</a>')
+    expect(zh).toContain('<a class="linky tap" href="/account?lang=en">English</a>')
+    expect(zh).toContain('<a class="linky tap" href="/account?lang=zh" aria-current="page">中文</a>')
   })
 })
 
@@ -392,6 +421,25 @@ describe('/settings in English', () => {
     // Their own display name is data, in either language.
     expect(main).toContain('<span class="sname">小红书</span>')
     expect(main).not.toMatch(CHINESE_PUNCT)
+  })
+
+  it('translates the in-app browser notice, quoting the app menu it names', async () => {
+    // WeChat's embedded browser: the one place the page has to tell somebody
+    // to leave. The app's name stays as the app writes it; the instruction is
+    // copy and follows the reader.
+    const html = await (
+      await handleSettings(
+        new Request(`${BASE}/settings`, {
+          headers: { ...EN, 'user-agent': 'Mozilla/5.0 (iPhone) MicroMessenger/8.0' },
+        }),
+        env,
+        user,
+      )
+    ).text()
+    const main = mainOf(html)
+    expect(main).toContain('You are inside the browser built into <b>微信</b>')
+    expect(main).toContain('Tap “⋯” in the top-right corner → “Open in browser”')
+    expect(main).not.toContain('内置的浏览器')
   })
 
   it('hands the field script its strings, with the jump still synchronous', async () => {
@@ -494,6 +542,7 @@ describe('with no language header at all, nothing changed', () => {
     const login = await (await handleLogin(req('/login', false), env)).text()
     expect(login).toContain('<h1>登录</h1>')
     expect(login).toContain('<a href="/recover">用 token 重置</a>')
+    expect(login).toContain('<p class="lang"><a href="?lang=en">English</a> · 中文</p>')
 
     const account = await (await handleAccount(req('/account', false), env, user)).text()
     expect(account).toContain('<html lang="zh-Hans">')

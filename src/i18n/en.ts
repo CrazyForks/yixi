@@ -371,6 +371,11 @@ export const EN: Record<string, string> = {
     'You are inside the browser built into <b>{name}</b>. It will not let a page jump to another app, so <b>test it</b> on this page\n    does nothing at all — <b>your scheme is not wrong</b>. {escape}, then open this page in Safari and try again.\n    <br>What actually stops you is unaffected: the Shortcut opens the system default browser, which does not go through {name}.',
   '加一个 App': 'Add an app',
   'App 键 · 自动化里要手打的那行文本，小写': 'App key · the line you type in the automation, lowercase',
+  // The example key in the App-key box. A key is the reader's own invention —
+  // it only has to match the text they type into their own Shortcut — so this
+  // is a suggestion, not a contract, and it may name an app an English reader
+  // would have.
+  xhs: 'instagram',
   'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>':
     'URL scheme · what “Open it anyway” jumps back to, <b>test it before you trust it</b>',
   '显示名 · 呼吸页上会看到': 'Display name · what the breathing page shows',
@@ -400,6 +405,16 @@ export const EN: Record<string, string> = {
   '要删除的 App 键不对。': 'That is not an app key this page can delete.',
   '已经有一条 {key} 了。要改它就展开下面那条，别在这里重新加一遍——直接加会把它的秒数一起覆盖掉。':
     'There is already a row for {key}. Open that row below to change it rather than adding it again here — adding it again would overwrite its seconds too.',
+
+  // --- getting out of an in-app browser (src/inapp.ts) ----------------------
+  // Quoted menu items, in apps whose menus are Chinese. The English says what
+  // to tap and what it will say, rather than pretending the menu is English;
+  // the app names themselves are data and never come through here.
+  '点右上角「⋯」→「在浏览器中打开」': 'Tap “⋯” in the top-right corner → “Open in browser”',
+  '点右上角「⋯」→「在浏览器打开」': 'Tap “⋯” in the top-right corner → “Open in browser”',
+  '点右上角「⋯」→「用默认浏览器打开」': 'Tap “⋯” in the top-right corner → “Open in default browser”',
+  '点右上角分享 →「用浏览器打开」': 'Tap “Share” in the top-right corner → “Open in browser”',
+  '点右上角「⋯」→「在 Safari 中打开」': 'Tap “⋯” in the top-right corner → “Open in Safari”',
 
   // --- the scheme field and its picker (src/ui/schemefield.ts) --------------
   // The worked examples are apps an English reader would actually have, same

@@ -12,7 +12,7 @@
 import type { Env, User, UserApp } from '../types'
 import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { deleteUserApp, getUserApp, listUserApps, upsertUserApp } from '../db'
-import { DEFAULT_THEME, escapeHtml, page } from './layout'
+import { DEFAULT_THEME, escapeHtml, jsSingleQuotedBody, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { localeOf, translator, type Locale, type T } from '../i18n'
 import { fold, hl, icon } from './icons'
@@ -303,12 +303,11 @@ function fromDraft(d: Draft): Omit<UserApp, 'user_id'> {
  */
 function inAppNotice(host: InAppBrowser | null, t: T): string {
   if (host === null) return ''
-  // The host's own name and its 「how to get out」 line are quotations of that
-  // app's menu — all seven are Chinese-only apps whose menu items read in
-  // Chinese whichever language this page is in — so they stay as src/inapp.ts
-  // wrote them and ride in as data.
+  // The app's own name is data and is never translated (see InAppBrowser in
+  // src/inapp.ts); the 「how to get out」 line is copy and goes through this
+  // page's translator like everything else.
   const name = escapeHtml(host.name)
-  return `<p class="banner warn">${icon('caveat')}<span>${t('你现在是在<b>{name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的\n    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。{escape}，用 Safari 打开这一页再试。\n    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过{name}。', { name, escape: escapeHtml(host.escape) })}</span></p>`
+  return `<p class="banner warn">${icon('caveat')}<span>${t('你现在是在<b>{name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的\n    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。{escape}，用 Safari 打开这一页再试。\n    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过{name}。', { name, escape: escapeHtml(t(host.escape)) })}</span></p>`
 }
 
 function emptyState(t: T): string {
@@ -338,7 +337,7 @@ function addBlock(t: T, draft?: Draft): string {
   <form class="card addform" method="post" action="/settings" data-ns="${NEW_NS}">
   <div class="field">
     <label for="f-new-app">${t('App 键 · 自动化里要手打的那行文本，小写')}</label>
-    <input id="f-new-app" type="text" name="app" value="${escapeHtml(d?.app ?? '')}" placeholder="xhs" required
+    <input id="f-new-app" type="text" name="app" value="${escapeHtml(d?.app ?? '')}" placeholder="${t('xhs')}" required
       inputmode="latin" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" pattern="[a-z0-9_-]{1,32}">
   </div>
   ${labelField(d?.label ?? '', NEW_NS, t)}
@@ -408,7 +407,7 @@ function appRow(a: Omit<UserApp, 'user_id'>, t: T, o: { open: boolean }): string
   ${enabledField(a.enabled === 1, a.app, t)}
   <div class="actions">
     <button class="primary" type="submit" name="op" value="save">${t('保存')}</button>
-    <button class="linky danger" type="submit" name="op" value="delete" formnovalidate onclick="return confirm('${t('删掉这条配置？已经记下的次数不会被删。')}')">${t('删除')}</button>
+    <button class="linky danger" type="submit" name="op" value="delete" formnovalidate onclick="return confirm('${escapeHtml(jsSingleQuotedBody(t('删掉这条配置？已经记下的次数不会被删。')))}')">${t('删除')}</button>
   </div>
   </form>
 </details>`

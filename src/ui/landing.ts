@@ -1,4 +1,4 @@
-import { DEFAULT_THEME, page } from './layout'
+import { DEFAULT_THEME, langSwitch, page } from './layout'
 import { inAppBrowserPattern } from '../inapp'
 import { localeOf, translator } from '../i18n'
 
@@ -20,11 +20,8 @@ export function renderLanding(request: Request): Response {
 
   // The language being read right now is plain text, not a link — a link back
   // to the page you are already standing on is a dead end wearing a pointer.
-  // Each name is written in its own language, so neither goes through `t`.
-  const langLine =
-    loc === 'en'
-      ? 'English · <a href="?lang=zh">中文</a>'
-      : '<a href="?lang=en">English</a> · 中文'
+  // Shared with the signed-out account pages; see `langSwitch` in ./layout.ts.
+  const langLine = langSwitch(loc, t)
 
   return page({
     title: t('一息 —— 打开 App 之前先呼吸十秒，「今日」收好最重要的三件事'),

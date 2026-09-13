@@ -128,9 +128,12 @@ ${(() => {
   // Said here as well as on /settings, because this page is the walkthrough
   // somebody follows top to bottom, and step 5 of it is a jump that cannot
   // work from where they are standing.
+  // `escape` is an i18n `msg()` source now; this page is batch 2's to
+  // translate, so it renders the Chinese explicitly rather than by accident.
+  const escape = translator('zh')(host.escape)
   return `<p class="banner warn">${icon('caveat')}<span>你现在是在<b>${escapeHtml(host.name)}</b>内置的浏览器里。
     下面凡是要「跳回 App」的步骤在这里都不会有反应——它不让网页跳去别的 App。
-    ${escapeHtml(host.escape)}，用 Safari 打开这一页再照着做。</span></p>`
+    ${escapeHtml(escape)}，用 Safari 打开这一页再照着做。</span></p>`
 })()}
 
 <div class="box">

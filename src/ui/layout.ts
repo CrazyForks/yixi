@@ -361,15 +361,72 @@ export function escapeHtml(s: string): string {
 }
 
 /**
- * Config handed to the inline script as an inert JSON island rather than as
- * generated JavaScript. App labels and URL schemes are user-supplied (via
- * /settings), so they must never be able to become code: `<` is escaped so the
- * payload cannot close the tag, and U+2028/2029 so it cannot break the string.
+ * JSON safe to paste inside a `<script>` element of any kind.
+ *
+ * Three characters JSON itself leaves alone but HTML does not: `<`, so the
+ * payload cannot close the tag (`</script>` inside a string would end the
+ * element even in the middle of a JSON string), and U+2028/U+2029, which are
+ * line terminators to a JavaScript parser and would break a string literal in
+ * half. Everything else JSON.stringify has already made safe.
  */
-export function jsonScript(id: string, value: unknown): string {
-  const json = JSON.stringify(value)
+export function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
     .replace(/</g, '\\u003c')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
-  return `<script type="application/json" id="${id}">${json}</script>`
+}
+
+/**
+ * Config handed to the inline script as an inert JSON island rather than as
+ * generated JavaScript. App labels and URL schemes are user-supplied (via
+ * /settings), so they must never be able to become code — see `jsonForScript`.
+ */
+export function jsonScript(id: string, value: unknown): string {
+  return `<script type="application/json" id="${id}">${jsonForScript(value)}</script>`
+}
+
+/**
+ * The BODY of a single-quoted JavaScript string literal — the quotes are the
+ * caller's, so that the caller can decide what happens to them.
+ *
+ * There is one caller shape: `onclick="return confirm('…')"`, a JavaScript
+ * string nested inside a double-quoted HTML attribute, with a translated
+ * sentence in the middle. Two escapings are needed and they compose in one
+ * order only — JavaScript first, HTML second:
+ *
+ *     onclick="return confirm('${escapeHtml(jsSingleQuotedBody(t('…')))}')"
+ *
+ * A `'` in a translation becomes `\'` here and then `\&#39;` after
+ * `escapeHtml`; the HTML parser hands `\'` to JavaScript, which reads it as an
+ * escaped apostrophe rather than the end of the string. A `"` survives as
+ * `&quot;` and is an ordinary character inside single quotes. The quotes stay
+ * out of this function precisely so `escapeHtml` cannot turn the delimiters
+ * themselves into `&#39;` — which would work, but would rewrite bytes that
+ * every existing Chinese page already emits.
+ */
+export function jsSingleQuotedBody(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+/**
+ * The two language names, the one being read rendered as plain text rather
+ * than as a link back to the page the reader is already standing on.
+ *
+ * Shared by the landing page's footer and the signed-out account shell so the
+ * switcher cannot drift into two designs. Each name is written in its own
+ * language — 「中文」 is what a Chinese reader looks for even on an English
+ * page — so neither goes through `t`; the optional translator is accepted so a
+ * caller that holds one does not have to know that, and so this line can gain
+ * translated copy without re-threading every call site.
+ */
+export function langSwitch(loc: Locale, _t?: T): string {
+  return loc === 'en'
+    ? 'English · <a href="?lang=zh">中文</a>'
+    : '<a href="?lang=en">English</a> · 中文'
 }

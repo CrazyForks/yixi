@@ -15,7 +15,7 @@
 // language, and so does the script, which receives its strings as data rather
 // than carrying them as literals (see `schemeFieldJs`).
 
-import { escapeHtml } from './layout'
+import { escapeHtml, jsonForScript } from './layout'
 import { fold, hl, icon, seal } from './icons'
 import { forbiddenSchemePattern } from '../scheme'
 import { msg, type T } from '../i18n'
@@ -196,12 +196,13 @@ const PICK_ICONS = JSON.stringify({
  *
  * The same shape as `PICK_ICONS` above, and for the same reason: a browser
  * script cannot call `t()`, so whatever it says has to be resolved on the
- * server and injected. `JSON.stringify` does the escaping, which is what makes
- * it safe for a translation to contain an apostrophe or a quote — the script
- * never builds a string literal of its own out of this.
+ * server and injected. `jsonForScript` does the escaping, which is what makes
+ * it safe for a translation to contain an apostrophe, a quote, or the four
+ * characters `</sc` — the script never builds a string literal of its own out
+ * of this, and nothing in here can close the element it is written into.
  */
 function pickText(t: T): string {
-  return JSON.stringify({
+  return jsonForScript({
     // The three confidence tiers a candidate can be labelled with.
     tierVerified: t('实测过'),
     tierListed: t('清单里有'),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from '../src/ui/schemefield'
 import { translator } from '../src/i18n'
+import { EN } from '../src/i18n/en'
 
 // The field and its script are built per request now, so that every string
 // they render comes from the caller's translator. Chinese is what this file
@@ -54,6 +55,26 @@ describe('SCHEME_FIELD_JS', () => {
   it('saves every named input in the draft rather than a fixed list', () => {
     expect(SCHEME_FIELD_JS).toContain('function saveDraft(form)')
     expect(SCHEME_FIELD_JS).not.toContain('wait_seconds')
+  })
+})
+
+describe('the injected TXT payload', () => {
+  it('cannot close the script element it is written into, whatever a translation says', () => {
+    // The strings come from src/i18n/en.ts rather than from a user — but they
+    // are written by whoever adds a language next, they land in a classic
+    // <script> block, and `</script>` inside a JavaScript string still ends
+    // that element. So the payload is escaped rather than trusted.
+    const key = '先填一个 scheme。'
+    const before = EN[key]
+    EN[key] = '</script><script>alert(1)</script>'
+    try {
+      const js = schemeFieldJs(translator('en'))
+      expect(js).not.toContain('</script>')
+      expect(js).toContain('\\u003c/script>')
+    } finally {
+      if (before === undefined) delete EN[key]
+      else EN[key] = before
+    }
   })
 })
 

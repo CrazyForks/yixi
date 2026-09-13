@@ -48,7 +48,7 @@ import { shanghaiDate } from '../db'
 import { TURNSTILE_FIELD, turnstileKeys, verifyTurnstile } from '../turnstile'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { localeOf, msg, translator, type Locale, type T } from '../i18n'
-import { DEFAULT_THEME, escapeHtml, page } from './layout'
+import { DEFAULT_THEME, escapeHtml, langSwitch, page } from './layout'
 
 /**
  * Mirrors src/account.ts, which is the authority and re-checks every one of
@@ -153,6 +153,8 @@ function registerPage(o: RegisterOptions): Response {
   return gatePage({
     title: t('注册 · 一息'),
     lang: o.loc,
+    t,
+    langSwitch: true,
     status: o.status,
     // The only page in the product that loads anything from another host, and
     // only while a widget is actually configured. layout.ts explains the break.
@@ -240,6 +242,8 @@ function loginPage(o: LoginOptions): Response {
   return gatePage({
     title: t('登录 · 一息'),
     lang: o.loc,
+    t,
+    langSwitch: true,
     status: o.status,
     body: `<h1>${t('登录')}</h1>
 <p class="lede">${t('登录只是为了让你在这几个页面上看到自己的记录和 token。快捷指令那边不受影响，它认的一直是 token。')}</p>
@@ -309,6 +313,7 @@ function claimPage(o: ClaimOptions): Response {
   return gatePage({
     title: t('绑定 · 一息'),
     lang: o.loc,
+    t,
     status: o.status,
     body: `<h1>${t('给已有的 token 绑账号')}</h1>
 <p class="lede">${t('你手里那把 token 是发号时代给出去的，只有哈希存在服务器上。绑一次邮箱和密码，以后忘了它就能登录看回来。')}</p>
@@ -369,6 +374,7 @@ function recoverPage(o: RecoverOptions): Response {
   return gatePage({
     title: t('重置密码 · 一息'),
     lang: o.loc,
+    t,
     status: o.status,
     body: `<h1>${t('用 token 重置密码')}</h1>
 <p class="lede">${t('这里不发验证邮件。能证明你是你的，是你手里那把 token——它是 128 位随机数，比一封能被人翻走的邮件更硬。')}</p>
@@ -561,12 +567,15 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
  * Each language is written in its own language, so neither name goes through
  * `t()`: 「中文」 is what a Chinese reader looks for even on an English page.
  * The one being read is still a link (going to /account?lang=zh from Chinese is
- * harmless) but carries `aria-current`, so a screen reader is told which of the
- * two is in force rather than being left to infer it from the page's language.
+ * harmless) but carries `aria-current="page"` — the canonical token for "this
+ * one of the set is the one you are on" — so a screen reader is told which of
+ * the two is in force rather than being left to infer it from the page's
+ * language. Both wear `.tap`, the 44px target every other link in these cards
+ * has.
  */
 function languageCard(loc: Locale, t: T): string {
   const link = (target: Locale, label: string): string =>
-    `<a class="linky" href="/account?lang=${target}"${loc === target ? ' aria-current="true"' : ''}>${label}</a>`
+    `<a class="linky tap" href="/account?lang=${target}"${loc === target ? ' aria-current="page"' : ''}>${label}</a>`
   return `<section class="card">
   <h2>${t('语言')}</h2>
   <div class="actions">
@@ -673,8 +682,8 @@ function bindCard(t: T): string {
  *
  * Built per request rather than held as a constant, because the two words it
  * puts on the button are copy like any other. `JSON.stringify` rather than
- * quotes of our own: a translation is allowed an apostrophe, and this is the
- * one place on the page where that would end a JavaScript string early.
+ * quotes of our own: a translation is allowed an apostrophe, which would
+ * otherwise end the string literal it sits in.
  */
 function copyScript(t: T): string {
   return `
@@ -699,9 +708,17 @@ interface GatePageOptions {
   title: string
   body: string
   lang: Locale
+  t: T
   status?: number
   /** Only /register ever sets this, and only when a widget is configured. */
   turnstile?: boolean
+  /**
+   * The footer language switcher, on the two pages a stranger actually lands
+   * on. /claim and /recover are reached from a link on one of those two, or
+   * from a token somebody was handed — by then the language is already
+   * decided, and a switcher on a page whose whole job is one paste is noise.
+   */
+  langSwitch?: boolean
 }
 
 /**
@@ -720,7 +737,7 @@ function gatePage(o: GatePageOptions): Response {
     ...(o.turnstile ? { turnstile: true } : {}),
     body: `<main class="gate">
 <a class="mark" href="/">一息</a>
-${o.body}
+${o.body}${o.langSwitch ? `\n<p class="lang">${langSwitch(o.lang, o.t)}</p>` : ''}
 </main>`,
   })
 }
@@ -910,6 +927,10 @@ main.gate h1{margin:0 0 .5rem;font-size:1.25rem;font-weight:400;letter-spacing:.
 }
 .tok.masked{color:var(--faint);letter-spacing:.3em;-webkit-user-select:none;user-select:none}
 a.linky.tap,button.linky.tap{display:inline-flex;align-items:center;min-height:44px;text-decoration:underline}
+/* The footer switcher, matching the landing page's own .lang rule in tone but
+   scoped to this shell — LANDING_CSS never reaches these pages. */
+main.gate .lang{margin:14px 0 0;color:var(--faint);font-size:13px}
+main.gate .lang a{color:var(--dim);text-underline-offset:3px}
 `
 
 /**

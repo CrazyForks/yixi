@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
 import { register } from '../src/account'
 import { setUserLocale } from '../src/db'
-import { DEFAULT_THEME, page, pageHtml } from '../src/ui/layout'
+import { DEFAULT_THEME, escapeHtml, jsSingleQuotedBody, jsonForScript, langSwitch, page, pageHtml } from '../src/ui/layout'
 import {
   LANG_COOKIE,
   htmlLang,
@@ -152,6 +152,57 @@ describe('translator', () => {
 describe('msg', () => {
   it('is the identity function — a marker for the guard, not a translator', () => {
     expect(msg('原样返回')).toBe('原样返回')
+  })
+})
+
+// A translation is a string somebody else will write later, and two places put
+// one somewhere a plain sentence is not safe: inside `confirm('…')` in an
+// onclick, and inside a `<script>` block. Both escapings live in layout.ts so
+// there is one of each.
+
+describe('jsSingleQuotedBody', () => {
+  it('leaves an ordinary sentence exactly as it was — the Chinese pages must not move', () => {
+    expect(jsSingleQuotedBody('删掉这条配置？已经记下的次数不会被删。')).toBe('删掉这条配置？已经记下的次数不会被删。')
+    expect(jsSingleQuotedBody('Delete this row? The counts already recorded stay.')).toBe(
+      'Delete this row? The counts already recorded stay.',
+    )
+  })
+
+  it('escapes what would end the string or be read as an escape', () => {
+    expect(jsSingleQuotedBody("don't")).toBe("don\\'t")
+    expect(jsSingleQuotedBody('a\\b')).toBe('a\\\\b')
+    // A backslash before an apostrophe must not be able to un-escape it.
+    expect(jsSingleQuotedBody("a\\'b")).toBe("a\\\\\\'b")
+    expect(jsSingleQuotedBody('one\ntwo')).toBe('one\\ntwo')
+    expect(jsSingleQuotedBody('one\rtwo')).toBe('one\\rtwo')
+    // Line terminators to a JavaScript parser, invisible to everyone else.
+    expect(jsSingleQuotedBody('a\u2028b')).toBe('a\\u2028b')
+    expect(jsSingleQuotedBody('a\u2029b')).toBe('a\\u2029b')
+  })
+
+  it('composes with escapeHtml into something a double-quoted attribute holds', () => {
+    // The real call shape: onclick="return confirm('…')".
+    const attr = escapeHtml(jsSingleQuotedBody('it\'s a "test" <b>'))
+    expect(attr).not.toContain('"')
+    expect(attr).toBe('it\\&#39;s a &quot;test&quot; &lt;b&gt;')
+  })
+})
+
+describe('jsonForScript', () => {
+  it('is ordinary JSON for ordinary values', () => {
+    expect(jsonForScript({ a: 'b' })).toBe('{"a":"b"}')
+  })
+
+  it('makes a payload unable to close the element it is written into', () => {
+    expect(jsonForScript({ x: '</script><script>alert(1)</script>' })).not.toContain('</script>')
+    expect(jsonForScript({ x: 'a\u2028b' })).toBe('{"x":"a\\u2028b"}')
+  })
+})
+
+describe('langSwitch', () => {
+  it('links the other language and leaves the one being read as plain text', () => {
+    expect(langSwitch('zh')).toBe('<a href="?lang=en">English</a> · 中文')
+    expect(langSwitch('en')).toBe('English · <a href="?lang=zh">中文</a>')
   })
 })
 
