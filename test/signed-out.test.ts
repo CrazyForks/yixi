@@ -28,13 +28,19 @@ function post(path: string, fields: Record<string, string>): Promise<Response> {
 beforeEach(reset)
 
 describe('signed-out visitors', () => {
-  const consolePages = ['/review', '/settings', '/probe', '/setup', '/account', '/admin', '/today', '/goals']
+  const consolePages = [
+    '/review', '/settings', '/probe', '/setup', '/account', '/admin', '/today', '/goals',
+    '/today/goals', '/today/review', '/today/setup',
+  ]
 
   it('sends every console page to the sign-in screen, not a bare 401', async () => {
     for (const path of consolePages) {
       const res = await get(path)
       // A plain-text "unauthorized" is indistinguishable from a broken site, and
-      // these paths are exactly what the nav offers first.
+      // these paths are exactly what the nav offers first. authenticate() runs
+      // before the router even looks at the path, so this holds for /today/review
+      // too — its page does not exist yet (task 5), but a signed-out visitor never
+      // gets far enough to find that out.
       expect(res.status, path).toBe(303)
       expect(res.headers.get('location'), path).toContain('/login')
     }
@@ -114,6 +120,40 @@ describe('signed-out visitors', () => {
     const i = await get('/icon.png')
     expect(i.status).toBe(200)
     expect(i.headers.get('content-type')).toBe('image/png')
+  })
+})
+
+/**
+ * `/goals` itself sits inside the cookie-authenticated block now, same as
+ * `/today`, so a signed-out visitor hitting it gets the ordinary login
+ * redirect (covered by consolePages above) rather than this 302 — the
+ * simplest rule, and fine, since nobody signed out has a goal to reach
+ * anyway. This block signs in first to reach the redirect the route table
+ * actually adds.
+ */
+describe('the retired /goals path', () => {
+  it('redirects to /today/goals, whatever the method', async () => {
+    await register(env, { email: 'goals@example.com', password: 'correct-horse-1' })
+    const loginRes = await post('/login', { email: 'goals@example.com', password: 'correct-horse-1' })
+    const cookie = loginRes.headers.get('set-cookie')
+    expect(cookie, 'login should set a cookie').toBeTruthy()
+    const cookieHeader = cookie!.split(';')[0]!
+
+    for (const method of ['GET', 'POST'] as const) {
+      const res = await worker.fetch(
+        new Request(`${BASE}/goals`, {
+          method,
+          headers: { cookie: cookieHeader },
+          ...(method === 'POST' ? { body: new URLSearchParams() } : {}),
+        }),
+        env,
+      )
+      // A hash fragment never reaches the server, so there is nothing here to
+      // preserve — /goals#goal-3 arrives as a bare /goals and leaves as a bare
+      // /today/goals; the browser reattaches its own fragment to the new URL.
+      expect(res.status, method).toBe(302)
+      expect(res.headers.get('location'), method).toBe('/today/goals')
+    }
   })
 })
 

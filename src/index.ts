@@ -7,6 +7,7 @@ import { renderReview } from './ui/review'
 import { renderSetup } from './ui/setup'
 import { handleToday } from './ui/today'
 import { handleGoals } from './ui/goals'
+import { renderTodaySetup } from './ui/todaysetup'
 import { iconResponse, manifestResponse } from './ui/pwa'
 import { handleCandidates } from './api/candidates'
 import {
@@ -101,7 +102,8 @@ export default {
 
       let res: Response
       if (path === '/today') res = await handleToday(request, env, user)
-      else if (path === '/goals') res = await handleGoals(request, env, user)
+      else if (path === '/today/goals') res = await handleGoals(request, env, user)
+      else if (path === '/today/setup' && method === 'GET') res = await renderTodaySetup(request, env, user)
       else if (path === '/review' && method === 'GET') res = await renderReview(request, env, user)
       else if (path === '/account') res = await handleAccount(request, env, user)
       else if (path === '/api/candidates' && method === 'GET') res = await handleCandidates(request)
@@ -110,8 +112,11 @@ export default {
       // forever, and this costs one round trip on a path nobody navigates
       // deliberately any more — it exists for bookmarks and address-bar
       // autocomplete on the phone this was built for, where a 404 would read as
-      // "the tool broke".
+      // "the tool broke". /goals is the same shape of move — it is now
+      // /today/goals — and gets the same 302, for the same reason, for every
+      // method (a bookmarked POST is no less stale than a bookmarked GET).
       else if (path === '/lookup' || path === '/probe') res = seeOtherTo('/settings')
+      else if (path === '/goals') res = seeOtherTo('/today/goals')
       else if (path === '/setup' && method === 'GET') res = await renderSetup(request, env, user)
       else if (path === '/settings') res = await handleSettings(request, env, user)
       else if (path.startsWith('/admin')) res = await handleAdmin(request, env, user)

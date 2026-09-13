@@ -63,7 +63,7 @@ describe('empty state', () => {
     expect(g.title).toBe('健身')
     // Unbound: the card offers the binding link instead of a jump button.
     const after = await html()
-    expect(after).toContain(`href="/goals#goal-${g.id}"`)
+    expect(after).toContain(`href="/today/goals#goal-${g.id}"`)
     expect(after).not.toMatch(/<button class="go"/)
   })
   it('rejects an empty quick add', async () => {

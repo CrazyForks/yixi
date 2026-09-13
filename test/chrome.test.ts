@@ -19,18 +19,19 @@
 // --- two faces ---------------------------------------------------------------
 //
 // The nav is now two navs: 今日 (/today, /today/goals, /today/review,
-// /today/setup) and 拦截 (/review, /settings, /setup). Only /today exists as a
-// page today — the other three 今日 hrefs are asserted as links in the shared
-// nav even though nothing serves them yet (tasks 4-5 build the pages; the nav
-// shape is this task's job). So the shape-equality check runs within each
-// face's own page set rather than across all six pages, and a handful of
-// checks (which hrefs a face may and may not offer, the owner's extra tab, the
-// a.face switch link) are asserted per face explicitly.
+// /today/setup) and 拦截 (/review, /settings, /setup). /today/review is task
+// 5's — the other three 今日 pages exist now, and /today/review is still
+// asserted as a link in the shared nav even though nothing serves it yet. So
+// the shape-equality check runs within each face's own page set rather than
+// across all six pages, and a handful of checks (which hrefs a face may and
+// may not offer, the owner's extra tab, the a.face switch link) are asserted
+// per face explicitly.
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleToday } from '../src/ui/today'
 import { handleGoals } from '../src/ui/goals'
+import { renderTodaySetup } from '../src/ui/todaysetup'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
 import { renderSetup } from '../src/ui/setup'
@@ -76,9 +77,11 @@ beforeEach(reset)
 
 type PageFn = (u: User) => Promise<Response>
 
-/** The 今日 face. Only /today exists so far — tasks 4-5 add the other three. */
+/** The 今日 face. /today/review is task 5's — the other three exist now. */
 const TODAY_PAGES: Record<string, PageFn> = {
   today: (u) => handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, u),
+  goals: (u) => handleGoals(new Request(`${BASE}/today/goals`), env, u),
+  todaysetup: (u) => renderTodaySetup(new Request(`${BASE}/today/setup`), env, u),
 }
 
 /** The 拦截 face — the original console. */

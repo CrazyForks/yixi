@@ -1,4 +1,5 @@
-// /goals — the planning page behind /today.
+// /today/goals — the planning page behind /today. (The old bare /goals now
+// 302s here — see src/index.ts.)
 //
 // /today is for doing and shows nothing editable; everything about a goal is
 // changed here. Same shape as /settings: an add form folded at the top, one
@@ -89,12 +90,12 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     }
     if (op === 'add') {
       const id = await createGoal(env.DB, { userId: user.id, ...parsed, now })
-      return seeOther(`/goals#goal-${id}`)
+      return seeOther(`/today/goals#goal-${id}`)
     }
     const id = intId(field(form, 'goal'))
     if (id === null) return await render(env, user, { error: '目标编号不对。', status: 400 })
     if (!(await updateGoal(env.DB, user.id, id, parsed))) return notFound()
-    return seeOther(`/goals#goal-${id}`)
+    return seeOther(`/today/goals#goal-${id}`)
   }
 
   if (op === 'task_add') {
@@ -106,7 +107,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     }
     const id = await createTask(env.DB, { userId: user.id, goalId, title, now })
     if (id === null) return notFound()
-    return seeOther(`/goals#goal-${goalId}`)
+    return seeOther(`/today/goals#goal-${goalId}`)
   }
 
   if (op === 'task_delete') {
@@ -114,7 +115,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     if (taskId === null) return await render(env, user, { error: '子任务编号不对。', status: 400 })
     const mine = (await listTasks(env.DB, user.id)).find((t: GoalTask) => t.id === taskId)
     if (!mine || !(await deleteTask(env.DB, user.id, taskId))) return notFound()
-    return seeOther(`/goals#goal-${mine.goal_id}`)
+    return seeOther(`/today/goals#goal-${mine.goal_id}`)
   }
 
   const goalOps = new Set(['archive', 'restore', 'delete', 'up', 'down', 'extend'])
@@ -131,7 +132,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
       // Two steps from the list on purpose: delete only exists in the archive fold.
       if (goal.archived_at === null) return await render(env, user, { error: '先归档，再删除。', status: 400 })
       await deleteGoal(env.DB, user.id, id)
-      return seeOther('/goals')
+      return seeOther('/today/goals')
     case 'up': await moveGoal(env.DB, user.id, id, 'up', today); break     // edge → false, still a redirect
     case 'down': await moveGoal(env.DB, user.id, id, 'down', today); break
     case 'extend':
@@ -141,7 +142,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
       })
       break
   }
-  return seeOther(`/goals#goal-${id}`)
+  return seeOther(`/today/goals#goal-${id}`)
 }
 
 function notFound(): Response {
@@ -167,7 +168,7 @@ async function render(env: Env, user: User, o: RenderOptions): Promise<Response>
   const archived = goals.filter((g) => g.archived_at !== null)
   const addDraft = o.draft && (o.draftGoal === null || o.draftGoal === undefined) ? o.draft : undefined
 
-  const body = `${consoleHeader(user, 'today')}
+  const body = `${consoleHeader(user, 'goals')}
 <main>
   <h1>目标</h1>
   <p class="lede">未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。</p>
@@ -190,7 +191,7 @@ async function render(env: Env, user: User, o: RenderOptions): Promise<Response>
 }
 
 function expiredBlock(goals: Goal[]): string {
-  return goals.map((g) => `<form class="banner expired" method="post" action="/goals">
+  return goals.map((g) => `<form class="banner expired" method="post" action="/today/goals">
     <input type="hidden" name="goal" value="${g.id}">
     <span><b>${escapeHtml(g.title)}</b> 到期了（${escapeHtml(g.until ?? '')}）。</span>
     <span class="acts">
@@ -203,7 +204,7 @@ function expiredBlock(goals: Goal[]): string {
 function addBlock(d?: Draft): string {
   return `<details class="add"${d ? ' open' : ''}>
   <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>加一个目标</span></summary>
-  <form class="card addform" method="post" action="/goals" data-ns="NEW">
+  <form class="card addform" method="post" action="/today/goals" data-ns="NEW">
   ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW')}
   <div class="actions"><button class="primary" type="submit" name="op" value="add">添加</button></div>
   </form>
@@ -250,7 +251,7 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
     <span class="mini">${g.until ? `<span class="num">${escapeHtml(g.until)}</span>` : '长期'}${tasks.length ? ` · ${undone.length}/${tasks.length}` : ''}</span>
     ${icon('chev', { cls: 'ic chev' })}
   </summary>
-  <form class="card" method="post" action="/goals" data-ns="${ns}">
+  <form class="card" method="post" action="/today/goals" data-ns="${ns}">
     <input type="hidden" name="goal" value="${g.id}">
     ${goalFields(d, ns)}
     <div class="actions">
@@ -264,9 +265,9 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
     <h2>子任务 · 一次性的待办</h2>
     ${tasks.length === 0 ? '<p class="note flat">还没有。</p>' : `<ul class="tl">${tasks.map((t) => `<li class="${t.done_at === null ? '' : 'done'}">
       <span>${escapeHtml(t.title)}</span>
-      <form method="post" action="/goals"><input type="hidden" name="task" value="${t.id}"><button class="linky" type="submit" name="op" value="task_delete">删</button></form>
+      <form method="post" action="/today/goals"><input type="hidden" name="task" value="${t.id}"><button class="linky" type="submit" name="op" value="task_delete">删</button></form>
     </li>`).join('')}</ul>`}
-    <form method="post" action="/goals" class="taskadd">
+    <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
       <input type="text" name="title" placeholder="加一条子任务" maxlength="${TITLE_MAX}" required aria-label="子任务">
       <button class="linky" type="submit" name="op" value="task_add">加</button>
@@ -278,7 +279,7 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
 function archivedBlock(goals: Goal[]): string {
   return `<details class="archived">
   <summary>${icon('chev', { cls: 'chev' })}已归档 · ${goals.length}</summary>
-  ${goals.map((g) => `<form class="arow" method="post" action="/goals" id="goal-${g.id}">
+  ${goals.map((g) => `<form class="arow" method="post" action="/today/goals" id="goal-${g.id}">
     <input type="hidden" name="goal" value="${g.id}">
     <span class="sname">${escapeHtml(g.title)}</span>
     <button class="linky" type="submit" name="op" value="restore">恢复</button>

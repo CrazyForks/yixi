@@ -51,10 +51,10 @@ describe('helpers', () => {
 })
 
 describe('GET /goals', () => {
-  it('wears the shared chrome with 今日 as the current tab', async () => {
+  it('wears the shared chrome with 目标 as the current tab', async () => {
     const h = await html()
     expect(h).toContain('<nav aria-label="导航">')
-    expect(h).toMatch(/<a href="\/today" class="on" aria-current="page"/)
+    expect(h).toMatch(/<a href="\/today\/goals" class="on" aria-current="page"/)
   })
 
   it('shows an empty state and the add form when there is nothing', async () => {
@@ -115,7 +115,7 @@ describe('POST /goals', () => {
     expect(res.status).toBe(303)
     const rows = await listGoals(env.DB, 1)
     expect(rows).toHaveLength(1)
-    expect(res.headers.get('location')).toBe(`/goals#goal-${rows[0]!.id}`)
+    expect(res.headers.get('location')).toBe(`/today/goals#goal-${rows[0]!.id}`)
     expect(rows[0]).toMatchObject({ title: '健身', cue: '早饭后', target: 'bilibili://', target_label: 'B 站' })
   })
 
@@ -169,7 +169,7 @@ describe('POST /goals', () => {
     expect((await post({ op: 'delete', goal: String(a) }, other)).status).toBe(404)
     const res = await post({ op: 'delete', goal: String(a) })
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/goals')
+    expect(res.headers.get('location')).toBe('/today/goals')
     expect(await listGoals(env.DB, 1)).toEqual([])
   })
 

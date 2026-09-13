@@ -292,13 +292,12 @@ describe('/setup', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('teaches the home-screen and Shortcut entrances to /today', async () => {
+  it('points to /today/setup for the home-screen and Shortcut walkthrough, rather than carrying it itself', async () => {
     const user = await seedUser()
     const html = await render(user)
-    expect(html).toContain('让今日页一按就开')
-    expect(html).toContain('添加到主屏幕')
-    expect(html).toContain('/today')
-    expect(html).toContain('再登录一次')
-    expect(html).toContain('特定时间')
+    // That whole section moved to the 今日 face's own "怎么配" — /setup is the
+    // 拦截 face now, and a reader here has nothing to do with home-screen icons.
+    expect(html).not.toContain('让今日页一按就开')
+    expect(html).toContain('<a href="/today/setup">今日 · 怎么配</a>')
   })
 })

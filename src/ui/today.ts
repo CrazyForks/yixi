@@ -1,5 +1,5 @@
 // /today — the page you open every morning. Look, jump, tick. Nothing here is
-// editable; that is /goals.
+// editable; that is /today/goals.
 //
 // Three things are deliberate:
 //   1. Only the first TODAY_GOAL_LIMIT live goals get a card, and the first of
@@ -129,7 +129,7 @@ async function render(request: Request, env: Env, user: User, _o: Record<string,
 
   const body = `${consoleHeader(user, 'today')}
 <main>
-  <div class="dayline"><span class="num">${escapeHtml(prettyDate(today))}</span><a class="linky" href="/goals">编辑目标</a></div>
+  <div class="dayline"><span class="num">${escapeHtml(prettyDate(today))}</span><span class="dlinks"><a class="linky" href="/today/review">回看</a><a class="linky" href="/today/goals">编辑目标</a></span></div>
   ${live.length === 0 ? emptyState() : ordered.map(cardHtml).join('\n')}
   ${allDone ? `<p class="fin">今天的事都做了。<span>其余的事，明天再说。</span></p>` : ''}
   ${rest.length ? restFold(rest) : ''}
@@ -194,7 +194,7 @@ function nextHtml(c: Card): string {
     <span class="nl">下一步</span><span class="nt">${escapeHtml(c.next.title)}</span>
   </form>`
     : ''
-  const more = c.moreUndone > 0 ? `<p class="more">还有 ${c.moreUndone} 条，去<a href="/goals#goal-${c.goal.id}">目标</a>里看。</p>` : ''
+  const more = c.moreUndone > 0 ? `<p class="more">还有 ${c.moreUndone} 条，去<a href="/today/goals#goal-${c.goal.id}">目标</a>里看。</p>` : ''
   return `${next}${more}${doneList ? `<ul class="donel">${doneList}</ul>` : ''}`
 }
 
@@ -204,7 +204,7 @@ function goHtml(g: Goal): string {
   const sep = /^[A-Za-z0-9]/.test(g.target_label) ? ' ' : ''
   const label = g.target_label ? `去${sep}${escapeHtml(g.target_label)}` : '去做'
   if (target === '') {
-    return `<a class="bind linky" href="/goals#goal-${g.id}">${icon('jump')}去绑一个 App，一按就开</a>`
+    return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}去绑一个 App，一按就开</a>`
   }
   if (/^https?:/i.test(target)) {
     return `<a class="go" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
@@ -215,7 +215,7 @@ function goHtml(g: Goal): string {
 function restFold(goals: Goal[]): string {
   return `<details class="rest">
   <summary>${icon('chev', { cls: 'chev' })}其余目标 · ${goals.length}</summary>
-  <ul>${goals.map((g) => `<li><a href="/goals#goal-${g.id}">${escapeHtml(g.title)}</a></li>`).join('')}</ul>
+  <ul>${goals.map((g) => `<li><a href="/today/goals#goal-${g.id}">${escapeHtml(g.title)}</a></li>`).join('')}</ul>
 </details>`
 }
 
@@ -228,6 +228,7 @@ function banner(): string {
 
 const TODAY_CSS = `
 .dayline{display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 16px;color:var(--dim);font-size:14px;letter-spacing:.08em}
+.dayline .dlinks{display:flex;gap:14px}
 .goal{position:relative;padding:18px 18px 16px}
 .goal.hero{padding:26px 20px 20px}
 .goal .head{display:flex;align-items:flex-start;gap:12px}
