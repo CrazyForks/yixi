@@ -17,6 +17,8 @@
 
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { handleToday } from '../src/ui/today'
+import { handleGoals } from '../src/ui/goals'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
 import { renderSetup } from '../src/ui/setup'
@@ -38,6 +40,9 @@ async function reset(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events'),
     env.DB.prepare('DELETE FROM user_apps'),
+    env.DB.prepare('DELETE FROM goal_checkins'),
+    env.DB.prepare('DELETE FROM goal_tasks'),
+    env.DB.prepare('DELETE FROM goals'),
     env.DB.prepare('DELETE FROM users'),
   ])
   await env.DB.prepare(
@@ -62,6 +67,7 @@ beforeEach(reset)
  * Keyed by the tab that should be marked current.
  */
 const PAGES: Record<string, (u: User) => Promise<Response>> = {
+  today: (u) => handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, u),
   review: (u) => renderReview(new Request(`${BASE}/review`), env, u),
   settings: (u) => handleSettings(new Request(`${BASE}/settings`), env, u),
   setup: (u) => renderSetup(new Request(`${BASE}/setup`), env, u),
@@ -260,6 +266,11 @@ describe('what may be indexed', () => {
       }).text(),
     ])
     out.push(['mock', await renderMock(new URL(`${ORIGIN}/mock?v=1`)).text()])
+    out.push([
+      'today',
+      await (await handleToday(new Request(`${BASE}/today`, { headers: { 'user-agent': 'x' } }), env, user)).text(),
+    ])
+    out.push(['goals', await (await handleGoals(new Request(`${BASE}/goals`), env, user)).text()])
     return out
   }
 
