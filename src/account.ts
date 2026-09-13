@@ -13,6 +13,7 @@ import {
 } from './db'
 import type { AccountRecord } from './db'
 import { PBKDF2_ITERATIONS, hashPassword, openToken, randomHex, sealToken, verifyPassword } from './crypto'
+import { msg, type T } from './i18n'
 
 /**
  * Accounts: sign up, sign in, sign out, and the two ways to change a password.
@@ -102,24 +103,40 @@ function defaultName(email: string): string {
   return local.slice(0, MAX_NAME_LENGTH)
 }
 
-export function accountErrorMessage(error: AccountError): string {
+/**
+ * Wording for a failure, in the reader's language.
+ *
+ * The translator is a parameter rather than something this module builds for
+ * itself: a Worker isolate serves many requests at once, so the only correct
+ * place to decide a language is the request, and the page already knows. The
+ * three limits are interpolated through `{min}`/`{max}` placeholders rather
+ * than a template literal, because the Chinese source doubles as the key
+ * src/i18n/en.ts is written against — a template literal would key the
+ * dictionary on a string that changes with the numbers. `msg()` is the marker
+ * that makes those sources as findable to test/i18n.test.ts's guard here as a
+ * `t('…')` call is on a page.
+ */
+export function accountErrorMessage(error: AccountError, t: T): string {
   switch (error) {
     case 'invalid_email':
-      return '这个邮箱看着不对，检查一下。'
+      return t(msg('这个邮箱看着不对，检查一下。'))
     case 'weak_password':
-      return `密码至少 ${MIN_PASSWORD_LENGTH} 位，最多 ${MAX_PASSWORD_LENGTH} 位。`
+      return t(msg('密码至少 {min} 位，最多 {max} 位。'), {
+        min: MIN_PASSWORD_LENGTH,
+        max: MAX_PASSWORD_LENGTH,
+      })
     case 'invalid_name':
-      return `名字不能是空的，也别超过 ${MAX_NAME_LENGTH} 个字。`
+      return t(msg('名字不能是空的，也别超过 {max} 个字。'), { max: MAX_NAME_LENGTH })
     case 'email_taken':
-      return '这个邮箱已经注册过了，直接登录。'
+      return t(msg('这个邮箱已经注册过了，直接登录。'))
     case 'invalid_credentials':
-      return '邮箱或密码不对。'
+      return t(msg('邮箱或密码不对。'))
     case 'invalid_token':
-      return '这个 token 不对。'
+      return t(msg('这个 token 不对。'))
     case 'no_account':
-      return '这个 token 还没绑定邮箱和密码，先去绑定。'
+      return t(msg('这个 token 还没绑定邮箱和密码，先去绑定。'))
     case 'token_has_account':
-      return '这个 token 已经绑过账号了，直接登录，或者用它重置密码。'
+      return t(msg('这个 token 已经绑过账号了，直接登录，或者用它重置密码。'))
   }
 }
 

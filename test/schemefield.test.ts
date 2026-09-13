@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from '../src/ui/schemefield'
+import { SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from '../src/ui/schemefield'
+import { translator } from '../src/i18n'
+
+// The field and its script are built per request now, so that every string
+// they render comes from the caller's translator. Chinese is what this file
+// asserts on, so it builds the Chinese one.
+const t = translator('zh')
+const SCHEME_FIELD_JS = schemeFieldJs(t)
 
 describe('schemeField()', () => {
-  const html = schemeField({ name: 'target', value: 'a<b://', ns: 'g7', label: '跳去哪', labelFor: 'target_label' })
+  const html = schemeField({ name: 'target', value: 'a<b://', ns: 'g7', label: '跳去哪', labelFor: 'target_label', t })
 
   it('names the input as asked and escapes the value', () => {
     expect(html).toContain('name="target"')
@@ -20,7 +27,7 @@ describe('schemeField()', () => {
   })
 
   it('can be optional, for a goal that has nothing to jump to', () => {
-    const opt = schemeField({ name: 'target', value: '', ns: 'g1', label: 'x', labelFor: 'target_label', required: false })
+    const opt = schemeField({ name: 'target', value: '', ns: 'g1', label: 'x', labelFor: 'target_label', required: false, t })
     expect(opt).not.toMatch(/<input[^>]*name="target"[^>]*\brequired\b/)
     expect(html).toMatch(/<input[^>]*name="target"[^>]*\brequired\b/)
   })

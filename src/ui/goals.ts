@@ -17,7 +17,7 @@ import {
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
-import { SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
+import { SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from './schemefield'
 import { safeScheme } from '../scheme'
 import { addDays, isExpired } from '../dates'
 import { localeOf, translator, type Locale, type T } from '../i18n'
@@ -191,7 +191,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
     lang: loc,
     css: CONSOLE_CSS + SCHEME_FIELD_CSS + GOALS_CSS,
     body,
-    script: SCHEME_FIELD_JS,
+    script: schemeFieldJs(t),
     status: o.status ?? 200,
   })
 }
@@ -228,7 +228,7 @@ function goalFields(d: Draft, ns: string, t: T): string {
     <input id="${id('cue')}" type="text" name="cue" value="${escapeHtml(d.cue)}" placeholder="${t('早饭后')}" maxlength="${CUE_MAX}">
   </div>
   ${schemeField({
-    name: 'target', value: d.target, ns, required: false, labelFor: 'target_label',
+    name: 'target', value: d.target, ns, required: false, labelFor: 'target_label', t,
     label: t('去做时跳去哪 · 可不填'),
     placeholder: t('bilibili:// 或 https://…'),
     hint: t('填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),

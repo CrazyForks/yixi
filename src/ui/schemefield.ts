@@ -10,10 +10,15 @@
 // Nothing here knows which form it sits in. The probe finds its input by the
 // `.field.scheme` wrapper it shares, the draft saves every named input the
 // form has, and 「用这个」 fills whichever sibling `data-label-for` names.
+//
+// Both halves take the caller's translator: the markup renders in the page's
+// language, and so does the script, which receives its strings as data rather
+// than carrying them as literals (see `schemeFieldJs`).
 
 import { escapeHtml } from './layout'
 import { fold, hl, icon, seal } from './icons'
 import { forbiddenSchemePattern } from '../scheme'
+import { msg, type T } from '../i18n'
 
 export interface SchemeFieldOptions {
   /** input 的 name。settings 用 'scheme'，goals 用 'target'。 */
@@ -29,11 +34,13 @@ export interface SchemeFieldOptions {
   hint?: string
   /** 「用这个」时顺带填的显示名 input 的 name；settings 是 'label'，goals 是 'target_label'。 */
   labelFor: string
+  /** 这一次请求的翻译器，由页面建好传进来。 */
+  t: T
 }
 
-const DEFAULT_HINT =
-  '例：小红书 <code class="mono">xhsdiscover://</code>，起点读书 <code class="mono">QDReader://</code>。' +
-  '候选都<b>没验证过</b>，填完必须点<b>试跳</b>，App 真打开了才算数。'
+const DEFAULT_HINT = msg(
+  '例：小红书 <code class="mono">xhsdiscover://</code>，起点读书 <code class="mono">QDReader://</code>。候选都<b>没验证过</b>，填完必须点<b>试跳</b>，App 真打开了才算数。',
+)
 
 /**
  * The scheme field, and everything the 「候选」 tab used to be.
@@ -67,22 +74,23 @@ export function fieldId(ns: string, name: string): string {
 export function schemeField(o: SchemeFieldOptions): string {
   const id = fieldId(o.ns, o.name)
   const required = o.required === false ? '' : ' required'
+  const t = o.t
   return `<div class="field scheme" data-label-for="${escapeHtml(o.labelFor)}">
     <label for="${id}">${o.label}</label>
     <div class="withtry">
       <input id="${id}" type="text" name="${escapeHtml(o.name)}" value="${escapeHtml(o.value)}" placeholder="${escapeHtml(o.placeholder ?? 'someapp://')}"${required}
         inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" class="mono sc">
-      <button class="try" type="button" data-try>${icon('jump')}试跳</button>
+      <button class="try" type="button" data-try>${icon('jump')}${t('试跳')}</button>
     </div>
-    <p class="hint ex">${hl('caveat', o.hint ?? DEFAULT_HINT)}</p>
+    <p class="hint ex">${hl('caveat', o.hint ?? t(DEFAULT_HINT))}</p>
     ${fold(
-      '不知道填什么？按 App 名字找',
+      t('不知道填什么？按 App 名字找'),
       `<div class="pick">
         <div class="manual">
-          <input type="text" class="pq" placeholder="起点读书" maxlength="40"
+          <input type="text" class="pq" placeholder="${t('起点读书')}" maxlength="40"
             inputmode="search" autocapitalize="none" autocorrect="off" spellcheck="false"
-            aria-label="按 App 名字搜索候选">
-          <button type="button" class="pgo">${icon('lookup')}找</button>
+            aria-label="${t('按 App 名字搜索候选')}">
+          <button type="button" class="pgo">${icon('lookup')}${t('找')}</button>
         </div>
         <div class="pout" role="status" aria-live="polite"></div>
       </div>`,
@@ -183,6 +191,44 @@ const PICK_ICONS = JSON.stringify({
 })
 
 /**
+ * Every sentence the picker can put on the page, translated once per request
+ * and handed to the script as data.
+ *
+ * The same shape as `PICK_ICONS` above, and for the same reason: a browser
+ * script cannot call `t()`, so whatever it says has to be resolved on the
+ * server and injected. `JSON.stringify` does the escaping, which is what makes
+ * it safe for a translation to contain an apostrophe or a quote — the script
+ * never builds a string literal of its own out of this.
+ */
+function pickText(t: T): string {
+  return JSON.stringify({
+    // The three confidence tiers a candidate can be labelled with.
+    tierVerified: t('实测过'),
+    tierListed: t('清单里有'),
+    tierDerived: t('猜的'),
+    agree: t('两份清单一致'),
+    keyHint: t('建议 App 键'),
+    try: t('试跳'),
+    use: t('用这个'),
+    derivedNote: t('表里没有这个 App。下面几条是<b>从 App Store 的 bundle id 猜出来的</b>，没人验证过 —— 一定要先试跳。'),
+    unknown: t('没找到这个 App。可以自己在上面的格子里填一个 scheme，再点<b>试跳</b>试试。'),
+    // Why a search could not be answered at all — one line each, and a
+    // fallback for a reason this build has never heard of.
+    refused: t('App Store 拒了我们这次查询（它会拒绝 Cloudflare 的出口地址）。表里没有的 App 只能自己找 scheme。'),
+    timeout: t('连 App Store 超时了。过一会儿再试，或者自己填一个 scheme 直接试跳。'),
+    unreadable: t('App Store 返回的内容看不懂。自己填一个 scheme 直接试跳也行。'),
+    tooShort: t('名字太短了，多打几个字。'),
+    uncheckedOther: t('这次没查成。'),
+    needName: t('先填 App 的名字。'),
+    searching: t('找…'),
+    netError: t('没查成，网络或者服务的问题。自己填一个 scheme 直接试跳也行。'),
+    badCandidate: t('这条不像能跳的 scheme。'),
+    badTyped: t('这个不像能跳的 scheme，形状要是 xxx:// 。'),
+    emptyBox: t('先填一个 scheme。'),
+  })
+}
+
+/**
  * Three jobs, and the first one is a hard requirement rather than a style.
  *
  * 1. THE JUMP. `location.href` assigned synchronously inside a click handler is
@@ -207,13 +253,20 @@ const PICK_ICONS = JSON.stringify({
  *    pure DOM, no navigation and no server round trip. That is the entire
  *    reason this stopped being a separate page: the reader is standing in the
  *    form, and taking them away from it to answer one field was the bug.
+ *
+ * A function rather than a constant, because every string it can print is copy
+ * and copy has a language. The code itself is identical in both — only the
+ * `TXT` object at the top differs, which is what keeps the one rule above
+ * (a single synchronous `location.href`) impossible to break by translating.
  */
-export const SCHEME_FIELD_JS = `
+export function schemeFieldJs(t: T): string {
+  return `
 (function () {
   var BAD = /${forbiddenSchemePattern()}/i;
   var OK = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
   var ICONS = ${PICK_ICONS};
-  var TIER = { verified: '实测过', listed: '清单里有', derived: '猜的' };
+  var TXT = ${pickText(t)};
+  var TIER = { verified: TXT.tierVerified, listed: TXT.tierListed, derived: TXT.tierDerived };
   var DRAFT_TTL = 30 * 60 * 1000;
 
   function esc(s) {
@@ -304,7 +357,7 @@ export const SCHEME_FIELD_JS = `
     if (c.confidence === 'verified' && c.verifiedOn) {
       out.push('<span class="mk when">' + ICONS.clock + esc(c.verifiedOn) + '</span>');
     }
-    if (c.corroborated) out.push('<span class="mk">' + ICONS.agree + '两份清单一致</span>');
+    if (c.corroborated) out.push('<span class="mk">' + ICONS.agree + esc(TXT.agree) + '</span>');
     var srcs = c.sources || [];
     for (var i = 0; i < srcs.length; i++) {
       var u = String(srcs[i].url || '');
@@ -327,22 +380,21 @@ export const SCHEME_FIELD_JS = `
       (c.caveat ? '<p class="caveat">' + esc(c.caveat) + '</p>' : '') +
       '<div class="cdacts">' +
         '<button type="button" class="ctry" data-scheme="' + esc(c.scheme) + '">' +
-          '<span class="ord">1</span>' + ICONS.jump + '试跳' + '</button>' +
+          '<span class="ord">1</span>' + ICONS.jump + esc(TXT.try) + '</button>' +
         '<button type="button" class="cuse" data-scheme="' + esc(c.scheme) + '" data-label="' + esc(appName) + '">' +
-          '<span class="ord">2</span>' + ICONS.save + '用这个' + '</button>' +
+          '<span class="ord">2</span>' + ICONS.save + esc(TXT.use) + '</button>' +
       '</div></div>';
   }
 
   function hitsHtml(data) {
     var parts = [];
     if (data.state === 'derived') {
-      parts.push('<p class="pmsg">表里没有这个 App。下面几条是<b>从 App Store 的 bundle id 猜出来的</b>，' +
-        '没人验证过 —— 一定要先试跳。</p>');
+      parts.push('<p class="pmsg">' + TXT.derivedNote + '</p>');
     }
     for (var i = 0; i < data.hits.length; i++) {
       var h = data.hits[i];
       parts.push('<p class="phit"><b>' + esc(h.name) + '</b>' +
-        (h.key ? ' <span class="why">建议 App 键 ' + esc(h.key) + '</span>' : '') + '</p>');
+        (h.key ? ' <span class="why">' + esc(TXT.keyHint) + ' ' + esc(h.key) + '</span>' : '') + '</p>');
       for (var j = 0; j < h.candidates.length; j++) {
         parts.push(candidateHtml(h.candidates[j], h.name));
       }
@@ -351,21 +403,20 @@ export const SCHEME_FIELD_JS = `
   }
 
   var UNCHECKED = {
-    refused: 'App Store 拒了我们这次查询（它会拒绝 Cloudflare 的出口地址）。表里没有的 App 只能自己找 scheme。',
-    timeout: '连 App Store 超时了。过一会儿再试，或者自己填一个 scheme 直接试跳。',
-    unreadable: 'App Store 返回的内容看不懂。自己填一个 scheme 直接试跳也行。',
-    'too-short': '名字太短了，多打几个字。'
+    refused: TXT.refused,
+    timeout: TXT.timeout,
+    unreadable: TXT.unreadable,
+    'too-short': TXT.tooShort
   };
 
   function render(out, data) {
     if (data.state === 'table' || data.state === 'derived') { out.innerHTML = hitsHtml(data); return; }
     if (data.state === 'unknown') {
-      out.innerHTML = '<p class="pmsg">没找到这个 App。' +
-        '可以自己在上面的格子里填一个 scheme，再点<b>试跳</b>试试。</p>';
+      out.innerHTML = '<p class="pmsg">' + TXT.unknown + '</p>';
       return;
     }
     if (data.state === 'unchecked') {
-      out.innerHTML = '<p class="pmsg">' + esc(UNCHECKED[data.reason] || '这次没查成。') + '</p>';
+      out.innerHTML = '<p class="pmsg">' + esc(UNCHECKED[data.reason] || TXT.uncheckedOther) + '</p>';
       return;
     }
     out.innerHTML = '';
@@ -378,14 +429,14 @@ export const SCHEME_FIELD_JS = `
     var btn = pick.querySelector('.pgo');
     var out = pick.querySelector('.pout');
     var q = (input.value || '').trim();
-    if (!q) { out.innerHTML = '<p class="pmsg">先填 App 的名字。</p>'; return; }
+    if (!q) { out.innerHTML = '<p class="pmsg">' + esc(TXT.needName) + '</p>'; return; }
     btn.disabled = true;
-    out.innerHTML = '<p class="pmsg">找…</p>';
+    out.innerHTML = '<p class="pmsg">' + esc(TXT.searching) + '</p>';
     fetch('/api/candidates?q=' + encodeURIComponent(q), { headers: { accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(String(r.status))); })
       .then(function (data) { render(out, data); })
       .catch(function () {
-        out.innerHTML = '<p class="perr">没查成，网络或者服务的问题。自己填一个 scheme 直接试跳也行。</p>';
+        out.innerHTML = '<p class="perr">' + esc(TXT.netError) + '</p>';
       })
       .then(function () { btn.disabled = false; });
   }
@@ -404,7 +455,7 @@ export const SCHEME_FIELD_JS = `
     if (ctry) {
       var form = ctry.closest('form[data-ns]');
       if (form) saveDraft(form);
-      if (!jump(ctry.getAttribute('data-scheme'))) showJumpError(ctry, '这条不像能跳的 scheme。');
+      if (!jump(ctry.getAttribute('data-scheme'))) showJumpError(ctry, TXT.badCandidate);
       return;
     }
 
@@ -416,7 +467,7 @@ export const SCHEME_FIELD_JS = `
       var v = box ? (box.value || '').trim() : '';
       if (pform) saveDraft(pform);
       if (!jump(v)) {
-        showJumpError(probe, v ? '这个不像能跳的 scheme，形状要是 xxx:// 。' : '先填一个 scheme。');
+        showJumpError(probe, v ? TXT.badTyped : TXT.emptyBox);
       }
       return;
     }
@@ -465,3 +516,4 @@ export const SCHEME_FIELD_JS = `
   restoreDrafts();
 })();
 `
+}

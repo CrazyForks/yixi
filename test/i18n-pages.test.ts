@@ -25,7 +25,10 @@ import { handleToday } from '../src/ui/today'
 import { handleGoals } from '../src/ui/goals'
 import { renderProgress } from '../src/ui/progress'
 import { renderTodaySetup } from '../src/ui/todaysetup'
-import { createGoal, createTask, shanghaiDate, toggleCheckin } from '../src/db'
+import { handleAccount, handleLogin, handleRegister } from '../src/ui/account'
+import { handleSettings } from '../src/ui/settings'
+import { renderReview } from '../src/ui/review'
+import { createGoal, createTask, shanghaiDate, toggleCheckin, upsertUserApp } from '../src/db'
 import type { User } from '../src/types'
 
 const BASE = 'https://yixi.test'
@@ -49,6 +52,7 @@ async function reset(): Promise<void> {
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
     env.DB.prepare('DELETE FROM goals'),
+    env.DB.prepare('DELETE FROM user_apps'),
     env.DB.prepare('DELETE FROM users'),
   ])
   await env.DB.prepare(
@@ -80,19 +84,6 @@ function mainOf(html: string): string {
   const m = html.match(/<main>([\s\S]*?)<\/main>/)
   expect(m, 'no <main> found').toBeTruthy()
   return m![1]!
-}
-
-/**
- * /today/goals embeds src/ui/schemefield.ts, which belongs to a different
- * batch-1 task and is still Chinese — its copy would fail the punctuation
- * sweep below through no fault of this page. The field is always the block
- * between `<div class="field scheme"` and the `<div class="row">` that
- * goalFields puts after it, and nothing inside it carries that class, so
- * cutting it out is exact rather than approximate. Delete this helper (and
- * its call) the day schemefield.ts is converted.
- */
-function withoutSchemeField(html: string): string {
-  return html.replace(/<div class="field scheme"[\s\S]*?<div class="row">/g, '<div class="row">')
 }
 
 function seed(
@@ -185,16 +176,14 @@ describe('/today/goals in English', () => {
     const html = await goalsHtml()
     expect(html).toContain('<html lang="en">')
 
-    // The scheme field's own three strings live in goals.ts (label, placeholder
-    // and hint are passed *into* schemefield.ts), so they are this task's to
-    // translate even though the component around them is not — assert them
-    // before withoutSchemeField() cuts the block out below.
-    const whole = mainOf(html)
-    expect(whole).toContain('Where the button jumps · optional')
-    expect(whole).toContain('placeholder="instagram:// or https://…"')
-    expect(whole).toContain('Link <b>the exact lesson, the exact book</b>')
+    // The scheme field's own three strings are passed *into* schemefield.ts
+    // from here (label, placeholder, hint); the rest of that component now
+    // renders in English too, so the whole <main> faces the sweep below.
+    const main = mainOf(html)
+    expect(main).toContain('Where the button jumps · optional')
+    expect(main).toContain('placeholder="instagram:// or https://…"')
+    expect(main).toContain('Link <b>the exact lesson, the exact book</b>')
 
-    const main = withoutSchemeField(whole)
     expect(main).toContain('<h1>Goals</h1>')
     expect(main).toContain('The top three show up on <a href="/today">Today</a>.')
     expect(main).toContain('Add a goal')
@@ -204,7 +193,7 @@ describe('/today/goals in English', () => {
 
   it('translates a goal row and its sub-task box', async () => {
     await seed('健身', { label: 'B 站' })
-    const main = withoutSchemeField(mainOf(await goalsHtml()))
+    const main = mainOf(await goalsHtml())
     expect(main).toContain('Ongoing')
     expect(main).toContain('Sub-tasks')
     expect(main).toContain('None yet.')
@@ -253,6 +242,187 @@ describe('/today/setup in English', () => {
     expect(main).toContain(`${BASE}/today`)
     expect(main).not.toMatch(CHINESE_PUNCT)
     expect(main).not.toMatch(/[!！]/)
+  })
+})
+
+// ============================================================================
+// The account pages, /settings and /review
+// ============================================================================
+
+/** The signed-out shell every account page before a session renders into. */
+function gateOf(html: string): string {
+  return inside(html, '<main class="gate">')
+}
+
+function req(path: string, en = true): Request {
+  return new Request(`${BASE}${path}`, en ? { headers: EN } : undefined)
+}
+
+function form(path: string, fields: Record<string, string>, en = true): Request {
+  return new Request(`${BASE}${path}`, {
+    method: 'POST',
+    ...(en ? { headers: EN } : {}),
+    body: new URLSearchParams(fields),
+  })
+}
+
+describe('/register in English', () => {
+  it('states the closed loop, dead end included, in English', async () => {
+    const html = await (await handleRegister(req('/register'), env)).text()
+
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<title>Sign up · 一息</title>')
+    const gate = gateOf(html)
+    expect(gate).toContain('<h1>Sign up</h1>')
+    expect(gate).toContain('no mail service')
+    // The three branches the Chinese page spells out, all still here.
+    expect(gate).toContain('Forgot the password')
+    expect(gate).toContain('Forgot the token')
+    expect(gate).toContain('Lost both')
+    expect(gate).toContain('<a href="/recover">the reset page</a>')
+    expect(gate).not.toMatch(CHINESE_PUNCT)
+    expect(gate).not.toMatch(/[!！]/)
+  })
+
+  it('translates a message src/account.ts produced, limits filled in', async () => {
+    const res = await handleRegister(
+      form('/register', { email: 'who@example.com', password: 'short', password2: 'short' }),
+      env,
+    )
+    expect(res.status).toBe(400)
+    const html = await res.text()
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('A password is 8 characters at least and 200 at most.')
+    expect(gateOf(html)).not.toMatch(CHINESE_PUNCT)
+  })
+})
+
+describe('/login in English', () => {
+  it('translates the page and the two ways out of it', async () => {
+    const html = await (await handleLogin(req('/login'), env)).text()
+
+    expect(html).toContain('<html lang="en">')
+    const gate = gateOf(html)
+    expect(gate).toContain('<h1>Sign in</h1>')
+    expect(gate).toContain('<a href="/recover">Reset it with the token</a>')
+    expect(gate).toContain('<a href="/register">Sign up</a>')
+    expect(gate).not.toMatch(CHINESE_PUNCT)
+  })
+
+  it('says the one thing a failed sign-in is allowed to say, in English', async () => {
+    const res = await handleLogin(form('/login', { email: 'nobody@example.com', password: 'x'.repeat(12) }), env)
+    expect(res.status).toBe(401)
+    const html = await res.text()
+    expect(html).toContain('That address or password is wrong.')
+    expect(gateOf(html)).not.toMatch(CHINESE_PUNCT)
+  })
+})
+
+describe('/account in English', () => {
+  function accountHtml(path = '/account', en = true): Promise<string> {
+    return handleAccount(req(path, en), env, user).then((r) => r.text())
+  }
+
+  it('translates the page, the token card and the way out', async () => {
+    const html = await accountHtml()
+
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<title>Account · Alex</title>')
+    const main = mainOf(html)
+    expect(main).toContain('<h1>Account</h1>')
+    expect(main).toContain('<h2>Your token</h2>')
+    expect(main).toContain('>Show</a>')
+    expect(main).toContain('No email address attached yet')
+    expect(main).toContain('Sign out')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+    expect(main).not.toMatch(/[!！]/)
+  })
+
+  it('offers both languages and never links the one being read', async () => {
+    const en = mainOf(await accountHtml())
+    expect(en).toContain('<h2>Language</h2>')
+    expect(en).toContain('<a class="linky" href="/account?lang=en" aria-current="true">English</a>')
+    expect(en).toContain('<a class="linky" href="/account?lang=zh">中文</a>')
+
+    const zh = mainOf(await accountHtml('/account', false))
+    expect(zh).toContain('<h2>语言</h2>')
+    expect(zh).toContain('<a class="linky" href="/account?lang=en">English</a>')
+    expect(zh).toContain('<a class="linky" href="/account?lang=zh" aria-current="true">中文</a>')
+  })
+})
+
+describe('/settings in English', () => {
+  function settingsHtml(en = true): Promise<string> {
+    return handleSettings(req('/settings', en), env, user).then((r) => r.text())
+  }
+
+  async function seedApp(): Promise<void> {
+    await upsertUserApp(env.DB, {
+      user_id: 1, app: 'xhs', label: '小红书', scheme: 'xhsdiscover://',
+      wait_seconds: 10, grace_seconds: 90, enabled: 1,
+    })
+  }
+
+  it('translates the empty state, the add form and the scheme field around it', async () => {
+    const html = await settingsHtml()
+
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<title>Settings · 一息</title>')
+    const main = mainOf(html)
+    expect(main).toContain('<h1>Which apps to stop</h1>')
+    expect(main).toContain('No apps configured yet.')
+    expect(main).toContain('Add an app')
+    // The shared scheme field, whose copy now comes from this page's translator.
+    expect(main).toContain('Test it')
+    expect(main).toContain('Search by app name')
+    expect(main).toContain('instagram://')
+    expect(main).toContain('aria-label="Search candidates by app name"')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+    expect(main).not.toMatch(/[!！]/)
+  })
+
+  it('translates a configured row while leaving the label somebody typed alone', async () => {
+    await seedApp()
+    const main = mainOf(await settingsHtml())
+
+    expect(main).toContain('Being stopped · 1')
+    expect(main).toContain('Wait · seconds')
+    expect(main).toContain('Quiet · seconds')
+    expect(main).toContain('Save')
+    // Their own display name is data, in either language.
+    expect(main).toContain('<span class="sname">小红书</span>')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+  })
+
+  it('hands the field script its strings, with the jump still synchronous', async () => {
+    const js = scriptOf(await settingsHtml())
+
+    expect(js).toContain('Use this')
+    expect(js).toContain('Two lists agree')
+    expect(js).not.toMatch(/试跳|用这个|先填/)
+    // The one rule translation was never allowed to touch.
+    expect(js.match(/location\.href\s*=/g) ?? []).toHaveLength(1)
+    expect(js).toContain('function jump(scheme)')
+  })
+})
+
+describe('/review in English', () => {
+  it('translates the empty state and the Breathe face nav', async () => {
+    const html = await (await renderReview(req('/review'), env, user)).text()
+
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<title>Log · Alex</title>')
+    const main = mainOf(html)
+    expect(main).toContain('<h2>No records yet</h2>')
+    expect(main).toContain('You have not been stopped even once.')
+    expect(main).toContain('<a href="/settings">Settings</a>')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+
+    const nav = html.match(/<nav aria-label="Navigation">([\s\S]*?)<\/nav>/)
+    expect(nav, 'nav missing or still labelled in Chinese').toBeTruthy()
+    for (const label of ['Log', 'Settings', 'Guide', 'Account']) {
+      expect(nav![1]).toContain(`<span class="lb">${label}</span>`)
+    }
   })
 })
 
@@ -313,6 +483,31 @@ describe('with no language header at all, nothing changed', () => {
     expect(mock).toContain('你正要打开<b>小红书</b>')
     expect(mock).toContain('>墨</a>')
     expect(mock).toContain('<span>预览</span>')
+  })
+
+  it('still renders Chinese on the account pages, /settings and /review', async () => {
+    const register = await (await handleRegister(req('/register', false), env)).text()
+    expect(register).toContain('<html lang="zh-Hans">')
+    expect(register).toContain('<h1>注册</h1>')
+    expect(register).toContain('两样都丢了')
+
+    const login = await (await handleLogin(req('/login', false), env)).text()
+    expect(login).toContain('<h1>登录</h1>')
+    expect(login).toContain('<a href="/recover">用 token 重置</a>')
+
+    const account = await (await handleAccount(req('/account', false), env, user)).text()
+    expect(account).toContain('<html lang="zh-Hans">')
+    expect(account).toContain('<h2>你的 token</h2>')
+    expect(account).toContain('退出登录')
+
+    const settings = await (await handleSettings(req('/settings', false), env, user)).text()
+    expect(settings).toContain('<h1>要拦哪些 App</h1>')
+    expect(settings).toContain('还没有配置任何 App')
+    expect(settings).toContain('>试跳</button>')
+
+    const review = await (await renderReview(req('/review', false), env, user)).text()
+    expect(review).toContain('<h2>还没有记录</h2>')
+    expect(review).toContain('你还没有被拦下过一次。')
   })
 })
 

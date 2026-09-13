@@ -44,6 +44,7 @@ export function shownGoals<T extends Pick<Goal, 'archived_at' | 'until'>>(goals:
 
 const WEEKDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六']
 const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const WEEKDAYS_EN_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** The weekday of a 'YYYY-MM-DD' date, 0 = Sunday, read in UTC on the parts. */
@@ -59,13 +60,37 @@ export function weekdayName(ymd: string, loc: Locale): string {
 }
 
 /**
+ * One column of /review's week chart: 「一」 / 「Mon」. The chart gives each of
+ * seven days a slice of a phone's width, so this is the short form in both
+ * languages — 「Monday」 under a 40px column would wrap or be clipped.
+ */
+export function shortWeekday(ymd: string, loc: Locale): string {
+  const i = weekdayIndex(ymd)
+  return loc === 'en' ? WEEKDAYS_EN_SHORT[i]! : WEEKDAYS_ZH[i]!
+}
+
+/**
+ * A day with no year and no weekday: 「9 月 13 日」 / 「Sep 13」. /review dates
+ * its own 「today」 card with this; `prettyDate` below is this plus the weekday.
+ *
+ * A string that is not a date at all comes back unchanged rather than as
+ * 「NaN 月 NaN 日」 — the one caller passes `shanghaiDate()` output, so this is
+ * belt and braces rather than a live path.
+ */
+export function monthDay(ymd: string, loc: Locale): string {
+  const [, rawMonth, rawDay] = ymd.split('-')
+  if (!rawMonth || !rawDay) return ymd
+  const m = Number(rawMonth)
+  const d = Number(rawDay)
+  return loc === 'en' ? `${MONTHS_EN[m - 1] ?? rawMonth} ${d}` : `${m} 月 ${d} 日`
+}
+
+/**
  * The day line at the top of /today: 「9 月 13 日 · 周日」 in Chinese, 「Sep 13
  * · Sunday」 in English. No year in either — the page is about today.
  */
 export function prettyDate(ymd: string, loc: Locale): string {
-  const [, m, d] = ymd.split('-').map(Number) as [number, number, number]
-  const day = loc === 'en' ? `${MONTHS_EN[m - 1]!} ${d}` : `${m} 月 ${d} 日`
-  return `${day} · ${weekdayName(ymd, loc)}`
+  return `${monthDay(ymd, loc)} · ${weekdayName(ymd, loc)}`
 }
 
 /** 'YYYY-MM-DD' ± n days, computed in UTC on the date parts so no zone drifts it. */

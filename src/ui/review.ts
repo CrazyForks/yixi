@@ -27,68 +27,76 @@ import {
 } from '../stats'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { translator } from '../i18n'
+import { monthDay, shortWeekday } from '../dates'
+import { localeOf, translator, type Locale, type T } from '../i18n'
 
 export async function renderReview(
-  // No query parameters; `request` is part of the route handler contract in
-  // src/index.ts.
-  _request: Request,
+  // Read for its language only; this page takes no query parameters, and
+  // `request` is part of the route handler contract in src/index.ts.
+  request: Request,
   env: Env,
   user: User,
 ): Promise<Response> {
+  // One translator per request, built here and handed down — never a module
+  // variable: a single isolate serves many requests at once.
+  const loc = localeOf(request, user)
+  const t = translator(loc)
   const stats = await getReviewStats(env.DB, user.id)
   return page({
-    title: `回顾 · ${user.name}`,
+    title: t('回顾 · {name}', { name: user.name }),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS + CSS,
-    body: consoleHeader(user, 'review', translator('zh')) + '<main>' + (stats.firstDate === null ? emptyState() : sections(stats)) + '</main>',
+    body: consoleHeader(user, 'review', t) + '<main>' + (stats.firstDate === null ? emptyState(t) : sections(stats, loc, t)) + '</main>',
   })
 }
 
 // --- sections -------------------------------------------------------------
 
-function sections(s: ReviewStats): string {
-  return [todaySection(s), weekSection(s), appsSection(s), monthSection(s), footnote(s)].join('\n')
+function sections(s: ReviewStats, loc: Locale, t: T): string {
+  return [todaySection(s, loc, t), weekSection(s, loc, t), appsSection(s, t), monthSection(s, t), footnote(s, t)].join('\n')
 }
 
 // 1. Today: how many times was I stopped, how many did I hold.
-function todaySection(s: ReviewStats): string {
+function todaySection(s: ReviewStats, loc: Locale, t: T): string {
   const c = s.todayCounts
   if (c.attempts === 0) {
     return card(
-      '今天',
-      `<p class="quiet">今天还没有被拦下过。</p>
-  <p class="note">${escapeHtml(prettyDate(s.today))}</p>`,
+      t('今天'),
+      `<p class="quiet">${t('今天还没有被拦下过。')}</p>
+  <p class="note">${escapeHtml(monthDay(s.today, loc))}</p>`,
     )
   }
   return card(
-    '今天',
-    `<p class="hero"><b class="num">${c.attempts}</b><span>次拦下</span></p>
+    t('今天'),
+    `<p class="hero"><b class="num">${c.attempts}</b><span>${t('次拦下')}</span></p>
   <div class="split">${splitBar(c)}</div>
   <ul class="legend">
-    <li><i class="sw hold"></i>忍住 <b class="num">${c.abandoned}</b></li>
-    <li><i class="sw idle"></i>没做选择 <b class="num">${c.undecided}</b></li>
-    <li><i class="sw go"></i>进去了 <b class="num">${c.proceeded}</b></li>
+    <li><i class="sw hold"></i>${t('忍住')} <b class="num">${c.abandoned}</b></li>
+    <li><i class="sw idle"></i>${t('没做选择')} <b class="num">${c.undecided}</b></li>
+    <li><i class="sw go"></i>${t('进去了')} <b class="num">${c.proceeded}</b></li>
   </ul>
-  <p class="note">「忍住」是明确点了「算了」；「没做选择」是开了呼吸页直接切走——同样没进 App，但不算你主动放弃，所以分开记。</p>`,
+  <p class="note">${t('「忍住」是明确点了「算了」；「没做选择」是开了呼吸页直接切走——同样没进 App，但不算你主动放弃，所以分开记。')}</p>`,
   )
 }
 
 // 2. Last 7 days: one bar per day, split by outcome, plus the window's rate.
-function weekSection(s: ReviewStats): string {
+function weekSection(s: ReviewStats, loc: Locale, t: T): string {
   const peak = Math.max(1, ...s.week.map(d => d.attempts))
-  const cols = s.week.map(d => dayColumn(d, peak, d.date === s.today)).join('')
-  const t = s.weekTotals
+  const cols = s.week.map(d => dayColumn(d, peak, d.date === s.today, loc, t)).join('')
+  const week = s.weekTotals
   const summary =
-    t.attempts === 0
-      ? '<p class="quiet">这七天一次都没被拦下。</p>'
-      : `<p class="sub">共 <b class="num">${t.attempts}</b> 次拦下，忍住 <b class="num">${t.abandoned}</b> 次，放弃率 <b class="num">${pct(t.abandonRate)}</b>。</p>`
-  return card(`最近 ${WEEK_DAYS} 天`, `${summary}\n  <div class="chart">${cols}</div>`)
+    week.attempts === 0
+      ? `<p class="quiet">${t('这七天一次都没被拦下。')}</p>`
+      : `<p class="sub">${t('共 <b class="num">{n}</b> 次拦下，忍住 <b class="num">{hold}</b> 次，放弃率 <b class="num">{rate}</b>。', { n: week.attempts, hold: week.abandoned, rate: pct(week.abandonRate) })}</p>`
+  return card(t('最近 {days} 天', { days: WEEK_DAYS }), `${summary}\n  <div class="chart">${cols}</div>`)
 }
 
-function dayColumn(d: DayStat, peak: number, isToday: boolean): string {
-  const label = isToday ? '今天' : (WEEKDAYS[weekdayIndex(d.date)] ?? '')
-  const title = `${d.date}：拦下 ${d.attempts} 次，忍住 ${d.abandoned}，没做选择 ${d.undecided}，进去了 ${d.proceeded}`
+function dayColumn(d: DayStat, peak: number, isToday: boolean, loc: Locale, t: T): string {
+  const label = isToday ? t('今天') : shortWeekday(d.date, loc)
+  const title = t('{date}：拦下 {n} 次，忍住 {hold}，没做选择 {idle}，进去了 {go}', {
+    date: d.date, n: d.attempts, hold: d.abandoned, idle: d.undecided, go: d.proceeded,
+  })
   // A day with one attempt against a peak of thirty still has to be visible, so
   // the height is floored rather than left proportional all the way to zero.
   const bar =
@@ -107,68 +115,68 @@ function dayColumn(d: DayStat, peak: number, isToday: boolean): string {
 }
 
 // 3. Which app costs you the most.
-function appsSection(s: ReviewStats): string {
+function appsSection(s: ReviewStats, t: T): string {
   if (s.apps.length === 0) {
-    return card('哪个 App 最消耗你', `<p class="quiet">这 ${MONTH_DAYS} 天还没有记录。</p>`)
+    return card(t('哪个 App 最消耗你'), `<p class="quiet">${t('这 {days} 天还没有记录。', { days: MONTH_DAYS })}</p>`)
   }
   const peak = Math.max(1, ...s.apps.map(a => a.attempts))
   return card(
-    '哪个 App 最消耗你',
-    `<p class="sub">最近 ${MONTH_DAYS} 天，按拦下次数排。</p>
-  <ol class="apps">${s.apps.map(a => appRow(a, peak)).join('')}</ol>`,
+    t('哪个 App 最消耗你'),
+    `<p class="sub">${t('最近 {days} 天，按拦下次数排。', { days: MONTH_DAYS })}</p>
+  <ol class="apps">${s.apps.map(a => appRow(a, peak, t)).join('')}</ol>`,
   )
 }
 
-function appRow(a: AppStat, peak: number): string {
+function appRow(a: AppStat, peak: number, t: T): string {
   return `<li>
   <div class="line">
     <span class="name">${escapeHtml(a.label)}</span>
-    <span class="cnt"><b class="num">${a.attempts}</b> 次</span>
+    <span class="cnt">${t('<b class="num">{n}</b> 次', { n: a.attempts })}</span>
   </div>
   <div class="track"><span class="fill" style="width:${Math.max(2, Math.round((a.attempts / peak) * 100))}%">${splitBar(a)}</span></div>
   <div class="line sub2">
-    <span>忍住 ${a.abandoned} · 没做选择 ${a.undecided} · 进去了 ${a.proceeded}</span>
-    <span class="rate num">放弃率 ${pct(a.abandonRate)}</span>
+    <span>${t('忍住 {hold} · 没做选择 {idle} · 进去了 {go}', { hold: a.abandoned, idle: a.undecided, go: a.proceeded })}</span>
+    <span class="rate num">${t('放弃率 {rate}', { rate: pct(a.abandonRate) })}</span>
   </div>
 </li>`
 }
 
 // 4. The 30-day backdrop.
-function monthSection(s: ReviewStats): string {
-  const t = s.monthTotals
+function monthSection(s: ReviewStats, t: T): string {
+  const month = s.monthTotals
   const tail =
-    t.attempts > 0
-      ? `<p class="note">其中 ${t.undecided} 次开了呼吸页但没做选择，${t.proceeded} 次撑过等待还是进去了。</p>`
-      : `<p class="quiet">这 ${MONTH_DAYS} 天没有记录。</p>`
+    month.attempts > 0
+      ? `<p class="note">${t('其中 {idle} 次开了呼吸页但没做选择，{go} 次撑过等待还是进去了。', { idle: month.undecided, go: month.proceeded })}</p>`
+      : `<p class="quiet">${t('这 {days} 天没有记录。', { days: MONTH_DAYS })}</p>`
   return card(
-    `最近 ${MONTH_DAYS} 天`,
+    t('最近 {days} 天', { days: MONTH_DAYS }),
     `<div class="tiles">
-    ${tile(String(t.attempts), '次拦下')}
-    ${tile(String(t.abandoned), '次忍住')}
-    ${tile(pct(t.abandonRate), '放弃率')}
-    ${tile(`${s.monthActiveDays}/${MONTH_DAYS}`, '有记录的天')}
+    ${tile(String(month.attempts), t('次拦下'))}
+    ${tile(String(month.abandoned), t('次忍住'))}
+    ${tile(pct(month.abandonRate), t('放弃率'))}
+    ${tile(`${s.monthActiveDays}/${MONTH_DAYS}`, t('有记录的天'))}
   </div>
   ${tail}`,
   )
 }
 
-function footnote(s: ReviewStats): string {
+function footnote(s: ReviewStats, t: T): string {
   const parts: string[] = []
-  if (s.firstDate) parts.push(`记录始于 ${escapeHtml(s.firstDate)}。`)
+  if (s.firstDate) parts.push(t('记录始于 {date}。', { date: escapeHtml(s.firstDate) }))
   if (s.monthGracePasses > 0) {
     parts.push(
-      `另有 ${s.monthGracePasses} 次是点「继续」跳回 App 时自动化重复触发的，属于机器噪音，未计入以上任何数字。`,
+      t('另有 {n} 次是点「继续」跳回 App 时自动化重复触发的，属于机器噪音，未计入以上任何数字。', { n: s.monthGracePasses }),
     )
   }
-  parts.push('这页只有你能看到。')
+  parts.push(t('这页只有你能看到。'))
   return `<p class="foot">${parts.join(' ')}</p>`
 }
 
-function emptyState(): string {
+function emptyState(t: T): string {
   return card(
-    '还没有记录',
-    `<p class="quiet">你还没有被拦下过一次。</p>
-  <p class="note">先去 <a href="/settings">设置</a> 添加要拦的 App，再在 iPhone「快捷指令」里为它建一条「打开 App 时」自动化。之后每一次冲动都会记在这里。</p>`,
+    t('还没有记录'),
+    `<p class="quiet">${t('你还没有被拦下过一次。')}</p>
+  <p class="note">${t('先去 <a href="/settings">设置</a> 添加要拦的 App，再在 iPhone「快捷指令」里为它建一条「打开 App 时」自动化。之后每一次冲动都会记在这里。')}</p>`,
   )
 }
 
@@ -199,17 +207,6 @@ function seg(cls: string, n: number): string {
 /** A rate as a whole percent; an em dash when there is no denominator. */
 function pct(rate: number | null): string {
   return rate === null ? '—' : `${Math.round(rate * 100)}%`
-}
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'] as const
-
-function weekdayIndex(date: string): number {
-  return new Date(`${date}T00:00:00Z`).getUTCDay()
-}
-
-function prettyDate(date: string): string {
-  const [, m, d] = date.split('-')
-  return m && d ? `${Number(m)} 月 ${Number(d)} 日` : date
 }
 
 // --- styles ---------------------------------------------------------------

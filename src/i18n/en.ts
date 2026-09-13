@@ -232,4 +232,249 @@ export const EN: Record<string, string> = {
   登录: 'Sign in',
   '已经有别人发给你的 token 了？<a href="/claim">给它绑上邮箱和密码</a>，别重新注册——\n重新注册会拿到一把新的，旧记录就找不回来了。<br>\n配到 iPhone 上的一步一步说明在<a href="/setup">怎么配</a>，登录之后打开就行。<br>\n源码 · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a>':
     'Already have a token somebody sent you? <a href="/claim">Attach an email address and a password to it</a> rather than signing up again —\nsigning up again hands you a new one, and the old records are out of reach.<br>\nThe step-by-step for setting it up on an iPhone is under <a href="/setup">Guide</a>, once you have signed in.<br>\nSource · <a href="https://github.com/Defiabell/yixi" rel="noreferrer">github.com/Defiabell/yixi</a>',
+
+  // --- the account pages (src/ui/account.ts) ---------------------------------
+  // The four pages a stranger or a signed-in reader meets around their own
+  // account. 「token」 stays 「token」 in both languages — it is the word the
+  // Shortcut, the docs and the /setup tutorial all already use.
+  '注册 · 一息': 'Sign up · 一息',
+  '注册之后你会拿到一把 <b>token</b>。iPhone 的「快捷指令」拿它认出你，你被拦下的每一条记录也都记在它名下。它就是这个账号本身。':
+    'Signing up hands you a <b>token</b>. The iPhone Shortcuts app knows you by it, and every time you are stopped the record is filed under it. It is the account itself.',
+  先说清楚代价: 'The price, up front',
+  '这里<b>没有邮件服务</b>。邮箱不发信、不验证，也不能用来找回密码——它只是你下次登录时的用户名。':
+    'There is <b>no mail service here</b>. Nothing is ever sent to the address, it is never verified, and it cannot recover a password — it is only the name you sign in with next time.',
+  '能救你的是两样东西，它们互为备份：': 'Two things can save you, and each is the other’s backup:',
+  '<b>忘了密码</b> —— 用 token 重置。在<a href="/recover">重置那一页</a>把 token 贴进去，直接设一个新的。':
+    '<b>Forgot the password</b> — reset it with the token. Paste the token into <a href="/recover">the reset page</a> and set a new one there and then.',
+  '<b>忘了 token</b> —— 用密码登录，账号页上点一下就能看到它。它是加密存在服务器上的。':
+    '<b>Forgot the token</b> — sign in with the password and one tap on the account page shows it. It is stored encrypted on the server.',
+  '<b>两样都丢了</b> —— <b>没有办法</b>。没有验证邮件、没有客服、没有后门。这个账号连同里面所有记录都拿不回来，只能重新注册一个空的。':
+    '<b>Lost both</b> — <b>there is nothing to be done</b>. No verification mail, no support desk, no back door. The account and every record in it are out of reach, and all that is left is to register an empty one.',
+  '这个闭环是故意做成这样的：一个自己用的小工具不值得为它接一整套邮件系统，代价就是你得自己留住其中一样。注册完先把 token 存进密码管理器，一分钟的事。':
+    'The loop is deliberate: a small tool you run for yourself is not worth wiring a whole mail system into, and the price is that keeping one of the two is your job. Once you have signed up, put the token in a password manager — it takes a minute.',
+  '名字 · 选填，只显示在这几个页面上': 'Name · optional, shown only on these pages',
+  '留空就用邮箱 @ 前面那截': 'Left empty, the part before the @',
+  '密码 · 至少 {min} 位': 'Password · {min} characters or more',
+  再打一遍: 'Type it again',
+  '已经有账号了？<a href="/login">登录</a>。<br>\n手里已经有一把别人发给你的 token？<a href="/claim">给它绑上邮箱和密码</a>，别在这里重新注册——重新注册会拿到一把新的，旧记录就找不回来了。':
+    'Already have an account? <a href="/login">Sign in</a>.<br>\nAlready holding a token somebody sent you? <a href="/claim">Attach an email address and a password to it</a> rather than signing up here — signing up again hands you a new one, and the old records are out of reach.',
+  '邮箱 · 只当用户名用，不发信': 'Email · used as a username, never written to',
+  '人机验证需要 JavaScript，请先在浏览器里打开它。': 'The human check needs JavaScript. Turn it on in your browser first.',
+  '人机验证没过。刷新这一页，重新验证一次。': 'The human check did not pass. Refresh this page and take it again.',
+  '两次输入的密码不一样，再来一次。': 'The two passwords do not match. Try again.',
+  '去登录 →': 'Sign in →',
+
+  '登录 · 一息': 'Sign in · 一息',
+  '登录只是为了让你在这几个页面上看到自己的记录和 token。快捷指令那边不受影响，它认的一直是 token。':
+    'Signing in is only so that you can see your own records and your own token on these pages. It changes nothing for the Shortcut, which has always known you by the token.',
+  密码: 'Password',
+  '忘了密码？<a href="/recover">用 token 重置</a>。<br>\n还没有账号？<a href="/register">注册一个</a>。':
+    'Forgot the password? <a href="/recover">Reset it with the token</a>.<br>\nNo account yet? <a href="/register">Sign up</a>.',
+
+  '绑定 · 一息': 'Attach · 一息',
+  '给已有的 token 绑账号': 'Attach an account to a token you already have',
+  '你手里那把 token 是发号时代给出去的，只有哈希存在服务器上。绑一次邮箱和密码，以后忘了它就能登录看回来。':
+    'The token you hold was handed out in the ticket-window days, and the server keeps only its hash. Attach an email address and a password once, and if you forget it you can sign in and read it back.',
+  'token · 32 位十六进制，粘贴进来': 'token · 32 hex characters, pasted in',
+  '名字 · 选填，留空就沿用现在这个': 'Name · optional, left empty it keeps the current one',
+  绑定: 'Attach',
+  'token 本身不变，快捷指令不用改。绑定只是多给这个账号一条登录的路。':
+    'The token itself does not change and the Shortcut needs no edit. Attaching only adds one more way into this account.',
+  '没有 token，只是想开始用？<a href="/register">注册一个新的</a>。':
+    'No token, and you just want to start? <a href="/register">Sign up for a new one</a>.',
+
+  '重置密码 · 一息': 'Reset password · 一息',
+  '用 token 重置密码': 'Reset the password with the token',
+  '这里不发验证邮件。能证明你是你的，是你手里那把 token——它是 128 位随机数，比一封能被人翻走的邮件更硬。':
+    'No verification mail is sent here. What proves you are you is the token in your hands — 128 random bits, harder than a mail somebody else can go through.',
+  '新密码 · 至少 {min} 位': 'New password · {min} characters or more',
+  重置并登录: 'Reset and sign in',
+  'token 一般在你当初配快捷指令时那条「文本」动作里，或者在你的密码管理器里。重置之后 <b>token 不变</b>，快捷指令照常工作；但所有已经登录的浏览器都会被踢下线，只留你手上这一个。':
+    'The token is usually in the “Text” action of the Shortcut you set up, or in your password manager. After a reset <b>the token is unchanged</b> and the Shortcut keeps working, but every browser already signed in is dropped, apart from the one in your hands.',
+  'token 也丢了？那这个账号真的回不来了，只能<a href="/register">重新注册一个空的</a>。<br>\n密码想起来了？<a href="/login">去登录</a>。':
+    'Lost the token as well? Then this account really is gone, and all that is left is to <a href="/register">register an empty one</a>.<br>\nRemembered the password? <a href="/login">Sign in</a>.',
+
+  '账号 · {name}': 'Account · {name}',
+  还没有绑定邮箱: 'No email address attached yet',
+  '加入于 <span class="num">{date}</span>': 'Joined <span class="num">{date}</span>',
+  语言: 'Language',
+  '注册好了。别急着走——先点下面的「显示」，把 token 存进密码管理器。':
+    'You are signed up. Before you go, tap “Show” below and put the token in a password manager.',
+  '绑好了。以后忘了 token 就用邮箱和密码登录，在这一页看回来。':
+    'Attached. If you forget the token, sign in with the email address and password and read it back on this page.',
+  '密码已经重置，其他设备上的登录都被踢掉了。': 'The password is reset, and every sign-in on other devices was dropped.',
+  '密码改好了。其他设备上的登录都被踢掉了，这台还在。':
+    'The password is changed. Every sign-in on other devices was dropped; this one is still here.',
+  '你的 token': 'Your token',
+  '快捷指令用它认出你，它也是你所有记录的钥匙。别截图，别贴进聊天框。':
+    'The Shortcut knows you by it, and it is the key to every record you have. Do not screenshot it, do not paste it into a chat.',
+  显示: 'Show',
+  '要把它配进 iPhone，去<a href="/setup">怎么配</a>——那一页已经替你把完整的地址拼好了，照抄就行。':
+    'To put it on an iPhone, go to <a href="/setup">Guide</a> — that page has already assembled the whole address, ready to copy.',
+  '服务器这边打不开你的 token 原文，只存着它的哈希。<br>它照常能用，只是这里看不到。':
+    'This server cannot open the plaintext of your token; it holds only the hash.<br>The token still works — it just cannot be shown here.',
+  用它绑一次账号: 'Attach an account with it',
+  复制: 'Copy',
+  藏起来: 'Hide it',
+  已复制: 'Copied',
+  '已选中，长按拷贝': 'Selected — press and hold to copy',
+  '换一把新 token': 'Swap in a new token',
+  '泄漏了才需要这么做。<b>旧 token 立刻失效</b>，你手机上每一条用到它的快捷指令都得把网址里的\n  <span class="mono">k=</span> 换成新的，改完之前那些 App 不会再被拦。改密码不会换 token，两者互不影响。':
+    'Only needed if it has leaked. <b>The old token stops working at once</b>, and every Shortcut on your phone that uses it needs the\n  <span class="mono">k=</span> in its address replaced; until you do, those apps go unstopped. Changing the password does not change the token — the two are independent.',
+  当前密码: 'Current password',
+  换一把: 'Swap it',
+  '新 token': 'The new token',
+  '<b>只显示这一次。</b>现在就存进密码管理器，然后去把快捷指令里的网址换掉。':
+    '<b>Shown this once only.</b> Put it in a password manager now, then go and replace the address in your Shortcuts.',
+  '旧的那把已经不认了。去<a href="/setup?show=1">怎么配</a>拿现成的整行网址。':
+    'The old one is not recognised any more. Go to <a href="/setup?show=1">Guide</a> for the whole address, ready to copy.',
+  改密码: 'Change the password',
+  保存新密码: 'Save the new password',
+  '改密码不会换掉 token，快捷指令不用动。但其他设备上的登录会全部失效，只留你手上这一个。':
+    'Changing the password does not change the token, and the Shortcut needs no edit. Every sign-in on other devices does stop working, apart from the one in your hands.',
+  给它绑上邮箱和密码: 'Attach an email address and a password to it',
+  还没有密码: 'No password yet',
+  '这个账号是发号时代建的，只有一把 token，没有邮箱也没有密码。现在这样也能用，但 token 一丢就没了。':
+    'This account was made in the ticket-window days: one token, no email address and no password. It works as it is, but lose the token and it is gone.',
+  退出登录: 'Sign out',
+  '退出只清掉这台设备上的登录状态。快捷指令照常拦你——它认的是 token，不是这个登录。':
+    'Signing out clears the sign-in on this device only. The Shortcut goes on stopping you — what it knows you by is the token, not this session.',
+  '不想把这些记录放在别人的服务器上？\n    <a href="https://github.com/Defiabell/yixi" rel="noreferrer">源码在这里</a>，\n    照 README 部署一份自己的，跑在 Cloudflare 免费额度里。':
+    'Would you rather these records did not sit on somebody else’s server?\n    <a href="https://github.com/Defiabell/yixi" rel="noreferrer">The source is here</a>;\n    follow the README and deploy your own, running inside the Cloudflare free tier.',
+
+  // --- what src/account.ts hands back when something will not save ----------
+  '这个邮箱看着不对，检查一下。': 'That address does not look right. Check it.',
+  '密码至少 {min} 位，最多 {max} 位。': 'A password is {min} characters at least and {max} at most.',
+  '名字不能是空的，也别超过 {max} 个字。': 'A name cannot be empty, and cannot run past {max} characters.',
+  '这个邮箱已经注册过了，直接登录。': 'That address is already registered. Sign in instead.',
+  '邮箱或密码不对。': 'That address or password is wrong.',
+  '这个 token 不对。': 'That token is not right.',
+  '这个 token 还没绑定邮箱和密码，先去绑定。':
+    'That token has no email address or password attached yet. Attach them first.',
+  '这个 token 已经绑过账号了，直接登录，或者用它重置密码。':
+    'That token already has an account. Sign in, or use it to reset the password.',
+  '当前密码不对。': 'That is not the current password.',
+
+  // --- /settings (src/ui/settings.ts) ---------------------------------------
+  '设置 · 一息': 'Settings · 一息',
+  '要拦哪些 App': 'Which apps to stop',
+  '每条对应 iPhone 上一条「打开 App 时」自动化。改完立刻生效，不用重建快捷指令。':
+    'Each row matches one “When App Is Opened” automation on the iPhone. A change takes effect at once, with no Shortcut to rebuild.',
+  '已保存 <span class="mono">{app}</span>。': 'Saved <span class="mono">{app}</span>.',
+  '已在拦 · {n}': 'Being stopped · {n}',
+  '还没有配置任何 App。<br>用上面的 {plus} 加第一个。':
+    'No apps configured yet.<br>Use the {plus} above to add the first one.',
+  // 「{escape}」 is src/inapp.ts quoting the host app's own menu, so it stays in
+  // that app's language — all seven are Chinese-only apps — and so does
+  // 「{name}」, which is what their icon says on the phone.
+  '你现在是在<b>{name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的\n    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。{escape}，用 Safari 打开这一页再试。\n    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过{name}。':
+    'You are inside the browser built into <b>{name}</b>. It will not let a page jump to another app, so <b>test it</b> on this page\n    does nothing at all — <b>your scheme is not wrong</b>. {escape}, then open this page in Safari and try again.\n    <br>What actually stops you is unaffected: the Shortcut opens the system default browser, which does not go through {name}.',
+  '加一个 App': 'Add an app',
+  'App 键 · 自动化里要手打的那行文本，小写': 'App key · the line you type in the automation, lowercase',
+  'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>':
+    'URL scheme · what “Open it anyway” jumps back to, <b>test it before you trust it</b>',
+  '显示名 · 呼吸页上会看到': 'Display name · what the breathing page shows',
+  已停用: 'Off',
+  '删掉这条配置？已经记下的次数不会被删。': 'Delete this row? The counts already recorded stay.',
+  '等待 · 秒': 'Wait · seconds',
+  '免打扰 · 秒': 'Quiet · seconds',
+  '「免打扰」建议 <span class="num">90</span> 秒。设得太短（几秒）会让你<b>刚跳回 App 就又被拦</b>。':
+    '“Quiet” is best at <span class="num">90</span> seconds. Set it to a few seconds and you are <b>stopped again the moment you land in the app</b>.',
+  它到底管什么: 'What it actually covers',
+  '<p>点了「继续」之后这段时间内不再拦你。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。</p>':
+    '<p>For that long after you choose “Open it anyway”, you are not stopped again. It also settles the loop where jumping back into the app fires the automation once more — a trigger inside that window counts as machine noise and stays out of the statistics.</p>',
+  启用拦截: 'Stop me before this app',
+  'App 键只能用小写字母、数字、- 和 _，最长 32 位。它要和你在快捷指令自动化里手打的那行文本一模一样。':
+    'An app key is lowercase letters, digits, - and _, up to 32 characters. It has to match the line you type in the Shortcuts automation exactly.',
+  '显示名不能空着。': 'A display name cannot be empty.',
+  '显示名太长了，40 个字以内。': 'That display name is too long. 40 characters at most.',
+  'URL scheme 不能空着。不知道填什么就先随便填一个候选，再去「实测」页试。':
+    'A URL scheme cannot be empty. If you do not know what goes here, put in any candidate and test it.',
+  'URL scheme 太长了。': 'That URL scheme is too long.',
+  'URL scheme 要长成 xxx:// 的样子，比如 someapp://。':
+    'A URL scheme has to look like xxx://, for instance someapp://.',
+  '这个 scheme 不能用。': 'That scheme cannot be used.',
+  '等待秒数要是 1 到 120 之间的整数。': 'The wait has to be a whole number of seconds, 1 to 120.',
+  '免打扰秒数要是 {min} 到 3600 之间的整数。太短会让你刚跳回 App 就又被拦。':
+    'The quiet window has to be a whole number of seconds, {min} to 3600. Too short and you are stopped again the moment you land in the app.',
+  '要删除的 App 键不对。': 'That is not an app key this page can delete.',
+  '已经有一条 {key} 了。要改它就展开下面那条，别在这里重新加一遍——直接加会把它的秒数一起覆盖掉。':
+    'There is already a row for {key}. Open that row below to change it rather than adding it again here — adding it again would overwrite its seconds too.',
+
+  // --- the scheme field and its picker (src/ui/schemefield.ts) --------------
+  // The worked examples are apps an English reader would actually have, same
+  // rule as /today's 「B 站」. Both schemes are real.
+  '例：小红书 <code class="mono">xhsdiscover://</code>，起点读书 <code class="mono">QDReader://</code>。候选都<b>没验证过</b>，填完必须点<b>试跳</b>，App 真打开了才算数。':
+    'For instance Instagram <code class="mono">instagram://</code>, Reddit <code class="mono">reddit://</code>. No candidate here is <b>verified</b>, so once you have filled one in you have to tap <b>test it</b> — it counts only when the app really opens.',
+  试跳: 'Test it',
+  '不知道填什么？按 App 名字找': 'Not sure what goes here? Search by app name',
+  起点读书: 'Reddit',
+  '按 App 名字搜索候选': 'Search candidates by app name',
+  找: 'Search',
+  // The three tiers a candidate is labelled with, shortest first — they sit in
+  // a badge beside a seal and must not wrap.
+  实测过: 'Tested',
+  清单里有: 'On a list',
+  猜的: 'A guess',
+  两份清单一致: 'Two lists agree',
+  '建议 App 键': 'Suggested app key',
+  用这个: 'Use this',
+  '表里没有这个 App。下面几条是<b>从 App Store 的 bundle id 猜出来的</b>，没人验证过 —— 一定要先试跳。':
+    'This app is not in the table. The rows below are <b>guessed from the bundle id in the App Store</b> and verified by nobody — test one before you trust it.',
+  '没找到这个 App。可以自己在上面的格子里填一个 scheme，再点<b>试跳</b>试试。':
+    'This app was not found. You can put a scheme into the box above yourself and tap <b>test it</b>.',
+  'App Store 拒了我们这次查询（它会拒绝 Cloudflare 的出口地址）。表里没有的 App 只能自己找 scheme。':
+    'The App Store refused this query — it turns away Cloudflare’s outbound addresses. For an app that is not in the table, finding the scheme is yours to do.',
+  '连 App Store 超时了。过一会儿再试，或者自己填一个 scheme 直接试跳。':
+    'The App Store timed out. Try again in a while, or fill in a scheme yourself and test it.',
+  'App Store 返回的内容看不懂。自己填一个 scheme 直接试跳也行。':
+    'What the App Store returned could not be read. Filling in a scheme yourself and testing it works too.',
+  '名字太短了，多打几个字。': 'That name is too short. Type a few more characters.',
+  '这次没查成。': 'This search did not get through.',
+  '先填 App 的名字。': 'Type the app name first.',
+  '找…': 'Searching…',
+  '没查成，网络或者服务的问题。自己填一个 scheme 直接试跳也行。':
+    'The search did not get through — a network or a service problem. Filling in a scheme yourself and testing it works too.',
+  '这条不像能跳的 scheme。': 'This does not look like a scheme that can be opened.',
+  '这个不像能跳的 scheme，形状要是 xxx:// 。':
+    'This does not look like a scheme that can be opened; the shape is xxx:// .',
+  '先填一个 scheme。': 'Fill in a scheme first.',
+
+  // --- /review (src/ui/review.ts) -------------------------------------------
+  // The interception ledger. 「忍住」 is a deliberate walk-away and 「没做选择」
+  // is the page being swiped past, and English has to keep those apart — the
+  // whole honesty of the page is that the second is not counted as the first.
+  '回顾 · {name}': 'Log · {name}',
+  '今天还没有被拦下过。': 'Nothing has stopped you today.',
+  次拦下: 'times stopped',
+  忍住: 'Held',
+  没做选择: 'No choice',
+  进去了: 'Went in',
+  '「忍住」是明确点了「算了」；「没做选择」是开了呼吸页直接切走——同样没进 App，但不算你主动放弃，所以分开记。':
+    '“Held” is having tapped “Never mind”; “No choice” is the breathing page opening and being swiped away — the app went unopened either way, but only the first was a decision, so they are counted apart.',
+  '这七天一次都没被拦下。': 'Nothing stopped you in these seven days.',
+  '共 <b class="num">{n}</b> 次拦下，忍住 <b class="num">{hold}</b> 次，放弃率 <b class="num">{rate}</b>。':
+    '<b class="num">{n}</b> stops in all, held <b class="num">{hold}</b> times, walk-away rate <b class="num">{rate}</b>.',
+  '{date}：拦下 {n} 次，忍住 {hold}，没做选择 {idle}，进去了 {go}':
+    '{date}: stopped {n} times, held {hold}, no choice {idle}, went in {go}',
+  '哪个 App 最消耗你': 'Which app costs you most',
+  '这 {days} 天还没有记录。': 'No record in these {days} days yet.',
+  '最近 {days} 天，按拦下次数排。': 'The last {days} days, ordered by how often you were stopped.',
+  '<b class="num">{n}</b> 次': '<b class="num">{n}</b> stops',
+  '忍住 {hold} · 没做选择 {idle} · 进去了 {go}': 'Held {hold} · no choice {idle} · went in {go}',
+  '放弃率 {rate}': 'Walk-away rate {rate}',
+  '其中 {idle} 次开了呼吸页但没做选择，{go} 次撑过等待还是进去了。':
+    'Of those, {idle} opened the breathing page without choosing, and {go} sat through the wait and went in anyway.',
+  '这 {days} 天没有记录。': 'No record in these {days} days.',
+  次忍住: 'times held',
+  放弃率: 'walk-away rate',
+  有记录的天: 'days with a record',
+  '记录始于 {date}。': 'Records begin {date}.',
+  '另有 {n} 次是点「继续」跳回 App 时自动化重复触发的，属于机器噪音，未计入以上任何数字。':
+    'Another {n} were the automation firing again as “Open it anyway” jumped back into the app — machine noise, counted in none of the numbers above.',
+  '这页只有你能看到。': 'This page is yours alone.',
+  还没有记录: 'No records yet',
+  '你还没有被拦下过一次。': 'You have not been stopped even once.',
+  '先去 <a href="/settings">设置</a> 添加要拦的 App，再在 iPhone「快捷指令」里为它建一条「打开 App 时」自动化。之后每一次冲动都会记在这里。':
+    'Go to <a href="/settings">Settings</a> first and add an app to stop, then build it a “When App Is Opened” automation in the iPhone Shortcuts app. After that every impulse is recorded here.',
 }

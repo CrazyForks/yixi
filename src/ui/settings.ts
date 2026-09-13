@@ -14,21 +14,25 @@ import { DEFAULT_GRACE_SECONDS, DEFAULT_WAIT_SECONDS } from '../types'
 import { deleteUserApp, getUserApp, listUserApps, upsertUserApp } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { translator } from '../i18n'
+import { localeOf, translator, type Locale, type T } from '../i18n'
 import { fold, hl, icon } from './icons'
 import { forbiddenPrefixes } from '../scheme'
 import { inAppBrowserOf, type InAppBrowser } from '../inapp'
-import { fieldId, SCHEME_FIELD_CSS, SCHEME_FIELD_JS, schemeField } from './schemefield'
+import { fieldId, SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from './schemefield'
 
 
 // --- route handler ---------------------------------------------------------
 
 export async function handleSettings(request: Request, env: Env, user: User): Promise<Response> {
+  // One translator per request, built here and handed to both halves — never a
+  // module variable: a single isolate serves many requests at once.
+  const loc = localeOf(request, user)
+  const t = translator(loc)
   if (request.method === 'GET') {
     const url = new URL(request.url)
-    return await renderSettings(request, env, user, { saved: url.searchParams.get('saved') })
+    return await renderSettings(request, env, user, { saved: url.searchParams.get('saved') }, loc, t)
   }
-  if (request.method === 'POST') return await handlePost(request, env, user)
+  if (request.method === 'POST') return await handlePost(request, env, user, loc, t)
   return new Response('method not allowed', { status: 405, headers: { allow: 'GET, POST' } })
 }
 
@@ -37,12 +41,12 @@ export async function handleSettings(request: Request, env: Env, user: User): Pr
  * refresh on a phone can never re-submit the form. `?saved=` carries only the
  * app key, which the user just typed themselves.
  */
-async function handlePost(request: Request, env: Env, user: User): Promise<Response> {
+async function handlePost(request: Request, env: Env, user: User, loc: Locale, t: T): Promise<Response> {
   let form: FormData
   try {
     form = await request.formData()
   } catch {
-    return await renderSettings(request, env, user, { error: '表单没读出来，重试一次。', status: 400 })
+    return await renderSettings(request, env, user, { error: t('表单没读出来，重试一次。'), status: 400 }, loc, t)
   }
 
   const op = field(form, 'op')
@@ -50,13 +54,13 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
 
   if (op === 'delete') {
     const app = validAppKey(rawApp)
-    if (!app) return await renderSettings(request, env, user, { error: '要删除的 App 键不对。', status: 400 })
+    if (!app) return await renderSettings(request, env, user, { error: t('要删除的 App 键不对。'), status: 400 }, loc, t)
     await deleteUserApp(env.DB, user.id, app)
     return seeOther('/settings')
   }
 
   if (op !== 'save' && op !== 'add') {
-    return await renderSettings(request, env, user, { error: '不认识这个操作。', status: 400 })
+    return await renderSettings(request, env, user, { error: t('不认识这个操作。'), status: 400 }, loc, t)
   }
 
   // Adding and editing hit the same upsert, so they have to be told apart here.
@@ -70,7 +74,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     const key = validAppKey(rawApp)
     if (key !== null && (await getUserApp(env.DB, user.id, key)) !== null) {
       return await renderSettings(request, env, user, {
-        error: `已经有一条 ${key} 了。要改它就展开下面那条，别在这里重新加一遍——直接加会把它的秒数一起覆盖掉。`,
+        error: t('已经有一条 {key} 了。要改它就展开下面那条，别在这里重新加一遍——直接加会把它的秒数一起覆盖掉。', { key }),
         draft: {
           app: rawApp,
           label: field(form, 'label'),
@@ -81,7 +85,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
         },
         draftIsAdd: true,
         status: 409,
-      })
+      }, loc, t)
     }
   }
 
@@ -94,11 +98,11 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     enabled: form.has('enabled'),
   }
 
-  const parsed = validate(draft)
+  const parsed = validate(draft, t)
   if (typeof parsed === 'string') {
     // Same reason as the collision branch: a rejected ADD whose key happens to
     // match an existing row must reopen the add form, not that row.
-    return await renderSettings(request, env, user, { error: parsed, draft, draftIsAdd: op === 'add', status: 400 })
+    return await renderSettings(request, env, user, { error: parsed, draft, draftIsAdd: op === 'add', status: 400 }, loc, t)
   }
 
   await upsertUserApp(env.DB, { user_id: user.id, ...parsed })
@@ -151,22 +155,22 @@ function validAppKey(raw: string): string | null {
   return APP_KEY.test(raw) ? raw : null
 }
 
-/** Returns the row to write, or a Chinese error message to show the user. */
-function validate(d: Draft): Omit<UserApp, 'user_id'> | string {
+/** Returns the row to write, or a message for the reader, already translated. */
+function validate(d: Draft, t: T): Omit<UserApp, 'user_id'> | string {
   const app = validAppKey(d.app)
-  if (!app) return 'App 键只能用小写字母、数字、- 和 _，最长 32 位。它要和你在快捷指令自动化里手打的那行文本一模一样。'
+  if (!app) return t('App 键只能用小写字母、数字、- 和 _，最长 32 位。它要和你在快捷指令自动化里手打的那行文本一模一样。')
 
-  if (d.label.length === 0) return '显示名不能空着。'
-  if (d.label.length > 40) return '显示名太长了，40 个字以内。'
+  if (d.label.length === 0) return t('显示名不能空着。')
+  if (d.label.length > 40) return t('显示名太长了，40 个字以内。')
 
-  if (d.scheme.length === 0) return 'URL scheme 不能空着。不知道填什么就先随便填一个候选，再去「实测」页试。'
-  if (d.scheme.length > 200) return 'URL scheme 太长了。'
-  if (!SCHEME_PREFIX.test(d.scheme)) return 'URL scheme 要长成 xxx:// 的样子，比如 someapp://。'
+  if (d.scheme.length === 0) return t('URL scheme 不能空着。不知道填什么就先随便填一个候选，再去「实测」页试。')
+  if (d.scheme.length > 200) return t('URL scheme 太长了。')
+  if (!SCHEME_PREFIX.test(d.scheme)) return t('URL scheme 要长成 xxx:// 的样子，比如 someapp://。')
   const lower = d.scheme.toLowerCase()
-  if (forbiddenPrefixes().some((bad) => lower.startsWith(bad))) return '这个 scheme 不能用。'
+  if (forbiddenPrefixes().some((bad) => lower.startsWith(bad))) return t('这个 scheme 不能用。')
 
   const wait = int(d.wait, DEFAULT_WAIT_SECONDS)
-  if (wait === null || wait < 1 || wait > 120) return '等待秒数要是 1 到 120 之间的整数。'
+  if (wait === null || wait < 1 || wait > 120) return t('等待秒数要是 1 到 120 之间的整数。')
 
   const grace = int(d.grace, DEFAULT_GRACE_SECONDS)
   // The floor is not cosmetic. Tapping 继续 has to survive Safari handing off,
@@ -174,7 +178,7 @@ function validate(d: Draft): Omit<UserApp, 'user_id'> | string {
   // few seconds of real time. Set it below that and the user is intercepted
   // again the moment they arrive, which reads as the tool being broken.
   if (grace === null || grace < MIN_GRACE_SECONDS || grace > 3600) {
-    return `免打扰秒数要是 ${MIN_GRACE_SECONDS} 到 3600 之间的整数。太短会让你刚跳回 App 就又被拦。`
+    return t('免打扰秒数要是 {min} 到 3600 之间的整数。太短会让你刚跳回 App 就又被拦。', { min: MIN_GRACE_SECONDS })
   }
 
   return {
@@ -217,7 +221,14 @@ interface RenderOptions {
   status?: number
 }
 
-async function renderSettings(request: Request, env: Env, user: User, o: RenderOptions): Promise<Response> {
+async function renderSettings(
+  request: Request,
+  env: Env,
+  user: User,
+  o: RenderOptions,
+  loc: Locale,
+  t: T,
+): Promise<Response> {
   const apps = await listUserApps(env.DB, user.id)
   const draft = o.draft
   // A rejected edit re-renders from the database, which would silently throw
@@ -229,7 +240,7 @@ async function renderSettings(request: Request, env: Env, user: User, o: RenderO
 
   const rows = apps
     .map((a) =>
-      appRow(draftMatchesRow && draft !== undefined && draft.app === a.app ? fromDraft(draft) : a, {
+      appRow(draftMatchesRow && draft !== undefined && draft.app === a.app ? fromDraft(draft) : a, t, {
         // A row whose edit was just rejected has to be open, or the reader is
         // looking at an error message about a form they cannot see. It goes
         // through `draftMatchesRow` rather than through `draft.app` directly:
@@ -241,25 +252,26 @@ async function renderSettings(request: Request, env: Env, user: User, o: RenderO
     )
     .join('\n')
 
-  const body = `${consoleHeader(user, 'settings', translator('zh'))}
+  const body = `${consoleHeader(user, 'settings', t)}
 <main>
-  <h1>要拦哪些 App</h1>
-  <p class="lede">每条对应 iPhone 上一条「打开 App 时」自动化。改完立刻生效，不用重建快捷指令。</p>
-  ${inAppNotice(inAppBrowserOf(request))}
+  <h1>${t('要拦哪些 App')}</h1>
+  <p class="lede">${t('每条对应 iPhone 上一条「打开 App 时」自动化。改完立刻生效，不用重建快捷指令。')}</p>
+  ${inAppNotice(inAppBrowserOf(request), t)}
   ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
-  ${o.saved ? `<p class="banner good">已保存 <span class="mono">${escapeHtml(o.saved)}</span>。</p>` : ''}
+  ${o.saved ? `<p class="banner good">${t('已保存 <span class="mono">{app}</span>。', { app: escapeHtml(o.saved) })}</p>` : ''}
 
-  ${addBlock(addDraft)}
+  ${addBlock(t, addDraft)}
 
-  ${apps.length === 0 ? emptyState() : `<h2>已在拦 · ${apps.length}</h2>\n  ${rows}`}
+  ${apps.length === 0 ? emptyState(t) : `<h2>${t('已在拦 · {n}', { n: apps.length })}</h2>\n  ${rows}`}
 </main>`
 
   return page({
-    title: `设置 · 一息`,
+    title: t('设置 · 一息'),
     theme: DEFAULT_THEME,
+    lang: loc,
     css: CONSOLE_CSS + SCHEME_FIELD_CSS + SETTINGS_CSS,
     body,
-    script: SCHEME_FIELD_JS,
+    script: schemeFieldJs(t),
     status: o.status ?? 200,
   })
 }
@@ -289,16 +301,18 @@ function fromDraft(d: Draft): Omit<UserApp, 'user_id'> {
  * saying so, this notice reads as 「这个工具在微信里坏了」 rather than 「这一步
  * 要换个浏览器做」.
  */
-function inAppNotice(host: InAppBrowser | null): string {
+function inAppNotice(host: InAppBrowser | null, t: T): string {
   if (host === null) return ''
+  // The host's own name and its 「how to get out」 line are quotations of that
+  // app's menu — all seven are Chinese-only apps whose menu items read in
+  // Chinese whichever language this page is in — so they stay as src/inapp.ts
+  // wrote them and ride in as data.
   const name = escapeHtml(host.name)
-  return `<p class="banner warn">${icon('caveat')}<span>你现在是在<b>${name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的
-    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。${escapeHtml(host.escape)}，用 Safari 打开这一页再试。
-    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过${name}。</span></p>`
+  return `<p class="banner warn">${icon('caveat')}<span>${t('你现在是在<b>{name}</b>内置的浏览器里。它不让网页跳去别的 App，所以这一页的\n    <b>试跳</b>按不出反应——<b>不是你的 scheme 填错了</b>。{escape}，用 Safari 打开这一页再试。\n    <br>真正拦你的时候不受影响：快捷指令打开的是系统默认浏览器，不经过{name}。', { name, escape: escapeHtml(host.escape) })}</span></p>`
 }
 
-function emptyState(): string {
-  return `<p class="empty">还没有配置任何 App。<br>用上面的 ${icon('plus')} 加第一个。</p>`
+function emptyState(t: T): string {
+  return `<p class="empty">${t('还没有配置任何 App。<br>用上面的 {plus} 加第一个。', { plus: icon('plus') })}</p>`
 }
 
 // --- add ------------------------------------------------------------------
@@ -317,32 +331,34 @@ const NEW_NS = 'NEW'
  * `open` only when a rejected submission has to be shown, because a form that
  * springs open on every visit is the layout this replaces.
  */
-function addBlock(draft?: Draft): string {
+function addBlock(t: T, draft?: Draft): string {
   const d = draft
   return `<details class="add"${d ? ' open' : ''}>
-  <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>加一个 App</span></summary>
+  <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>${t('加一个 App')}</span></summary>
   <form class="card addform" method="post" action="/settings" data-ns="${NEW_NS}">
   <div class="field">
-    <label for="f-new-app">App 键 · 自动化里要手打的那行文本，小写</label>
+    <label for="f-new-app">${t('App 键 · 自动化里要手打的那行文本，小写')}</label>
     <input id="f-new-app" type="text" name="app" value="${escapeHtml(d?.app ?? '')}" placeholder="xhs" required
       inputmode="latin" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" pattern="[a-z0-9_-]{1,32}">
   </div>
-  ${labelField(d?.label ?? '', NEW_NS)}
+  ${labelField(d?.label ?? '', NEW_NS, t)}
   ${schemeField({
     name: 'scheme',
     value: d?.scheme ?? '',
     ns: NEW_NS,
-    label: 'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>',
+    label: t('URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>'),
     labelFor: 'label',
+    t,
   })}
   ${secondsFields(
     d ? (int(d.wait, DEFAULT_WAIT_SECONDS) ?? DEFAULT_WAIT_SECONDS) : DEFAULT_WAIT_SECONDS,
     d ? (int(d.grace, DEFAULT_GRACE_SECONDS) ?? DEFAULT_GRACE_SECONDS) : DEFAULT_GRACE_SECONDS,
     NEW_NS,
+    t,
   )}
-  ${enabledField(d ? d.enabled : true, NEW_NS)}
+  ${enabledField(d ? d.enabled : true, NEW_NS, t)}
   <div class="actions">
-    <button class="primary" type="submit" name="op" value="add">添加</button>
+    <button class="primary" type="submit" name="op" value="add">${t('添加')}</button>
   </div>
   </form>
 </details>`
@@ -363,7 +379,7 @@ function addBlock(draft?: Draft): string {
  * automation has to match, and both intervals. Opening it is one tap, and the
  * `id` is unchanged so `/setup` and old `#app-xhs` links still land here.
  */
-function appRow(a: Omit<UserApp, 'user_id'>, o: { open: boolean }): string {
+function appRow(a: Omit<UserApp, 'user_id'>, t: T, o: { open: boolean }): string {
   const key = escapeHtml(a.app)
   const off = a.enabled ? '' : ' off'
   return `<details class="app${off}" id="app-${key}"${o.open ? ' open' : ''}>
@@ -373,35 +389,36 @@ function appRow(a: Omit<UserApp, 'user_id'>, o: { open: boolean }): string {
     ${
       a.enabled
         ? `<span class="mini">${icon('clock')}<span class="num">${a.wait_seconds}</span>s ${icon('loop')}<span class="num">${a.grace_seconds}</span>s</span>`
-        : '<span class="badge">已停用</span>'
+        : `<span class="badge">${t('已停用')}</span>`
     }
     ${icon('chev', { cls: 'ic chev' })}
   </summary>
   <form class="card" method="post" action="/settings" data-ns="${key}">
   <input type="hidden" name="app" value="${escapeHtml(a.app)}">
-  ${labelField(a.label, a.app)}
+  ${labelField(a.label, a.app, t)}
   ${schemeField({
     name: 'scheme',
     value: a.scheme,
     ns: a.app,
-    label: 'URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>',
+    label: t('URL scheme · 点「继续」时用它跳回 App，<b>务必先实测</b>'),
     labelFor: 'label',
+    t,
   })}
-  ${secondsFields(a.wait_seconds, a.grace_seconds, a.app)}
-  ${enabledField(a.enabled === 1, a.app)}
+  ${secondsFields(a.wait_seconds, a.grace_seconds, a.app, t)}
+  ${enabledField(a.enabled === 1, a.app, t)}
   <div class="actions">
-    <button class="primary" type="submit" name="op" value="save">保存</button>
-    <button class="linky danger" type="submit" name="op" value="delete" formnovalidate onclick="return confirm('删掉这条配置？已经记下的次数不会被删。')">删除</button>
+    <button class="primary" type="submit" name="op" value="save">${t('保存')}</button>
+    <button class="linky danger" type="submit" name="op" value="delete" formnovalidate onclick="return confirm('${t('删掉这条配置？已经记下的次数不会被删。')}')">${t('删除')}</button>
   </div>
   </form>
 </details>`
 }
 
-function labelField(value: string, ns: string): string {
+function labelField(value: string, ns: string, t: T): string {
   const id = fieldId(ns, 'label')
   return `<div class="field">
-    <label for="${id}">显示名 · 呼吸页上会看到</label>
-    <input id="${id}" type="text" name="label" value="${escapeHtml(value)}" placeholder="小红书" required maxlength="40">
+    <label for="${id}">${t('显示名 · 呼吸页上会看到')}</label>
+    <input id="${id}" type="text" name="label" value="${escapeHtml(value)}" placeholder="${t('小红书')}" required maxlength="40">
   </div>`
 }
 
@@ -416,33 +433,33 @@ function labelField(value: string, ns: string): string {
  * background (what the window is for, why those triggers do not enter the
  * statistics) is one tap away.
  */
-function secondsFields(wait: number, grace: number, ns: string): string {
+function secondsFields(wait: number, grace: number, ns: string, t: T): string {
   const w = fieldId(ns, 'wait')
   const g = fieldId(ns, 'grace')
   return `<div class="row">
     <div class="field">
-      <label for="${w}">${icon('clock')}等待 · 秒</label>
+      <label for="${w}">${icon('clock')}${t('等待 · 秒')}</label>
       <input id="${w}" type="number" name="wait_seconds" value="${wait}" min="1" max="120" step="1" inputmode="numeric" required>
     </div>
     <div class="field">
-      <label for="${g}">${icon('loop')}免打扰 · 秒</label>
+      <label for="${g}">${icon('loop')}${t('免打扰 · 秒')}</label>
       <input id="${g}" type="number" name="grace_seconds" value="${grace}" min="30" max="3600" step="1" inputmode="numeric" required>
     </div>
   </div>
   <div class="hint">
-    ${hl('loop', '「免打扰」建议 <span class="num">90</span> 秒。设得太短（几秒）会让你<b>刚跳回 App 就又被拦</b>。')}
+    ${hl('loop', t('「免打扰」建议 <span class="num">90</span> 秒。设得太短（几秒）会让你<b>刚跳回 App 就又被拦</b>。'))}
     ${fold(
-      '它到底管什么',
-      '<p>点了「继续」之后这段时间内不再拦你。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。</p>',
+      t('它到底管什么'),
+      t('<p>点了「继续」之后这段时间内不再拦你。它同时解决了跳回 App 会再次触发自动化的死循环——这段时间内的触发算机器噪音，不进统计。</p>'),
     )}
   </div>`
 }
 
-function enabledField(on: boolean, ns: string): string {
+function enabledField(on: boolean, ns: string, t: T): string {
   const id = fieldId(ns, 'enabled')
   return `<div class="check">
     <input id="${id}" type="checkbox" name="enabled" value="1"${on ? ' checked' : ''}>
-    <label for="${id}">启用拦截</label>
+    <label for="${id}">${t('启用拦截')}</label>
   </div>`
 }
 

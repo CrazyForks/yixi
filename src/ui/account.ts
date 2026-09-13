@@ -22,6 +22,12 @@
 // framework, no client-side validation that the server does not repeat: these
 // pages are opened one-handed on a phone, often on the connection that made
 // somebody reach for the phone in the first place.
+//
+// Language: every handler builds one translator per request and hands it down.
+// The three signed-out pages resolve their language from the request alone
+// (`localeOf(request, null)` — there is no account yet to ask); /account asks
+// the account first, since somebody who has chosen a language has chosen it
+// here.
 
 import type { Env, User } from '../types'
 import {
@@ -41,7 +47,7 @@ import { sessionIdFrom } from '../auth'
 import { shanghaiDate } from '../db'
 import { TURNSTILE_FIELD, turnstileKeys, verifyTurnstile } from '../turnstile'
 import { CONSOLE_CSS, consoleHeader } from './console'
-import { translator } from '../i18n'
+import { localeOf, msg, translator, type Locale, type T } from '../i18n'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 
 /**
@@ -54,21 +60,29 @@ const PASSWORD_MAX = 200
 const EMAIL_MAX = 254
 const NAME_MAX = 40
 
-const FORM_UNREADABLE = '表单没读出来，重试一次。'
+// Written where the failure is, translated where the page is: a module-level
+// constant cannot call a per-request `t()`, so `msg()` marks the Chinese source
+// for test/i18n.test.ts's guard and every use site passes it through its own
+// translator. Same technique as the tab labels in ./console.ts.
+const FORM_UNREADABLE = msg('表单没读出来，重试一次。')
 
 // --- /register --------------------------------------------------------------
 
 export async function handleRegister(request: Request, env: Env): Promise<Response> {
+  // No account to ask yet, so the request itself decides the language.
+  const loc = localeOf(request, null)
+  const t = translator(loc)
+
   // Read once and reuse: the site key renders the widget, the secret verifies
   // it, and a deployment with neither renders no widget and verifies nothing.
   const turnstile = turnstileKeys(env)
   const siteKey = turnstile?.siteKey ?? null
 
-  if (request.method === 'GET') return registerPage({ siteKey })
+  if (request.method === 'GET') return registerPage({ siteKey, loc, t })
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return registerPage({ siteKey, error: FORM_UNREADABLE, status: 400 })
+  if (!form) return registerPage({ siteKey, loc, t, error: t(FORM_UNREADABLE), status: 400 })
 
   const draft: SignupDraft = { email: field(form, 'email'), name: field(form, 'name') }
   const password = secret(form, 'password')
@@ -87,13 +101,13 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
     // One sentence for every way this can fail — no token, expired token,
     // replayed token, forged token — in the same spirit as /login below. The
     // outcome type does not even carry the reason, so this cannot drift.
-    return registerPage({ siteKey, draft, error: CHALLENGE_FAILED, status: 400 })
+    return registerPage({ siteKey, loc, t, draft, error: t(CHALLENGE_FAILED), status: 400 })
   }
 
   // Whether two boxes match is a question about this form, not about the
   // account, so it never reaches src/account.ts.
   if (password !== secret(form, 'password2')) {
-    return registerPage({ siteKey, draft, error: MISMATCH, status: 400 })
+    return registerPage({ siteKey, loc, t, draft, error: t(MISMATCH), status: 400 })
   }
 
   const res = await register(env, { email: draft.email, password, name: draft.name || undefined })
@@ -103,9 +117,9 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
     // makes people register a second throwaway account instead.
     const action =
       res.error === 'email_taken'
-        ? { href: `/login?email=${encodeURIComponent(draft.email)}`, label: '去登录 →' }
+        ? { href: `/login?email=${encodeURIComponent(draft.email)}`, label: t('去登录 →') }
         : undefined
-    return registerPage({ siteKey, draft, error: accountErrorMessage(res.error), status: 400, action })
+    return registerPage({ siteKey, loc, t, draft, error: accountErrorMessage(res.error, t), status: 400, action })
   }
 
   // 303 rather than rendering the account page from this POST: a phone that
@@ -118,7 +132,13 @@ interface SignupDraft {
   name: string
 }
 
-interface RegisterOptions {
+/** What every page function on this file needs before it can say anything. */
+interface Lang {
+  loc: Locale
+  t: T
+}
+
+interface RegisterOptions extends Lang {
   /** Non-null only when a Turnstile widget is configured; see src/turnstile.ts. */
   siteKey: string | null
   draft?: SignupDraft
@@ -129,53 +149,56 @@ interface RegisterOptions {
 
 function registerPage(o: RegisterOptions): Response {
   const d = o.draft
+  const t = o.t
   return gatePage({
-    title: '注册 · 一息',
+    title: t('注册 · 一息'),
+    lang: o.loc,
     status: o.status,
     // The only page in the product that loads anything from another host, and
     // only while a widget is actually configured. layout.ts explains the break.
     turnstile: o.siteKey !== null,
-    body: `<h1>注册</h1>
-<p class="lede">注册之后你会拿到一把 <b>token</b>。iPhone 的「快捷指令」拿它认出你，你被拦下的每一条记录也都记在它名下。它就是这个账号本身。</p>
+    body: `<h1>${t('注册')}</h1>
+<p class="lede">${t('注册之后你会拿到一把 <b>token</b>。iPhone 的「快捷指令」拿它认出你，你被拦下的每一条记录也都记在它名下。它就是这个账号本身。')}</p>
 ${banner(o.error, 'bad', o.action)}
 
 <section class="card deal">
-  <h2>先说清楚代价</h2>
-  <p>这里<b>没有邮件服务</b>。邮箱不发信、不验证，也不能用来找回密码——它只是你下次登录时的用户名。</p>
-  <p>能救你的是两样东西，它们互为备份：</p>
+  <h2>${t('先说清楚代价')}</h2>
+  <p>${t('这里<b>没有邮件服务</b>。邮箱不发信、不验证，也不能用来找回密码——它只是你下次登录时的用户名。')}</p>
+  <p>${t('能救你的是两样东西，它们互为备份：')}</p>
   <ul>
-    <li><b>忘了密码</b> —— 用 token 重置。在<a href="/recover">重置那一页</a>把 token 贴进去，直接设一个新的。</li>
-    <li><b>忘了 token</b> —— 用密码登录，账号页上点一下就能看到它。它是加密存在服务器上的。</li>
-    <li><b>两样都丢了</b> —— <b>没有办法</b>。没有验证邮件、没有客服、没有后门。这个账号连同里面所有记录都拿不回来，只能重新注册一个空的。</li>
+    <li>${t('<b>忘了密码</b> —— 用 token 重置。在<a href="/recover">重置那一页</a>把 token 贴进去，直接设一个新的。')}</li>
+    <li>${t('<b>忘了 token</b> —— 用密码登录，账号页上点一下就能看到它。它是加密存在服务器上的。')}</li>
+    <li>${t('<b>两样都丢了</b> —— <b>没有办法</b>。没有验证邮件、没有客服、没有后门。这个账号连同里面所有记录都拿不回来，只能重新注册一个空的。')}</li>
   </ul>
-  <p class="note flat">这个闭环是故意做成这样的：一个自己用的小工具不值得为它接一整套邮件系统，代价就是你得自己留住其中一样。注册完先把 token 存进密码管理器，一分钟的事。</p>
+  <p class="note flat">${t('这个闭环是故意做成这样的：一个自己用的小工具不值得为它接一整套邮件系统，代价就是你得自己留住其中一样。注册完先把 token 存进密码管理器，一分钟的事。')}</p>
 </section>
 
 <section class="card">
   <form method="post" action="/register">
-    ${emailField('f-reg-email', d?.email ?? '', 'username')}
+    ${emailField('f-reg-email', d?.email ?? '', 'username', t)}
     <div class="field">
-      <label for="f-reg-name">名字 · 选填，只显示在这几个页面上</label>
+      <label for="f-reg-name">${t('名字 · 选填，只显示在这几个页面上')}</label>
       <input id="f-reg-name" type="text" name="name" value="${escapeHtml(d?.name ?? '')}"
-        maxlength="${NAME_MAX}" autocomplete="nickname" placeholder="留空就用邮箱 @ 前面那截">
+        maxlength="${NAME_MAX}" autocomplete="nickname" placeholder="${t('留空就用邮箱 @ 前面那截')}">
     </div>
-    ${passwordField('f-reg-pw', 'password', `密码 · 至少 ${PASSWORD_MIN} 位`, 'new-password')}
-    ${passwordField('f-reg-pw2', 'password2', '再打一遍', 'new-password')}
-    ${turnstileWidget(o.siteKey)}
+    ${passwordField('f-reg-pw', 'password', t('密码 · 至少 {min} 位', { min: PASSWORD_MIN }), 'new-password')}
+    ${passwordField('f-reg-pw2', 'password2', t('再打一遍'), 'new-password')}
+    ${turnstileWidget(o.siteKey, o.loc, t)}
     <div class="actions">
-      <button class="primary" type="submit">注册</button>
+      <button class="primary" type="submit">${t('注册')}</button>
     </div>
   </form>
 </section>
 
-<p class="foot">已经有账号了？<a href="/login">登录</a>。<br>
-手里已经有一把别人发给你的 token？<a href="/claim">给它绑上邮箱和密码</a>，别在这里重新注册——重新注册会拿到一把新的，旧记录就找不回来了。</p>`,
+<p class="foot">${t('已经有账号了？<a href="/login">登录</a>。<br>\n手里已经有一把别人发给你的 token？<a href="/claim">给它绑上邮箱和密码</a>，别在这里重新注册——重新注册会拿到一把新的，旧记录就找不回来了。')}</p>`,
   })
 }
 
 // --- /login -----------------------------------------------------------------
 
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
+  const loc = localeOf(request, null)
+  const t = translator(loc)
   const q = new URL(request.url).searchParams
   const next = safeNext(q.get('next'), request.url)
 
@@ -184,12 +207,12 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
     // already typed once, or from a signed-out tap on a console link. Both
     // deserve to land where they were going.
     const prefill = q.get('email') ?? ''
-    return loginPage({ ...(prefill ? { email: prefill } : {}), next })
+    return loginPage({ loc, t, ...(prefill ? { email: prefill } : {}), next })
   }
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return loginPage({ error: FORM_UNREADABLE, status: 400 })
+  if (!form) return loginPage({ loc, t, error: t(FORM_UNREADABLE), status: 400 })
 
   const email = field(form, 'email')
   const res = await login(env, { email, password: secret(form, 'password') })
@@ -201,11 +224,11 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   // person use 一息" is itself worth hiding, so the failed response — message,
   // status, and every byte of markup — is identical for a stranger and for a
   // real account with a typo'd password.
-  if (!res.ok) return loginPage({ email, error: accountErrorMessage(res.error), status: 401, next })
+  if (!res.ok) return loginPage({ loc, t, email, error: accountErrorMessage(res.error, t), status: 401, next })
   return seeOther(next ?? '/review', res.setCookie)
 }
 
-interface LoginOptions {
+interface LoginOptions extends Lang {
   email?: string
   next?: string
   error?: string
@@ -213,25 +236,26 @@ interface LoginOptions {
 }
 
 function loginPage(o: LoginOptions): Response {
+  const t = o.t
   return gatePage({
-    title: '登录 · 一息',
+    title: t('登录 · 一息'),
+    lang: o.loc,
     status: o.status,
-    body: `<h1>登录</h1>
-<p class="lede">登录只是为了让你在这几个页面上看到自己的记录和 token。快捷指令那边不受影响，它认的一直是 token。</p>
+    body: `<h1>${t('登录')}</h1>
+<p class="lede">${t('登录只是为了让你在这几个页面上看到自己的记录和 token。快捷指令那边不受影响，它认的一直是 token。')}</p>
 ${banner(o.error)}
 
 <section class="card">
   <form method="post" action="${o.next ? `/login?next=${encodeURIComponent(o.next)}` : '/login'}">
-    ${emailField('f-in-email', o.email ?? '', 'username')}
-    ${passwordField('f-in-pw', 'password', '密码', 'current-password')}
+    ${emailField('f-in-email', o.email ?? '', 'username', t)}
+    ${passwordField('f-in-pw', 'password', t('密码'), 'current-password')}
     <div class="actions">
-      <button class="primary" type="submit">登录</button>
+      <button class="primary" type="submit">${t('登录')}</button>
     </div>
   </form>
 </section>
 
-<p class="foot">忘了密码？<a href="/recover">用 token 重置</a>。<br>
-还没有账号？<a href="/register">注册一个</a>。</p>`,
+<p class="foot">${t('忘了密码？<a href="/recover">用 token 重置</a>。<br>\n还没有账号？<a href="/register">注册一个</a>。')}</p>`,
   })
 }
 
@@ -246,16 +270,19 @@ ${banner(o.error)}
  * Anybody arriving with a token in hand belongs here, not on /register.
  */
 export async function handleClaim(request: Request, env: Env): Promise<Response> {
-  if (request.method === 'GET') return claimPage({})
+  const loc = localeOf(request, null)
+  const t = translator(loc)
+
+  if (request.method === 'GET') return claimPage({ loc, t })
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return claimPage({ error: FORM_UNREADABLE, status: 400 })
+  if (!form) return claimPage({ loc, t, error: t(FORM_UNREADABLE), status: 400 })
 
   const draft: SignupDraft = { email: field(form, 'email'), name: field(form, 'name') }
   const password = secret(form, 'password')
   if (password !== secret(form, 'password2')) {
-    return claimPage({ draft, error: MISMATCH, status: 400 })
+    return claimPage({ loc, t, draft, error: t(MISMATCH), status: 400 })
   }
 
   const res = await claimAccount(env, {
@@ -266,11 +293,11 @@ export async function handleClaim(request: Request, env: Env): Promise<Response>
     password,
     name: draft.name || undefined,
   })
-  if (!res.ok) return claimPage({ draft, error: accountErrorMessage(res.error), status: 400 })
+  if (!res.ok) return claimPage({ loc, t, draft, error: accountErrorMessage(res.error, t), status: 400 })
   return seeOther('/account?claimed=1', res.setCookie)
 }
 
-interface ClaimOptions {
+interface ClaimOptions extends Lang {
   draft?: SignupDraft
   error?: string
   status?: number
@@ -278,91 +305,104 @@ interface ClaimOptions {
 
 function claimPage(o: ClaimOptions): Response {
   const d = o.draft
+  const t = o.t
   return gatePage({
-    title: '绑定 · 一息',
+    title: t('绑定 · 一息'),
+    lang: o.loc,
     status: o.status,
-    body: `<h1>给已有的 token 绑账号</h1>
-<p class="lede">你手里那把 token 是发号时代给出去的，只有哈希存在服务器上。绑一次邮箱和密码，以后忘了它就能登录看回来。</p>
+    body: `<h1>${t('给已有的 token 绑账号')}</h1>
+<p class="lede">${t('你手里那把 token 是发号时代给出去的，只有哈希存在服务器上。绑一次邮箱和密码，以后忘了它就能登录看回来。')}</p>
 ${banner(o.error)}
 
 <section class="card">
   <form method="post" action="/claim">
-    ${tokenField('f-cl-token')}
-    ${emailField('f-cl-email', d?.email ?? '', 'username')}
+    ${tokenField('f-cl-token', t)}
+    ${emailField('f-cl-email', d?.email ?? '', 'username', t)}
     <div class="field">
-      <label for="f-cl-name">名字 · 选填，留空就沿用现在这个</label>
+      <label for="f-cl-name">${t('名字 · 选填，留空就沿用现在这个')}</label>
       <input id="f-cl-name" type="text" name="name" value="${escapeHtml(d?.name ?? '')}"
         maxlength="${NAME_MAX}" autocomplete="nickname">
     </div>
-    ${passwordField('f-cl-pw', 'password', `密码 · 至少 ${PASSWORD_MIN} 位`, 'new-password')}
-    ${passwordField('f-cl-pw2', 'password2', '再打一遍', 'new-password')}
+    ${passwordField('f-cl-pw', 'password', t('密码 · 至少 {min} 位', { min: PASSWORD_MIN }), 'new-password')}
+    ${passwordField('f-cl-pw2', 'password2', t('再打一遍'), 'new-password')}
     <div class="actions">
-      <button class="primary" type="submit">绑定</button>
+      <button class="primary" type="submit">${t('绑定')}</button>
     </div>
   </form>
-  <p class="note">token 本身不变，快捷指令不用改。绑定只是多给这个账号一条登录的路。</p>
+  <p class="note">${t('token 本身不变，快捷指令不用改。绑定只是多给这个账号一条登录的路。')}</p>
 </section>
 
-<p class="foot">没有 token，只是想开始用？<a href="/register">注册一个新的</a>。</p>`,
+<p class="foot">${t('没有 token，只是想开始用？<a href="/register">注册一个新的</a>。')}</p>`,
   })
 }
 
 // --- /recover ---------------------------------------------------------------
 
 export async function handleRecover(request: Request, env: Env): Promise<Response> {
-  if (request.method === 'GET') return recoverPage({})
+  const loc = localeOf(request, null)
+  const t = translator(loc)
+
+  if (request.method === 'GET') return recoverPage({ loc, t })
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return recoverPage({ error: FORM_UNREADABLE, status: 400 })
+  if (!form) return recoverPage({ loc, t, error: t(FORM_UNREADABLE), status: 400 })
 
   const password = secret(form, 'password')
-  if (password !== secret(form, 'password2')) return recoverPage({ error: MISMATCH, status: 400 })
+  if (password !== secret(form, 'password2')) return recoverPage({ loc, t, error: t(MISMATCH), status: 400 })
 
   const res = await resetPasswordWithToken(env, { token: field(form, 'token'), password })
   // The token is never echoed back into the re-rendered form. Retyping it is a
   // nuisance; leaving somebody's gate credential sitting in the markup of an
   // error page is worse.
-  if (!res.ok) return recoverPage({ error: accountErrorMessage(res.error), status: 400 })
+  if (!res.ok) return recoverPage({ loc, t, error: accountErrorMessage(res.error, t), status: 400 })
   return seeOther('/account?reset=1', res.setCookie)
 }
 
-interface RecoverOptions {
+interface RecoverOptions extends Lang {
   error?: string
   status?: number
 }
 
 function recoverPage(o: RecoverOptions): Response {
+  const t = o.t
   return gatePage({
-    title: '重置密码 · 一息',
+    title: t('重置密码 · 一息'),
+    lang: o.loc,
     status: o.status,
-    body: `<h1>用 token 重置密码</h1>
-<p class="lede">这里不发验证邮件。能证明你是你的，是你手里那把 token——它是 128 位随机数，比一封能被人翻走的邮件更硬。</p>
+    body: `<h1>${t('用 token 重置密码')}</h1>
+<p class="lede">${t('这里不发验证邮件。能证明你是你的，是你手里那把 token——它是 128 位随机数，比一封能被人翻走的邮件更硬。')}</p>
 ${banner(o.error)}
 
 <section class="card">
   <form method="post" action="/recover">
-    ${tokenField('f-rc-token')}
-    ${passwordField('f-rc-pw', 'password', `新密码 · 至少 ${PASSWORD_MIN} 位`, 'new-password')}
-    ${passwordField('f-rc-pw2', 'password2', '再打一遍', 'new-password')}
+    ${tokenField('f-rc-token', t)}
+    ${passwordField('f-rc-pw', 'password', t('新密码 · 至少 {min} 位', { min: PASSWORD_MIN }), 'new-password')}
+    ${passwordField('f-rc-pw2', 'password2', t('再打一遍'), 'new-password')}
     <div class="actions">
-      <button class="primary" type="submit">重置并登录</button>
+      <button class="primary" type="submit">${t('重置并登录')}</button>
     </div>
   </form>
-  <p class="note">token 一般在你当初配快捷指令时那条「文本」动作里，或者在你的密码管理器里。重置之后 <b>token 不变</b>，快捷指令照常工作；但所有已经登录的浏览器都会被踢下线，只留你手上这一个。</p>
+  <p class="note">${t('token 一般在你当初配快捷指令时那条「文本」动作里，或者在你的密码管理器里。重置之后 <b>token 不变</b>，快捷指令照常工作；但所有已经登录的浏览器都会被踢下线，只留你手上这一个。')}</p>
 </section>
 
-<p class="foot">token 也丢了？那这个账号真的回不来了，只能<a href="/register">重新注册一个空的</a>。<br>
-密码想起来了？<a href="/login">去登录</a>。</p>`,
+<p class="foot">${t('token 也丢了？那这个账号真的回不来了，只能<a href="/register">重新注册一个空的</a>。<br>\n密码想起来了？<a href="/login">去登录</a>。')}</p>`,
   })
 }
 
 // --- /account ---------------------------------------------------------------
 
 export async function handleAccount(request: Request, env: Env, user: User): Promise<Response> {
+  // The one page where the account's own stored language outranks the browser's
+  // — it is where that language was chosen.
+  const loc = localeOf(request, user)
+  const t = translator(loc)
+
   if (request.method === 'GET') {
     const q = new URL(request.url).searchParams
     return await accountPage(env, user, {
+      loc,
+      t,
       reveal: q.get('show') === '1',
       welcome: q.has('new') ? 'new' : q.has('claimed') ? 'claimed' : q.has('reset') ? 'reset' : q.has('saved') ? 'saved' : null,
     })
@@ -370,7 +410,7 @@ export async function handleAccount(request: Request, env: Env, user: User): Pro
   if (request.method !== 'POST') return methodNotAllowed()
 
   const form = await readForm(request)
-  if (!form) return await accountPage(env, user, { error: FORM_UNREADABLE, status: 400 })
+  if (!form) return await accountPage(env, user, { loc, t, error: t(FORM_UNREADABLE), status: 400 })
 
   const op = field(form, 'op')
 
@@ -381,23 +421,23 @@ export async function handleAccount(request: Request, env: Env, user: User): Pro
   if (op === 'rotate') {
     const res = await rotateToken(env, { user, currentPassword: secret(form, 'current') })
     if (!res.ok) {
-      const msg =
-        res.error === 'invalid_credentials' ? '当前密码不对。' : accountErrorMessage(res.error)
-      return await accountPage(env, user, { error: msg, status: 400 })
+      const message =
+        res.error === 'invalid_credentials' ? t(WRONG_CURRENT_PASSWORD) : accountErrorMessage(res.error, t)
+      return await accountPage(env, user, { loc, t, error: message, status: 400 })
     }
     // Rendered, not redirected: a 303 would drop the plaintext, and putting it
     // in the redirect's query string would write the new credential straight
     // into browser history — the thing rotation was called on to fix.
-    return await accountPage(env, user, { rotated: res.token })
+    return await accountPage(env, user, { loc, t, rotated: res.token })
   }
 
   if (op !== 'password') {
-    return await accountPage(env, user, { error: '不认识这个操作。', status: 400 })
+    return await accountPage(env, user, { loc, t, error: t('不认识这个操作。'), status: 400 })
   }
 
   const next = secret(form, 'password')
   if (next !== secret(form, 'password2')) {
-    return await accountPage(env, user, { error: MISMATCH, status: 400 })
+    return await accountPage(env, user, { loc, t, error: t(MISMATCH), status: 400 })
   }
 
   const res = await changePassword(env, {
@@ -405,7 +445,7 @@ export async function handleAccount(request: Request, env: Env, user: User): Pro
     currentPassword: secret(form, 'current'),
     newPassword: next,
   })
-  if (!res.ok) return await accountPage(env, user, { error: passwordChangeMessage(res.error), status: 400 })
+  if (!res.ok) return await accountPage(env, user, { loc, t, error: passwordChangeMessage(res.error, t), status: 400 })
   // changePassword drops every session including this one, so the fresh cookie
   // it hands back has to ride along or the redirect below lands on a 401.
   return seeOther('/account?saved=1', res.setCookie)
@@ -417,9 +457,11 @@ export async function handleAccount(request: Request, env: Env, user: User): Pro
  * wrong is the current-password box. Saying "邮箱或密码不对" here would send
  * somebody hunting for a typo in a field that is not on the page.
  */
-function passwordChangeMessage(error: AccountError): string {
-  return error === 'invalid_credentials' ? '当前密码不对。' : accountErrorMessage(error)
+function passwordChangeMessage(error: AccountError, t: T): string {
+  return error === 'invalid_credentials' ? t(WRONG_CURRENT_PASSWORD) : accountErrorMessage(error, t)
 }
+
+const WRONG_CURRENT_PASSWORD = msg('当前密码不对。')
 
 type Welcome = 'new' | 'claimed' | 'reset' | 'saved' | null
 
@@ -431,33 +473,32 @@ type Welcome = 'new' | 'claimed' | 'reset' | 'saved' | null
  * working until every Shortcut is edited. The password requirement is both an
  * authorisation check and a speed bump.
  */
-function rotateCard(): string {
+function rotateCard(t: T): string {
   return `<section class="card">
-  <h2 class="card-title">换一把新 token</h2>
-  <p class="note">泄漏了才需要这么做。<b>旧 token 立刻失效</b>，你手机上每一条用到它的快捷指令都得把网址里的
-  <span class="mono">k=</span> 换成新的，改完之前那些 App 不会再被拦。改密码不会换 token，两者互不影响。</p>
+  <h2 class="card-title">${t('换一把新 token')}</h2>
+  <p class="note">${t('泄漏了才需要这么做。<b>旧 token 立刻失效</b>，你手机上每一条用到它的快捷指令都得把网址里的\n  <span class="mono">k=</span> 换成新的，改完之前那些 App 不会再被拦。改密码不会换 token，两者互不影响。')}</p>
   <form method="post" action="/account">
     <div class="field">
-      <label for="f-rot">当前密码</label>
+      <label for="f-rot">${t('当前密码')}</label>
       <input id="f-rot" type="password" name="current" required autocomplete="current-password">
     </div>
-    <button class="danger" type="submit" name="op" value="rotate">换一把</button>
+    <button class="danger" type="submit" name="op" value="rotate">${t('换一把')}</button>
   </form>
 </section>`
 }
 
 /** Printed once. The plaintext exists only inside this one response. */
-function rotatedCard(token: string): string {
+function rotatedCard(token: string, t: T): string {
   return `<section class="card">
-  <h2 class="card-title">新 token</h2>
-  <p class="note"><b>只显示这一次。</b>现在就存进密码管理器，然后去把快捷指令里的网址换掉。</p>
+  <h2 class="card-title">${t('新 token')}</h2>
+  <p class="note">${t('<b>只显示这一次。</b>现在就存进密码管理器，然后去把快捷指令里的网址换掉。')}</p>
   <p class="reveal"><span class="mono tok" id="tok">${escapeHtml(token)}</span>
-    <button class="linky" type="button" id="cp">复制</button></p>
-  <p class="note">旧的那把已经不认了。去<a href="/setup?show=1">怎么配</a>拿现成的整行网址。</p>
+    <button class="linky" type="button" id="cp">${t('复制')}</button></p>
+  <p class="note">${t('旧的那把已经不认了。去<a href="/setup?show=1">怎么配</a>拿现成的整行网址。')}</p>
 </section>`
 }
 
-interface AccountOptions {
+interface AccountOptions extends Lang {
   reveal?: boolean
   /** The freshly issued token, printed once and never retrievable this way again. */
   rotated?: string
@@ -467,6 +508,7 @@ interface AccountOptions {
 }
 
 async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Response> {
+  const t = o.t
   const summary = await accountSummary(env, user)
   // Asked for only on the request that is going to print it. The default render
   // cannot leak a token it never fetched — the masking is not a CSS trick over
@@ -474,15 +516,16 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
   const token = o.reveal ? await revealToken(env, user) : null
 
   return page({
-    title: `账号 · ${user.name}`,
+    title: t('账号 · {name}', { name: user.name }),
     theme: DEFAULT_THEME,
+    lang: o.loc,
     css: CONSOLE_CSS + ACCOUNT_CSS,
     status: o.status ?? 200,
-    body: `${consoleHeader(user, 'account', translator('zh'))}
+    body: `${consoleHeader(user, 'account', t)}
 <main>
-  <h1>账号</h1>
+  <h1>${t('账号')}</h1>
   ${banner(o.error, 'bad')}
-  ${welcomeBanner(o.welcome ?? null)}
+  ${welcomeBanner(o.welcome ?? null, t)}
 
   <section class="card">
     <div class="card-head">
@@ -490,37 +533,59 @@ async function accountPage(env: Env, user: User, o: AccountOptions): Promise<Res
       <span class="key">#${user.id}</span>
       ${user.is_owner ? '<span class="badge">owner</span>' : ''}
     </div>
-    <p class="flat">${summary.email ? `<span class="mono">${escapeHtml(summary.email)}</span>` : '<span class="none">还没有绑定邮箱</span>'}</p>
-    <p class="note">加入于 <span class="num">${escapeHtml(shanghaiDate(user.created_at))}</span></p>
+    <p class="flat">${summary.email ? `<span class="mono">${escapeHtml(summary.email)}</span>` : `<span class="none">${t('还没有绑定邮箱')}</span>`}</p>
+    <p class="note">${t('加入于 <span class="num">{date}</span>', { date: escapeHtml(shanghaiDate(user.created_at)) })}</p>
   </section>
 
-  ${o.rotated ? rotatedCard(o.rotated) : tokenCard(o.reveal === true, token)}
-  ${summary.hasPassword ? passwordCard() : bindCard()}
-  ${summary.hasPassword && !o.rotated ? rotateCard() : ''}
+  ${o.rotated ? rotatedCard(o.rotated, t) : tokenCard(o.reveal === true, token, t)}
+  ${summary.hasPassword ? passwordCard(t) : bindCard(t)}
+  ${summary.hasPassword && !o.rotated ? rotateCard(t) : ''}
+  ${languageCard(o.loc, t)}
 
   <hr class="sep">
   <form method="post" action="/account">
-    <button class="linky" type="submit" name="op" value="logout">退出登录</button>
+    <button class="linky" type="submit" name="op" value="logout">${t('退出登录')}</button>
   </form>
-  <p class="note">退出只清掉这台设备上的登录状态。快捷指令照常拦你——它认的是 token，不是这个登录。</p>
-  <p class="note">不想把这些记录放在别人的服务器上？
-    <a href="https://github.com/Defiabell/yixi" rel="noreferrer">源码在这里</a>，
-    照 README 部署一份自己的，跑在 Cloudflare 免费额度里。</p>
+  <p class="note">${t('退出只清掉这台设备上的登录状态。快捷指令照常拦你——它认的是 token，不是这个登录。')}</p>
+  <p class="note">${t('不想把这些记录放在别人的服务器上？\n    <a href="https://github.com/Defiabell/yixi" rel="noreferrer">源码在这里</a>，\n    照 README 部署一份自己的，跑在 Cloudflare 免费额度里。')}</p>
 </main>`,
-    script: (o.reveal === true && token !== null) || o.rotated ? COPY_SCRIPT : undefined,
+    script: (o.reveal === true && token !== null) || o.rotated ? copyScript(t) : undefined,
   })
 }
 
-function welcomeBanner(w: Welcome): string {
+/**
+ * The switch itself, and the only one a signed-in reader gets — the console
+ * header is full at 390px, and the footer that carries it on / and /login is
+ * not on a page with a nav.
+ *
+ * Each language is written in its own language, so neither name goes through
+ * `t()`: 「中文」 is what a Chinese reader looks for even on an English page.
+ * The one being read is still a link (going to /account?lang=zh from Chinese is
+ * harmless) but carries `aria-current`, so a screen reader is told which of the
+ * two is in force rather than being left to infer it from the page's language.
+ */
+function languageCard(loc: Locale, t: T): string {
+  const link = (target: Locale, label: string): string =>
+    `<a class="linky" href="/account?lang=${target}"${loc === target ? ' aria-current="true"' : ''}>${label}</a>`
+  return `<section class="card">
+  <h2>${t('语言')}</h2>
+  <div class="actions">
+    ${link('en', 'English')}
+    ${link('zh', '中文')}
+  </div>
+</section>`
+}
+
+function welcomeBanner(w: Welcome, t: T): string {
   switch (w) {
     case 'new':
-      return banner('注册好了。别急着走——先点下面的「显示」，把 token 存进密码管理器。', 'good')
+      return banner(t('注册好了。别急着走——先点下面的「显示」，把 token 存进密码管理器。'), 'good')
     case 'claimed':
-      return banner('绑好了。以后忘了 token 就用邮箱和密码登录，在这一页看回来。', 'good')
+      return banner(t('绑好了。以后忘了 token 就用邮箱和密码登录，在这一页看回来。'), 'good')
     case 'reset':
-      return banner('密码已经重置，其他设备上的登录都被踢掉了。', 'good')
+      return banner(t('密码已经重置，其他设备上的登录都被踢掉了。'), 'good')
     case 'saved':
-      return banner('密码改好了。其他设备上的登录都被踢掉了，这台还在。', 'good')
+      return banner(t('密码改好了。其他设备上的登录都被踢掉了，这台还在。'), 'good')
     default:
       return ''
   }
@@ -539,18 +604,18 @@ function welcomeBanner(w: Welcome): string {
  * Doing it server-side rather than with a CSS mask over a hidden value is the
  * difference between "you cannot see it" and "it is not there".
  */
-function tokenCard(revealed: boolean, token: string | null): string {
-  const head = `<h2>你的 token</h2>
-  <p class="note flat">快捷指令用它认出你，它也是你所有记录的钥匙。别截图，别贴进聊天框。</p>`
+function tokenCard(revealed: boolean, token: string | null, t: T): string {
+  const head = `<h2>${t('你的 token')}</h2>
+  <p class="note flat">${t('快捷指令用它认出你，它也是你所有记录的钥匙。别截图，别贴进聊天框。')}</p>`
 
   if (!revealed) {
     return `<section class="card">
   ${head}
   <p class="tok masked" aria-hidden="true">••••••••••••••••</p>
   <div class="actions">
-    <a class="linky tap" href="/account?show=1">显示</a>
+    <a class="linky tap" href="/account?show=1">${t('显示')}</a>
   </div>
-  <p class="note">要把它配进 iPhone，去<a href="/setup">怎么配</a>——那一页已经替你把完整的地址拼好了，照抄就行。</p>
+  <p class="note">${t('要把它配进 iPhone，去<a href="/setup">怎么配</a>——那一页已经替你把完整的地址拼好了，照抄就行。')}</p>
 </section>`
   }
 
@@ -560,8 +625,8 @@ function tokenCard(revealed: boolean, token: string | null): string {
     // shown, and saying so beats printing something plausible and wrong.
     return `<section class="card">
   ${head}
-  <p class="empty">服务器这边打不开你的 token 原文，只存着它的哈希。<br>它照常能用，只是这里看不到。</p>
-  <div class="actions"><a class="linky tap" href="/claim">用它绑一次账号</a></div>
+  <p class="empty">${t('服务器这边打不开你的 token 原文，只存着它的哈希。<br>它照常能用，只是这里看不到。')}</p>
+  <div class="actions"><a class="linky tap" href="/claim">${t('用它绑一次账号')}</a></div>
 </section>`
   }
 
@@ -569,33 +634,33 @@ function tokenCard(revealed: boolean, token: string | null): string {
   ${head}
   <p class="tok" id="tok">${escapeHtml(token)}</p>
   <div class="actions">
-    <button class="linky tap" type="button" id="cp">复制</button>
-    <a class="linky tap" href="/account">藏起来</a>
+    <button class="linky tap" type="button" id="cp">${t('复制')}</button>
+    <a class="linky tap" href="/account">${t('藏起来')}</a>
   </div>
-  <p class="note">要把它配进 iPhone，去<a href="/setup">怎么配</a>——那一页已经替你把完整的地址拼好了，照抄就行。</p>
+  <p class="note">${t('要把它配进 iPhone，去<a href="/setup">怎么配</a>——那一页已经替你把完整的地址拼好了，照抄就行。')}</p>
 </section>`
 }
 
-function passwordCard(): string {
+function passwordCard(t: T): string {
   return `<section class="card">
-  <h2>改密码</h2>
+  <h2>${t('改密码')}</h2>
   <form method="post" action="/account">
-    ${passwordField('f-ac-cur', 'current', '当前密码', 'current-password')}
-    ${passwordField('f-ac-pw', 'password', `新密码 · 至少 ${PASSWORD_MIN} 位`, 'new-password')}
-    ${passwordField('f-ac-pw2', 'password2', '再打一遍', 'new-password')}
+    ${passwordField('f-ac-cur', 'current', t('当前密码'), 'current-password')}
+    ${passwordField('f-ac-pw', 'password', t('新密码 · 至少 {min} 位', { min: PASSWORD_MIN }), 'new-password')}
+    ${passwordField('f-ac-pw2', 'password2', t('再打一遍'), 'new-password')}
     <div class="actions">
-      <button class="primary" type="submit" name="op" value="password">保存新密码</button>
+      <button class="primary" type="submit" name="op" value="password">${t('保存新密码')}</button>
     </div>
   </form>
-  <p class="note">改密码不会换掉 token，快捷指令不用动。但其他设备上的登录会全部失效，只留你手上这一个。</p>
+  <p class="note">${t('改密码不会换掉 token，快捷指令不用动。但其他设备上的登录会全部失效，只留你手上这一个。')}</p>
 </section>`
 }
 
-function bindCard(): string {
+function bindCard(t: T): string {
   return `<section class="card">
-  <h2>还没有密码</h2>
-  <p class="flat">这个账号是发号时代建的，只有一把 token，没有邮箱也没有密码。现在这样也能用，但 token 一丢就没了。</p>
-  <div class="actions"><a class="linky tap" href="/claim">给它绑上邮箱和密码</a></div>
+  <h2>${t('还没有密码')}</h2>
+  <p class="flat">${t('这个账号是发号时代建的，只有一把 token，没有邮箱也没有密码。现在这样也能用，但 token 一丢就没了。')}</p>
+  <div class="actions"><a class="linky tap" href="/claim">${t('给它绑上邮箱和密码')}</a></div>
 </section>`
 }
 
@@ -605,27 +670,35 @@ function bindCard(): string {
  * context, which `wrangler dev` over plain http is not, and a copy button that
  * silently does nothing is worse than no button — the fallback selects the
  * token so iOS offers 拷贝 on the long-press menu.
+ *
+ * Built per request rather than held as a constant, because the two words it
+ * puts on the button are copy like any other. `JSON.stringify` rather than
+ * quotes of our own: a translation is allowed an apostrophe, and this is the
+ * one place on the page where that would end a JavaScript string early.
  */
-const COPY_SCRIPT = `
+function copyScript(t: T): string {
+  return `
 var b=document.getElementById('cp'),t=document.getElementById('tok');
 if(b&&t){b.addEventListener('click',function(){
   var s=t.textContent||'';
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(s).then(function(){b.textContent='已复制'},select);
+    navigator.clipboard.writeText(s).then(function(){b.textContent=${JSON.stringify(t('已复制'))}},select);
   }else{select()}
   function select(){
     var r=document.createRange();r.selectNodeContents(t);
     var sel=window.getSelection();
     if(sel){sel.removeAllRanges();sel.addRange(r)}
-    b.textContent='已选中，长按拷贝';
+    b.textContent=${JSON.stringify(t('已选中，长按拷贝'))};
   }
 })}`
+}
 
 // --- shared page shell ------------------------------------------------------
 
 interface GatePageOptions {
   title: string
   body: string
+  lang: Locale
   status?: number
   /** Only /register ever sets this, and only when a widget is configured. */
   turnstile?: boolean
@@ -641,6 +714,7 @@ function gatePage(o: GatePageOptions): Response {
   return page({
     title: o.title,
     theme: DEFAULT_THEME,
+    lang: o.lang,
     css: CONSOLE_CSS + ACCOUNT_CSS + (o.turnstile ? TURNSTILE_CSS : ''),
     status: o.status ?? 200,
     ...(o.turnstile ? { turnstile: true } : {}),
@@ -685,7 +759,7 @@ function safeNext(raw: string | null, base: string): string | undefined {
   }
 }
 
-const MISMATCH = '两次输入的密码不一样，再来一次。'
+const MISMATCH = msg('两次输入的密码不一样，再来一次。')
 
 /**
  * Every Turnstile rejection, worded once. Which one it was — nothing submitted,
@@ -693,7 +767,7 @@ const MISMATCH = '两次输入的密码不一样，再来一次。'
  * probing, and `TurnstileOutcome` does not carry the reason to this layer at all,
  * so there is nothing here to accidentally branch on.
  */
-const CHALLENGE_FAILED = '人机验证没过。刷新这一页，重新验证一次。'
+const CHALLENGE_FAILED = msg('人机验证没过。刷新这一页，重新验证一次。')
 
 /**
  * `action` is the way out of the problem the banner just described — "this
@@ -716,9 +790,9 @@ function banner(
   return `<p class="banner ${kind}">${escapeHtml(text)}${cta}</p>`
 }
 
-function emailField(id: string, value: string, autocomplete: string): string {
+function emailField(id: string, value: string, autocomplete: string, t: T): string {
   return `<div class="field">
-      <label for="${id}">邮箱 · 只当用户名用，不发信</label>
+      <label for="${id}">${t('邮箱 · 只当用户名用，不发信')}</label>
       <input id="${id}" type="email" name="email" value="${escapeHtml(value)}" required
         maxlength="${EMAIL_MAX}" autocomplete="${autocomplete}" inputmode="email"
         autocapitalize="none" autocorrect="off" spellcheck="false">
@@ -739,9 +813,9 @@ function passwordField(id: string, name: string, label: string, autocomplete: st
  * a 32-character paste landed intact, and a token pasted with a trailing space
  * is the failure this product already has a troubleshooting section about.
  */
-function tokenField(id: string): string {
+function tokenField(id: string, t: T): string {
   return `<div class="field">
-      <label for="${id}">token · 32 位十六进制，粘贴进来</label>
+      <label for="${id}">${t('token · 32 位十六进制，粘贴进来')}</label>
       <input id="${id}" type="text" name="token" required maxlength="200" class="mono"
         autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="latin">
     </div>`
@@ -758,18 +832,20 @@ function tokenField(id: string): string {
  * wrong on a bad connection, which is the property these pages are built around.
  *
  * `data-theme="auto"` so the widget follows the same prefers-color-scheme switch
- * the rest of the page does. `data-action` is Turnstile's own analytics marker.
+ * the rest of the page does, and `data-language` follows the page's own language
+ * — a Chinese challenge on an English form is the widget disagreeing with
+ * everything around it. `data-action` is Turnstile's own analytics marker.
  *
  * The <noscript> line matters: with a widget configured, no JavaScript means no
  * token and therefore no sign-up. Saying so beats a form that rejects every
  * attempt without ever explaining why.
  */
-function turnstileWidget(siteKey: string | null): string {
+function turnstileWidget(siteKey: string | null, loc: Locale, t: T): string {
   if (siteKey === null) return ''
   return `<div class="field">
       <div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}"
-        data-action="turnstile-spin-v1" data-theme="auto" data-language="zh-cn"></div>
-      <noscript><p class="note flat">人机验证需要 JavaScript，请先在浏览器里打开它。</p></noscript>
+        data-action="turnstile-spin-v1" data-theme="auto" data-language="${loc === 'en' ? 'en' : 'zh-cn'}"></div>
+      <noscript><p class="note flat">${t('人机验证需要 JavaScript，请先在浏览器里打开它。')}</p></noscript>
     </div>`
 }
 
