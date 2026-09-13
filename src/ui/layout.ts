@@ -13,6 +13,8 @@
  * They share all markup and all JavaScript; only the tokens below differ.
  */
 
+import { PWA_HEAD } from './pwa'
+
 export type ThemeName = 'ink' | 'breath'
 
 /**
@@ -190,6 +192,7 @@ function contentSecurityPolicy(turnstile: boolean): string {
     "style-src 'unsafe-inline'",
     `connect-src 'self'${external}`,
     'img-src data:',
+    "manifest-src 'self'",
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
@@ -300,6 +303,7 @@ export function pageHtml(o: PageOptions): string {
 <meta name="theme-color" media="(prefers-color-scheme:light)" content="${t.barLight}">
 <meta name="theme-color" media="(prefers-color-scheme:dark)" content="${t.barDark}">
 ${o.indexable ? '' : '<meta name="robots" content="noindex,nofollow">\n'}<link rel="icon" href="data:,">
+${PWA_HEAD}
 <title>${escapeHtml(o.title)}</title>${socialTags(o)}
 <style>${t.tokens}${BASE_CSS}${o.css ?? ''}</style>${o.turnstile ? '\n' + TURNSTILE_LOADER : ''}
 </head>

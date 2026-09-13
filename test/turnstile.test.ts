@@ -459,8 +459,8 @@ describe('the widget is on /register and nowhere else', () => {
       const csp = res.headers.get('content-security-policy')
       expect(csp, path).toBe(
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
-          "connect-src 'self'; img-src data:; base-uri 'none'; form-action 'self'; " +
-          "frame-ancestors 'none'",
+          "connect-src 'self'; img-src data:; manifest-src 'self'; base-uri 'none'; " +
+          "form-action 'self'; frame-ancestors 'none'",
       )
     }
   })
@@ -475,7 +475,7 @@ describe('the CSP on /register', () => {
     expect(csp).toBe(
       "default-src 'none'; script-src 'unsafe-inline' https://challenges.cloudflare.com; " +
         "style-src 'unsafe-inline'; connect-src 'self' https://challenges.cloudflare.com; " +
-        "img-src data:; base-uri 'none'; form-action 'self'; " +
+        "img-src data:; manifest-src 'self'; base-uri 'none'; form-action 'self'; " +
         'frame-ancestors \'none\'; frame-src https://challenges.cloudflare.com',
     )
   })
