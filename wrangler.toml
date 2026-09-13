@@ -2,10 +2,14 @@ name = "yixi"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
-# Nightly sessions trim (04:00 UTC = noon Shanghai). Only prunes the sessions
-# breadcrumb table; events are kept forever, they are the whole product.
+# Two ticks a day, told apart in scheduled() by event.cron:
+#   0 4 * * *  — noon Shanghai; nightly sessions trim. Only prunes the
+#                sessions breadcrumb table; events are kept forever, they
+#                are the whole product.
+#   0 16 * * * — 00:00 Shanghai (SNAPSHOT_CRON); writes yesterday's
+#                goal_days row per user with a live goal.
 [triggers]
-crons = ["0 4 * * *"]
+crons = ["0 4 * * *", "0 16 * * *"]
 
 [observability]
 enabled = true

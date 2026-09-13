@@ -21,6 +21,7 @@ import { handleAdmin } from './api/admin'
 import { renderLanding } from './ui/landing'
 import { deleteExpiredWebSessions, deleteStaleSessions } from './db'
 import { checkRate, pruneRateLimits } from './ratelimit'
+import { SNAPSHOT_CRON, snapshotGoalDays } from './snapshot'
 
 /**
  * Route table. Only /gate and /resolve are machine-facing; everything else is a
@@ -141,12 +142,27 @@ export default {
   },
 
   /**
-   * Nightly trim of the sessions breadcrumb table. `events` is never touched —
-   * that history is the product. A session older than a week can only be a
-   * breathing page nobody ever resolved.
+   * Two crons share this handler, told apart by `event.cron`:
+   *
+   *   SNAPSHOT_CRON (00:00 Asia/Shanghai) — writes yesterday's goal_days row
+   *   per user and returns; it does not touch the tables below.
+   *
+   *   the other (noon Shanghai) — the original nightly trim of the sessions
+   *   breadcrumb table. `events` is never touched — that history is the
+   *   product. A session older than a week can only be a breathing page
+   *   nobody ever resolved.
+   *
+   * `now` comes from `event.scheduledTime` rather than `Date.now()` so a test
+   * can pin the tick to an exact moment; Cloudflare guarantees the two are
+   * the same instant in production.
    */
-  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
-    const now = Date.now()
+  async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const now = event.scheduledTime
+    if (event.cron === SNAPSHOT_CRON) {
+      const r = await snapshotGoalDays(env.DB, now)
+      console.log(`snapshot ${r.date}: ${r.users} users, ${r.failed} failed`)
+      return
+    }
     const removed = await deleteStaleSessions(env.DB, now - SESSION_RETENTION_MS)
     // Every `?k=` visit mints a login session; without this they only accumulate.
     const expired = await deleteExpiredWebSessions(env.DB, now)
