@@ -237,6 +237,49 @@ describe('POST /goals', () => {
     expect((await post({ op: 'task_save', task: 'x', target: '', target_label: '' })).status).toBe(400)
   })
 
+  it('hands a rejected task_save back with what was typed, open, in that task’s own fold', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
+    const res = await post({ op: 'task_save', task: String(t), target: 'not a scheme', target_label: '哔哩哔哩' })
+    expect(res.status).toBe(400)
+    const h = await res.text()
+    expect(h).toContain('value="not a scheme"')
+    expect(h).toContain('value="哔哩哔哩"')
+    // 两层都得张开：折叠在收起来的目标行里，行收着就等于什么都没说。
+    expect(h).toContain(`<details class="app" id="goal-${a}" open>`)
+    expect(h).toContain('<details class="tapp" open>')
+    // 报错句子就在这条子任务的表单里、输入框上面，不只挂在页面顶上。
+    const fold = h.slice(h.indexOf('<details class="tapp" open>'))
+    const aboveTheFields = fold.slice(0, fold.indexOf('<div class="field scheme"'))
+    expect(aboveTheFields).toContain('<p class="banner bad">')
+    expect(aboveTheFields).toContain('跳转目标要长成')
+    // 退回来就是没存：库里那两列还是空的。
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '', target_label: '' })
+  })
+
+  it('leaves every other sub-task’s fold shut and showing what is stored', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+    await post({ op: 'task_save', task: String(t2), target: 'bilibili://', target_label: 'B 站' })
+    const h = await (await post({ op: 'task_save', task: String(t1), target: 'not a scheme', target_label: '' })).text()
+    expect(h).toContain(`id="f-t${t1}-target"`)
+    expect(h).toContain('value="not a scheme"')
+    // t2 没被碰过：折叠仍旧收着，格子里仍旧是存下来的那个 scheme。
+    expect(h).toContain('<details class="tapp">')
+    expect(h).toContain('value="bilibili://"')
+  })
+
+  it('task_save clears a binding back to nothing, and 404s on a task id nobody owns', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    expect((await post({ op: 'task_save', task: String(t), target: 'bilibili://', target_label: 'B 站' })).status).toBe(303)
+    expect((await post({ op: 'task_save', task: String(t), target: '', target_label: '' })).status).toBe(303)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '', target_label: '' })
+    // 形状没问题但根本不存在的编号，和别人的编号给同一个答案。
+    expect((await post({ op: 'task_save', task: '999999', target: 'bilibili://', target_label: '' })).status).toBe(404)
+  })
+
   it('re-derives today’s goal check-in when a sub-task is added or deleted', async () => {
     const a = await seed('健身')
     const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!

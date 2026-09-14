@@ -131,7 +131,10 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     const target = field(form, 'target')
     const targetLabel = field(form, 'target_label')
     const badTarget = validateTarget(target, targetLabel, t)
-    if (badTarget !== null) return await render(env, user, { error: badTarget, status: 400 }, loc, t)
+    if (badTarget !== null) {
+      const taskDraft = { task: taskId, target, target_label: targetLabel }
+      return await render(env, user, { error: badTarget, taskDraft, status: 400 }, loc, t)
+    }
     const mine = await getTask(env.DB, user.id, taskId)
     if (!mine || !(await updateTaskTarget(env.DB, user.id, taskId, target, targetLabel))) return notFound()
     return seeOther(`/today/goals#goal-${mine.goal_id}`)
@@ -181,7 +184,10 @@ function notFound(): Response {
 
 // --- render ------------------------------------------------------------------
 
-interface RenderOptions { error?: string; draft?: Draft; draftGoal?: number | null; status?: number }
+/** 一条子任务被退回来时，用户刚敲的那两格——和 Draft 之于目标是一回事。 */
+interface TaskDraft { task: number; target: string; target_label: string }
+
+interface RenderOptions { error?: string; draft?: Draft; draftGoal?: number | null; taskDraft?: TaskDraft; status?: number }
 
 async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T): Promise<Response> {
   const today = shanghaiDate(Date.now())
@@ -194,6 +200,10 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
     arr.push(task)
     byGoal.set(task.goal_id, arr)
   }
+  // 退回来的子任务草稿要送回它自己那一行：先按 user 圈定的 tasks 找出它属于哪个
+  // 目标，找不到（不是他的、或已经不在了）就当没这回事，只留顶上的横幅。
+  const td = o.taskDraft
+  const tdGoal = td ? tasks.find((tk) => tk.id === td.task)?.goal_id ?? null : null
   const live = goals.filter((g) => g.archived_at === null && !isExpired(g, today))
   const expired = goals.filter((g) => g.archived_at === null && isExpired(g, today))
   const archived = goals.filter((g) => g.archived_at !== null)
@@ -207,7 +217,13 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   ${expired.length ? expiredBlock(expired, t) : ''}
   ${addBlock(t, addDraft)}
   ${live.length === 0 && expired.length === 0 ? `<p class="empty">${t('还没有目标。<br>用上面的 {plus} 加第一个。', { plus: icon('plus') })}</p>` : ''}
-  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], doneToday, { first: i === 0, last: i === live.length - 1, draft: o.draftGoal === g.id ? o.draft : undefined }, t)).join('\n')}
+  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], doneToday, {
+    first: i === 0,
+    last: i === live.length - 1,
+    draft: o.draftGoal === g.id ? o.draft : undefined,
+    taskDraft: tdGoal === g.id ? td : undefined,
+    taskError: tdGoal === g.id ? o.error : undefined,
+  }, t)).join('\n')}
   ${archived.length ? archivedBlock(archived, t) : ''}
 </main>`
 
@@ -271,11 +287,18 @@ function goalFields(d: Draft, ns: string, t: T): string {
   </div>`
 }
 
-function goalRow(g: Goal, tasks: GoalTask[], doneToday: Set<number>, o: { first: boolean; last: boolean; draft?: Draft }, t: T): string {
+function goalRow(
+  g: Goal,
+  tasks: GoalTask[],
+  doneToday: Set<number>,
+  o: { first: boolean; last: boolean; draft?: Draft; taskDraft?: TaskDraft; taskError?: string },
+  t: T,
+): string {
   const d: Draft = o.draft ?? { title: g.title, cue: g.cue, target: g.target, target_label: g.target_label, until: g.until ?? '' }
   const ns = `g${g.id}`
   const done = tasks.filter((task) => doneToday.has(task.id)).length
-  return `<details class="app" id="goal-${g.id}"${o.draft ? ' open' : ''}>
+  // 子任务被退回来时这一行也得张开：那条报错在折叠里，行收着就等于没说。
+  return `<details class="app" id="goal-${g.id}"${o.draft || o.taskDraft ? ' open' : ''}>
   <summary>
     <span class="sname">${escapeHtml(g.title)}</span>
     ${g.target_label ? `<span class="skey">${escapeHtml(g.target_label)}</span>` : ''}
@@ -294,7 +317,7 @@ function goalRow(g: Goal, tasks: GoalTask[], doneToday: Set<number>, o: { first:
   </form>
   <div class="card tasks">
     <h2>${t('子任务 · 每天都做')}</h2>
-    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, t)).join('')}</ul>`}
+    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, { draft: o.taskDraft, error: o.taskError }, t)).join('')}</ul>`}
     <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
       <input type="text" name="title" placeholder="${t('加一条子任务')}" maxlength="${TITLE_MAX}" required aria-label="${t('子任务')}">
@@ -310,28 +333,34 @@ function goalRow(g: Goal, tasks: GoalTask[], doneToday: Set<number>, o: { first:
  * 表单是同级而不是嵌套——HTML 里 form 不能套 form，而目标本身那张表单就在上面
  * 几行。schemefield 的脚本按 `.field.scheme` 和 `form[data-ns]` 找东西，所以这里
  * 只要给每条子任务一个自己的 ns，试跳、候选和草稿恢复全都照常工作。
+ *
+ * 被退回来的那一条（`o.draft` 指着它）张着、填着用户刚敲的字、报错就摆在字上面；
+ * 其余各条照常用库里的值。标题旁那枚 App 名和折叠上的「绑 App／改」读的都是已存
+ * 的值——它们说的是「现在绑着什么」，不是「你刚敲了什么」。
  */
-function taskRow(task: GoalTask, t: T): string {
+function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T): string {
   const ns = `t${task.id}`
+  const d = o.draft && o.draft.task === task.id ? o.draft : undefined
   return `<li>
     <div class="trow">
       <span class="tname">${escapeHtml(task.title)}</span>
       ${task.target_label ? `<span class="skey">${escapeHtml(task.target_label)}</span>` : ''}
       <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
     </div>
-    <details class="tapp">
+    <details class="tapp"${d ? ' open' : ''}>
       <summary>${icon('chev', { cls: 'ic chev' })}${task.target === '' ? t('绑 App') : t('改')}</summary>
       <form method="post" action="/today/goals" data-ns="${ns}">
         <input type="hidden" name="task" value="${task.id}">
+        ${d && o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
         ${schemeField({
-          name: 'target', value: task.target, ns, required: false, labelFor: 'target_label', t,
+          name: 'target', value: d ? d.target : task.target, ns, required: false, labelFor: 'target_label', t,
           label: t('这条子任务跳去哪 · 可不填'),
           placeholder: t('bilibili:// 或 https://…'),
           hint: t('不填就跟着目标走。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
         })}
         <div class="field">
           <label for="${fieldId(ns, 'target_label')}">${t('按钮上叫它什么')}</label>
-          <input id="${fieldId(ns, 'target_label')}" type="text" name="target_label" value="${escapeHtml(task.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
+          <input id="${fieldId(ns, 'target_label')}" type="text" name="target_label" value="${escapeHtml(d ? d.target_label : task.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
         </div>
         <div class="actions"><button class="primary" type="submit" name="op" value="task_save">${t('存')}</button></div>
       </form>
@@ -360,12 +389,11 @@ details.app > .card.tasks{border:0;border-top:1px solid var(--rule);border-radiu
 .tl .trow{display:flex;align-items:center;gap:10px}
 .tl .tname{flex:1;min-width:0}
 .tl .trow form{margin:0}
+/* 尺寸、旋转和去掉系统三角都由 icons.ts 的通用 summary 规则管，这里只管排布。
+   details.app 那一段之所以还自带一份，是因为它把 .chev 覆写成了 14px。 */
 details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px;color:var(--dim)}
-/* Same 13px as the 「按 App 名字找」 fold sitting one card lower: two nested
-   folds in one card, drawn alike. Neither rotates — that signal belongs to the
-   goal row itself. */
-details.tapp > summary .ic.chev{width:13px;height:13px}
 details.tapp > form{margin:0 0 10px}
+details.tapp > form > .banner{margin:10px 0 14px}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
 details.archived{margin:24px 0 0}
