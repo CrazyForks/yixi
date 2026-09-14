@@ -12,7 +12,10 @@
 
 import type { Env, Goal, GoalTask, User } from '../types'
 import { TODAY_GOAL_LIMIT } from '../types'
-import { createGoal, listCheckins, listGoals, listTasks, setTaskDone, shanghaiDate, toggleCheckin } from '../db'
+import {
+  createGoal, getGoal, getTask, listCheckins, listGoals, listTaskCheckins, listTasks,
+  setGoalTaskCheckins, setTaskCheckin, shanghaiDate, syncGoalCheckin, toggleCheckin,
+} from '../db'
 import { DEFAULT_THEME, escapeHtml, jsonScript, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
@@ -73,29 +76,50 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   if (op === 'check' || op === 'uncheck') {
     const id = intId(field(form, 'goal'))
     if (id === null) return bad()
-    // toggle is by day; `check` and `uncheck` are the same request and only
-    // differ in what the button said, so a double tap cannot double count.
-    const r = await toggleCheckin(env.DB, user.id, id, shanghaiDate(now), now)
-    return r === 'nogoal' ? notFound() : back()
+    const date = shanghaiDate(now)
+    const goal = await getGoal(env.DB, user.id, id)
+    if (!goal) return notFound()
+    const hasTasks = (await listTasks(env.DB, user.id)).some((tk) => tk.goal_id === id)
+    if (!hasTasks) {
+      // toggle is by day; `check` and `uncheck` are the same request and only
+      // differ in what the button said, so a double tap cannot double count.
+      await toggleCheckin(env.DB, user.id, id, date, now)
+      return back()
+    }
+    // With sub-tasks the circle is a derived state, so the circle writes the
+    // sub-tasks and lets the derivation put the goal's own row back. Writing
+    // goal_checkins here as well would be the second source of truth this
+    // whole change exists to remove.
+    await setGoalTaskCheckins(env.DB, user.id, id, date, op === 'check', now)
+    await syncGoalCheckin(env.DB, user.id, id, date, now)
+    return back()
   }
-  if (op === 'task_done' || op === 'task_undo') {
+  if (op === 'task_check' || op === 'task_uncheck') {
     const id = intId(field(form, 'task'))
     if (id === null) return bad()
-    const ok = await setTaskDone(env.DB, user.id, id, op === 'task_done' ? now : null)
-    return ok ? back() : notFound()
+    const task = await getTask(env.DB, user.id, id)
+    if (!task) return notFound()
+    const date = shanghaiDate(now)
+    await setTaskCheckin(env.DB, user.id, id, date, op === 'task_check', now)
+    await syncGoalCheckin(env.DB, user.id, task.goal_id, date, now)
+    return back()
   }
   return bad()
 }
 
 // --- GET -------------------------------------------------------------------------
 
+/** 一条子任务在今日卡片上的样子：它自己，加上「今天勾了没有」。 */
+interface TaskRow {
+  task: GoalTask
+  done: boolean
+}
+
 interface Card {
   goal: Goal
   hero: boolean
   checked: boolean
-  next: GoalTask | null
-  moreUndone: number
-  doneToday: GoalTask[]
+  tasks: TaskRow[]
   dots: boolean[]
 }
 
@@ -103,29 +127,27 @@ async function render(request: Request, env: Env, user: User, loc: Locale, t: T)
   const now = Date.now()
   const today = shanghaiDate(now)
   const days = Array.from({ length: DOTS }, (_, i) => addDays(today, i - (DOTS - 1)))
-  const [goals, tasks, checkins] = await Promise.all([
+  const [goals, tasks, checkins, taskCheckins] = await Promise.all([
     listGoals(env.DB, user.id),
     listTasks(env.DB, user.id),
     listCheckins(env.DB, user.id, days[0]!, today),
+    listTaskCheckins(env.DB, user.id, today, today),
   ])
   const live = liveGoals(goals, today)
   const top = shownGoals(goals, today)
   const rest = live.slice(TODAY_GOAL_LIMIT)
   const checked = new Set(checkins.map((c) => `${c.goal_id}:${c.date}`))
+  const doneTasks = new Set(taskCheckins.map((c) => c.task_id))
 
-  const cards: Card[] = top.map((g, i) => {
-    const mine = tasks.filter((tk) => tk.goal_id === g.id)
-    const undone = mine.filter((tk) => tk.done_at === null)
-    return {
-      goal: g,
-      hero: i === 0,
-      checked: checked.has(`${g.id}:${today}`),
-      next: undone[0] ?? null,
-      moreUndone: Math.max(0, undone.length - 1),
-      doneToday: mine.filter((tk) => tk.done_at !== null && shanghaiDate(tk.done_at) === today),
-      dots: days.map((d) => checked.has(`${g.id}:${d}`)),
-    }
-  })
+  const cards: Card[] = top.map((g, i) => ({
+    goal: g,
+    hero: i === 0,
+    // 有子任务时这一位仍然读 goal_checkins：syncGoalCheckin 已经保证它等于
+    // 「今天所有子任务都勾了」，所以圆点、七日点、沉底逻辑一个都不用改。
+    checked: checked.has(`${g.id}:${today}`),
+    tasks: tasks.filter((tk) => tk.goal_id === g.id).map((task) => ({ task, done: doneTasks.has(task.id) })),
+    dots: days.map((d) => checked.has(`${g.id}:${d}`)),
+  }))
   // Checked cards sink; order inside each half is preserved.
   const ordered = [...cards.filter((c) => !c.checked), ...cards.filter((c) => c.checked)]
   const allDone = cards.length > 0 && cards.every((c) => c.checked)
@@ -175,29 +197,26 @@ function cardHtml(c: Card, t: T): string {
       <button class="ck" type="submit" name="op" value="${c.checked ? 'uncheck' : 'check'}" aria-label="${c.checked ? t('{title}，已打卡，点击取消', { title }) : t('{title}，今天打卡', { title })}"><i></i></button>
     </form>
   </div>
-  ${nextHtml(c, t)}
+  ${tasksHtml(c, t)}
   <div class="dots" aria-label="${t('最近七天')}">${c.dots.map((on) => `<i class="d${on ? ' on' : ''}"></i>`).join('')}</div>
   ${goHtml(g, t)}
 </article>`
 }
 
-function nextHtml(c: Card, t: T): string {
-  const doneList = c.doneToday
-    .map((task) => `<li class="done today"><span>${escapeHtml(task.title)}</span>
-      <form method="post" action="/today"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_undo">${t('撤销')}</button></form></li>`)
-    .join('')
-  if (!c.next && doneList === '') return ''
-  const next = c.next
-    ? `<form method="post" action="/today" class="next">
-    <input type="hidden" name="task" value="${c.next.id}">
-    <button class="tk" type="submit" name="op" value="task_done" aria-label="${t('完成：{title}', { title: escapeHtml(c.next.title) })}"><i></i></button>
-    <span class="nl">${t('下一步')}</span><span class="nt">${escapeHtml(c.next.title)}</span>
-  </form>`
-    : ''
-  const more = c.moreUndone > 0
-    ? `<p class="more">${t('还有 {n} 条，去<a href="/today/goals#goal-{id}">目标</a>里看。', { n: c.moreUndone, id: c.goal.id })}</p>`
-    : ''
-  return `${next}${more}${doneList ? `<ul class="donel">${doneList}</ul>` : ''}`
+function tasksHtml(c: Card, t: T): string {
+  if (c.tasks.length === 0) return ''
+  return `<ul class="tks">${c.tasks.map((r) => taskRow(r, c.goal, t)).join('')}</ul>`
+}
+
+function taskRow(r: TaskRow, _goal: Goal, t: T): string {
+  const title = escapeHtml(r.task.title)
+  return `<li class="tkr${r.done ? ' done' : ''}">
+    <form method="post" action="/today">
+      <input type="hidden" name="task" value="${r.task.id}">
+      <button class="tk" type="submit" name="op" value="${r.done ? 'task_uncheck' : 'task_check'}" aria-label="${r.done ? t('{title}，已勾上，点击取消', { title }) : t('{title}，今天勾上', { title })}"><i></i></button>
+    </form>
+    <span class="tkt">${title}</span>
+  </li>`
 }
 
 function goHtml(g: Goal, t: T): string {
@@ -252,17 +271,14 @@ const TODAY_CSS = `
 .ck i::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--dot);transform:scale(0);opacity:0}
 .goal.checked .ck i::after,.ck.bloom i::after{transform:scale(1);opacity:1}
 .ck.bloom i::after{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
-.next{display:flex;align-items:center;gap:10px;margin:14px 0 0}
+.tks{list-style:none;margin:14px 0 0;padding:0}
+.tkr{display:flex;align-items:center;gap:8px;min-height:44px}
+.tkr form{margin:0;flex:none}
+.tkt{flex:1;min-width:0;font-size:15px;line-height:1.5}
+.tkr.done .tkt{color:var(--faint)}
 .tk{width:44px;height:44px;display:grid;place-items:center;margin-left:-8px}
-.tk i{display:block;width:22px;height:22px;border-radius:6px;border:1.3px solid var(--ring-prog)}
-.nl{font-size:12px;color:var(--faint);letter-spacing:.1em;flex:none}
-.nt{font-size:15px;flex:1;min-width:0}
-.more{margin:6px 0 0 30px;font-size:13px;color:var(--faint)}
-.more a{color:var(--dim)}
-.donel{list-style:none;margin:8px 0 0 30px;padding:0}
-.donel li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--faint);text-decoration:line-through}
-.donel li form{margin:0}
-.donel button.linky{padding:11px 0;font-size:12px;text-decoration:none}
+.tk i{display:block;width:20px;height:20px;border-radius:50%;border:1.3px solid var(--ring-prog)}
+.tkr.done .tk i{background:var(--dot);border-color:var(--dot)}
 .dots{display:flex;gap:8px;margin:16px 0 0}
 .dots .d{display:block;width:9px;height:9px;border-radius:50%;border:1px solid var(--ring-prog)}
 .dots .d.on{background:var(--dot);border-color:var(--dot)}

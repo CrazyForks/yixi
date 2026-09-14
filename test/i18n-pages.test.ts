@@ -140,14 +140,15 @@ describe('/today in English', () => {
     expect(main).toContain('Link an app, and it opens with one tap')
   })
 
-  it('translates the next step and the “{n} more” line, link and all', async () => {
+  it('speaks a sub-task row and its check button in English', async () => {
     const g = await seed('健身')
-    for (const t of ['warm up', 'run', 'stretch']) {
-      await createTask(env.DB, { userId: 1, goalId: g, title: t, now: NOW })
+    for (const title of ['warm up', 'run', 'stretch']) {
+      await createTask(env.DB, { userId: 1, goalId: g, title, now: NOW })
     }
     const main = mainOf(await todayHtml())
-    expect(main).toContain('<span class="nl">Next</span>')
-    expect(main).toContain(`2 more — see them under <a href="/today/goals#goal-${g}">Goals</a>.`)
+    expect(main).toContain('aria-label="warm up, check off for today"')
+    expect(main).toContain('<span class="tkt">stretch</span>')
+    expect(main).not.toContain('<span class="nl">')
     expect(main).not.toMatch(CHINESE_PUNCT)
   })
 

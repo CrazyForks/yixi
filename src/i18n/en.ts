@@ -41,11 +41,8 @@ export const EN: Record<string, string> = {
   '{title}，今天打卡': '{title}, check in for today',
   '{title}，已打卡，点击取消': '{title}, checked in. Tap to undo.',
   最近七天: 'The last seven days',
-  下一步: 'Next',
-  '完成：{title}': 'Mark done: {title}',
-  撤销: 'Undo',
-  '还有 {n} 条，去<a href="/today/goals#goal-{id}">目标</a>里看。':
-    '{n} more — see them under <a href="/today/goals#goal-{id}">Goals</a>.',
+  '{title}，今天勾上': '{title}, check off for today',
+  '{title}，已勾上，点击取消': '{title}, checked off. Tap to undo.',
   // The Chinese pair exists only for its spacing rule (「去 B 站」 but
   // 「去微信读书」); English has one sentence for both.
   '去 {label}': 'Open {label}',

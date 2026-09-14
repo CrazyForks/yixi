@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleToday } from '../src/ui/today'
 import { addDays } from '../src/dates'
-import { createGoal, createTask, listGoals, listTasks, shanghaiDate, toggleCheckin } from '../src/db'
+import { createGoal, createTask, listCheckins, listGoals, listTaskCheckins, shanghaiDate, toggleCheckin } from '../src/db'
 import type { User } from '../src/types'
 
 const user: User = { id: 1, name: '张三', is_owner: 0, created_at: 0 }
@@ -15,6 +15,7 @@ const IPHONE_WECHAT = `${IPHONE_SAFARI} MicroMessenger/8.0.50 NetType/WIFI Langu
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
     env.DB.prepare('DELETE FROM goals'),
@@ -101,26 +102,24 @@ describe('the three cards', () => {
     expect(h).toMatch(new RegExp(`<article class="card goal hero checked" data-goal="${a}"`))
   })
 
-  it('shows the cue and only the first undone task as 下一步, with the rest folded', async () => {
+  it('lists every sub-task as its own row, in position order, and a checked row does not move', async () => {
     const a = await seed('健身', { cue: '早饭后' })
     const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
     const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
-    await createTask(env.DB, { userId: 1, goalId: a, title: '三', now: NOW })
+    const t3 = (await createTask(env.DB, { userId: 1, goalId: a, title: '三', now: NOW }))!
     let h = await html()
     expect(h).toContain('早饭后')
-    expect(h).toMatch(/class="next"[\s\S]*?<span class="nt">一<\/span>/)
-    expect(h).not.toContain('<span class="nt">二</span>')
-    expect(h).toContain('还有 2 条')
-    await post({ op: 'task_done', task: String(t1) })
+    expect([...h.matchAll(/<span class="tkt">(.)<\/span>/g)].map((m) => m[1])).toEqual(['一', '二', '三'])
+    expect(h).not.toContain('<span class="nl">')
+    expect(h).not.toContain('还有')
+
+    expect((await post({ op: 'task_check', task: String(t1) })).status).toBe(303)
     h = await html()
-    expect(h).toMatch(/class="next"[\s\S]*?<span class="nt">二<\/span>/)
-    expect(h).toContain('还有 1 条')
-    // done today: struck through, still visible; another day: gone.
-    expect(h).toMatch(/class="done today"[^>]*>[\s\S]*?一/)
-    await env.DB.prepare('UPDATE goal_tasks SET done_at = ?1 WHERE id = ?2').bind(NOW - 2 * 86_400_000, t1).run()
-    h = await html()
-    expect(h).not.toMatch(/class="done today"/)
-    expect(t2).toBeGreaterThan(0)
+    // 勾过的行标 .done，位置不变——列表不跳。
+    expect([...h.matchAll(/<span class="tkt">(.)<\/span>/g)].map((m) => m[1])).toEqual(['一', '二', '三'])
+    expect(h).toMatch(/<li class="tkr done">[\s\S]*?<span class="tkt">一<\/span>/)
+    expect(h).toMatch(/<li class="tkr">[\s\S]*?<span class="tkt">二<\/span>/)
+    expect(t2 + t3).toBeGreaterThan(0)
   })
 
   it('draws seven dots per goal, today last, filled where checked', async () => {
@@ -223,14 +222,45 @@ describe('check-in', () => {
     expect((await post({ op: 'check', goal: 'x' })).status).toBe(400)
   })
 
-  it('task_done / task_undo respect ownership', async () => {
+  it('task_check / task_uncheck respect ownership and toggle exactly one day', async () => {
     const a = await seed('健身')
     const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
-    expect((await post({ op: 'task_done', task: String(t) }, other)).status).toBe(404)
-    expect((await post({ op: 'task_done', task: String(t) })).status).toBe(303)
-    expect((await listTasks(env.DB, 1))[0]!.done_at).not.toBeNull()
-    expect((await post({ op: 'task_undo', task: String(t) })).status).toBe(303)
-    expect((await listTasks(env.DB, 1))[0]!.done_at).toBeNull()
+    expect((await post({ op: 'task_check', task: String(t) }, other)).status).toBe(404)
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    expect(await listTaskCheckins(env.DB, 2, TODAY, TODAY)).toEqual([])
+    expect((await post({ op: 'task_check', task: String(t) })).status).toBe(303)
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ task_id: t, date: TODAY }])
+    expect((await post({ op: 'task_uncheck', task: String(t) })).status).toBe(303)
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    expect((await post({ op: 'task_check', task: 'x' })).status).toBe(400)
+    expect((await post({ op: 'task_done', task: String(t) })).status).toBe(400)
+  })
+
+  it('derives the goal check-in from its sub-tasks: the last one checked fills the circle, undoing one empties it', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+    await post({ op: 'task_check', task: String(t1) })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    await post({ op: 'task_check', task: String(t2) })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ goal_id: a, date: TODAY }])
+    expect(await html()).toMatch(new RegExp(`data-goal="${a}"[\\s\\S]*?name="op" value="uncheck"`))
+    await post({ op: 'task_uncheck', task: String(t1) })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+  })
+
+  it('the circle on a goal with sub-tasks checks them all, and unchecking clears them all', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+    expect((await post({ op: 'check', goal: String(a) })).status).toBe(303)
+    expect((await listTaskCheckins(env.DB, 1, TODAY, TODAY)).map((r) => r.task_id).sort((x, y) => x - y))
+      .toEqual([t1, t2].sort((x, y) => x - y))
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ goal_id: a, date: TODAY }])
+    expect((await post({ op: 'uncheck', goal: String(a) })).status).toBe(303)
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    expect((await post({ op: 'check', goal: String(a) }, other)).status).toBe(404)
   })
 
   it('ships the ink-bloom script and a check button with a spoken label', async () => {
