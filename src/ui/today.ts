@@ -199,7 +199,7 @@ function cardHtml(c: Card, t: T): string {
   </div>
   ${tasksHtml(c, t)}
   <div class="dots" aria-label="${t('最近七天')}">${c.dots.map((on) => `<i class="d${on ? ' on' : ''}"></i>`).join('')}</div>
-  ${c.tasks.length === 0 ? goHtml(g, t) : ''}
+  ${footHtml(c, t)}
 </article>`
 }
 
@@ -231,11 +231,7 @@ function chipHtml(r: TaskRow, g: Goal, t: T): string {
   const own = r.task.target !== ''
   const target = safeScheme(own ? r.task.target : g.target)
   if (target === '') return ''
-  const label = jumpLabel(own ? r.task.target_label : g.target_label, t)
-  if (/^https?:/i.test(target)) {
-    return `<a class="chip" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
-  }
-  return `<button class="chip" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${label}</button>`
+  return jumpHtml('chip', target, jumpLabel(own ? r.task.target_label : g.target_label, t))
 }
 
 /**
@@ -252,15 +248,39 @@ function jumpLabel(rawLabel: string, t: T): string {
   return /^[A-Za-z0-9]/.test(rawLabel) ? t('去 {label}', { label: shown }) : t('去{label}', { label: shown })
 }
 
+/**
+ * 一处跳转的两种形态，行内 chip 与底部大按钮共用，只差一个类名：https 是普通
+ * 的新标签页链接，自定义 scheme 是 data-go 按钮，交给那段同步的 location.href。
+ * 入口契约：`target` 必须已经过 safeScheme，`label` 必须已经转义。
+ */
+function jumpHtml(cls: string, target: string, label: string): string {
+  if (/^https?:/i.test(target)) {
+    return `<a class="${cls}" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
+  }
+  return `<button class="${cls}" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${label}</button>`
+}
+
+function bindHtml(g: Goal, t: T): string {
+  return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}${t('去绑一个 App，一按就开')}</a>`
+}
+
 function goHtml(g: Goal, t: T): string {
   const target = safeScheme(g.target)
-  if (target === '') {
-    return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}${t('去绑一个 App，一按就开')}</a>`
-  }
-  if (/^https?:/i.test(target)) {
-    return `<a class="go" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${jumpLabel(g.target_label, t)}</a>`
-  }
-  return `<button class="go" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${jumpLabel(g.target_label, t)}</button>`
+  if (target === '') return bindHtml(g, t)
+  return jumpHtml('go', target, jumpLabel(g.target_label, t))
+}
+
+/**
+ * 卡片底部。没有子任务时还是原来那一个：能跳就是大按钮，不能跳就是去绑定的
+ * 提示。有子任务时跳转已经在每一行上了，底部不再放按钮——唯一的例外是这张卡
+ * 片一处都跳不了（目标没绑，子任务也全都没绑，或绑的被 safeScheme 拦下）：那
+ * 时提示必须留着，否则卡片上再没有一条通向绑定页的路。判断跟渲染走同一个
+ * sink，免得「绑了但绑的是 javascript:」既没有 chip 也没有提示。
+ */
+function footHtml(c: Card, t: T): string {
+  if (c.tasks.length === 0) return goHtml(c.goal, t)
+  const jumpable = safeScheme(c.goal.target) !== '' || c.tasks.some((r) => safeScheme(r.task.target) !== '')
+  return jumpable ? '' : bindHtml(c.goal, t)
 }
 
 function restFold(goals: Goal[], t: T): string {
@@ -299,7 +319,7 @@ const TODAY_CSS = `
 .tks{list-style:none;margin:14px 0 0;padding:0}
 .tkr{display:flex;align-items:center;gap:8px;min-height:44px}
 .tkr form{margin:0;flex:none}
-.tkt{flex:1;min-width:0;font-size:15px;line-height:1.5}
+.tkt{flex:1;min-width:0;font-size:15px;line-height:1.5;overflow-wrap:anywhere}
 .tkr.done .tkt{color:var(--faint)}
 .tk{width:44px;height:44px;display:grid;place-items:center;margin-left:-8px}
 .tk i{display:block;width:20px;height:20px;border-radius:50%;border:1.3px solid var(--ring-prog)}

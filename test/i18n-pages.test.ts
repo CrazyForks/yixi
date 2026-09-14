@@ -149,6 +149,8 @@ describe('/today in English', () => {
     expect(main).toContain('aria-label="warm up, check off for today"')
     expect(main).toContain('<span class="tkt">stretch</span>')
     expect(main).not.toContain('<span class="nl">')
+    // Nothing on this card can jump, so the offer to bind one stays.
+    expect(main).toContain('Link an app, and it opens with one tap')
     expect(main).not.toMatch(CHINESE_PUNCT)
   })
 

@@ -248,12 +248,30 @@ describe('the jump', () => {
     const h = await html()
     expect(h).not.toContain('javascript:')
     expect(h).not.toContain('class="chip"')
+    // 被 safeScheme 拦下的 target 等于没绑：卡片上没有一处能跳，提示得留着。
+    expect(h).toContain('去绑一个 App，一按就开')
   })
 
   it('keeps the bottom button on a goal that has no sub-tasks at all', async () => {
     await seed('冥想', { target: 'headspace://', label: 'Headspace' })
     const h = await html()
     expect(h).toMatch(/<button class="go" type="button" data-go data-target="headspace:\/\/">/)
+  })
+
+  it('keeps the binding prompt on a card whose goal and sub-tasks all have nowhere to jump', async () => {
+    const a = await seed('阅读')
+    await createTask(env.DB, { userId: 1, goalId: a, title: '读十页', now: NOW })
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '写一句', now: NOW }))!
+    const h = await html()
+    expect(h).toContain('去绑一个 App，一按就开')
+    expect(h).toContain(`href="/today/goals#goal-${a}"`)
+    expect(h).not.toMatch(/class="go"/)
+    // 一处能跳就够，提示退场——底部大按钮仍然不回来。
+    await updateTaskTarget(env.DB, 1, t2, 'headspace://', '')
+    const after = await html()
+    expect(after).not.toContain('去绑一个 App，一按就开')
+    expect(after).not.toMatch(/class="go"/)
+    expect(after).toMatch(/<button class="chip" type="button" data-go data-target="headspace:\/\/">/)
   })
 })
 
