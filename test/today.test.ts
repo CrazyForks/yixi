@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleToday } from '../src/ui/today'
 import { addDays } from '../src/dates'
-import { createGoal, createTask, listCheckins, listGoals, listTaskCheckins, shanghaiDate, toggleCheckin } from '../src/db'
+import { createGoal, createTask, listCheckins, listGoals, listTaskCheckins, shanghaiDate, toggleCheckin, updateTaskTarget } from '../src/db'
 import type { User } from '../src/types'
 
 const user: User = { id: 1, name: '张三', is_owner: 0, created_at: 0 }
@@ -205,6 +205,55 @@ describe('the jump', () => {
   it('says 去做 when no label was given', async () => {
     await seed('冥想', { target: 'headspace://' })
     expect(await html()).toMatch(/data-go[^>]*>[\s\S]*?去做</)
+  })
+
+  it('puts the jump inline on every sub-task row, three ways, and takes the bottom button away', async () => {
+    const a = await seed('健身', { target: 'bilibili://video/BV1', label: 'B 站' })
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '拉伸', now: NOW }))!
+    await updateTaskTarget(env.DB, 1, t2, 'https://weread.qq.com/', '微信读书')
+    const h = await html()
+    // 没有自己的 target：继承目标的 scheme 与 label。
+    expect(h).toMatch(/<button class="chip" type="button" data-go data-target="bilibili:\/\/video\/BV1">[\s\S]*?去 B 站/)
+    // 有自己的 https target：新标签页打开，用自己的 label。
+    expect(h).toMatch(/<a class="chip" href="https:\/\/weread\.qq\.com\/" target="_blank" rel="noopener">[\s\S]*?去微信读书/)
+    // 有子任务时卡片底部的大按钮与绑定提示都不渲染。
+    expect(h).not.toMatch(/class="go"/)
+    expect(h).not.toContain('去绑一个 App，一按就开')
+    expect(t1).toBeGreaterThan(0)
+  })
+
+  it('gives a row no chip when neither it nor its goal has a target, and says 去做 for a labelless own target', async () => {
+    const a = await seed('阅读')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '记录体重', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '冥想', now: NOW }))!
+    await updateTaskTarget(env.DB, 1, t2, 'headspace://', '')
+    const h = await html()
+    expect(h).toMatch(/<span class="tkt">记录体重<\/span>\s*<\/li>/)
+    expect(h).toMatch(/data-target="headspace:\/\/">[\s\S]*?去做</)
+    expect(t1).toBeGreaterThan(0)
+  })
+
+  it('drops a forbidden scheme at the row sink, whether it is the row’s own or inherited', async () => {
+    // 自己的 target 被禁。
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    await env.DB.prepare('UPDATE goal_tasks SET target = ?1 WHERE id = ?2').bind('javascript:alert(1)', t).run()
+    // 继承来的 target 被禁：目标那一行直接写进 D1，绕过写入端的校验。
+    await env.DB.prepare(
+      "INSERT INTO goals (user_id, title, cue, target, target_label, position, created_at) VALUES (1, '阅读', '', 'javascript:alert(2)', 'y', 9, 0)",
+    ).run()
+    const b = (await listGoals(env.DB, 1)).find((g) => g.title === '阅读')!
+    await createTask(env.DB, { userId: 1, goalId: b.id, title: '二', now: NOW })
+    const h = await html()
+    expect(h).not.toContain('javascript:')
+    expect(h).not.toContain('class="chip"')
+  })
+
+  it('keeps the bottom button on a goal that has no sub-tasks at all', async () => {
+    await seed('冥想', { target: 'headspace://', label: 'Headspace' })
+    const h = await html()
+    expect(h).toMatch(/<button class="go" type="button" data-go data-target="headspace:\/\/">/)
   })
 })
 

@@ -199,7 +199,7 @@ function cardHtml(c: Card, t: T): string {
   </div>
   ${tasksHtml(c, t)}
   <div class="dots" aria-label="${t('最近七天')}">${c.dots.map((on) => `<i class="d${on ? ' on' : ''}"></i>`).join('')}</div>
-  ${goHtml(g, t)}
+  ${c.tasks.length === 0 ? goHtml(g, t) : ''}
 </article>`
 }
 
@@ -208,34 +208,59 @@ function tasksHtml(c: Card, t: T): string {
   return `<ul class="tks">${c.tasks.map((r) => taskRow(r, c.goal, t)).join('')}</ul>`
 }
 
-function taskRow(r: TaskRow, _goal: Goal, t: T): string {
+function taskRow(r: TaskRow, g: Goal, t: T): string {
   const title = escapeHtml(r.task.title)
   return `<li class="tkr${r.done ? ' done' : ''}">
     <form method="post" action="/today">
       <input type="hidden" name="task" value="${r.task.id}">
       <button class="tk" type="submit" name="op" value="${r.done ? 'task_uncheck' : 'task_check'}" aria-label="${r.done ? t('{title}，已勾上，点击取消', { title }) : t('{title}，今天勾上', { title })}"><i></i></button>
     </form>
-    <span class="tkt">${title}</span>
+    <span class="tkt">${title}</span>${chipHtml(r, g, t)}
   </li>`
+}
+
+/**
+ * 一行的跳转。沿用卡片底部按钮的三分法：空 → 不渲染；https → 新标签页链接；
+ * 自定义 scheme → data-go 按钮，交给同一段同步的 location.href 脚本。
+ *
+ * 继承是成对的：一行没有自己的 target 时，target 与 label 一起取目标的——只借
+ * scheme 不借 label，会把目标的 App 名安在一个跳去别处的行上。反过来，一行有
+ * 自己的 target 却没填 label 时回落「去做」，同样不去借目标的名字。
+ */
+function chipHtml(r: TaskRow, g: Goal, t: T): string {
+  const own = r.task.target !== ''
+  const target = safeScheme(own ? r.task.target : g.target)
+  if (target === '') return ''
+  const label = jumpLabel(own ? r.task.target_label : g.target_label, t)
+  if (/^https?:/i.test(target)) {
+    return `<a class="chip" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
+  }
+  return `<button class="chip" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${label}</button>`
+}
+
+/**
+ * 「去 B 站」／「去微信读书」／「去做」。
+ *
+ * 中西文之间留空，全中文不留。That spacing rule is Chinese typography, not a
+ * translation, so it is two sources rather than a `{sep}` param — English maps
+ * both to the same 「Open {label}」 and never has to reason about a separator it
+ * does not want.
+ */
+function jumpLabel(rawLabel: string, t: T): string {
+  if (rawLabel === '') return t('去做')
+  const shown = escapeHtml(rawLabel)
+  return /^[A-Za-z0-9]/.test(rawLabel) ? t('去 {label}', { label: shown }) : t('去{label}', { label: shown })
 }
 
 function goHtml(g: Goal, t: T): string {
   const target = safeScheme(g.target)
-  // 中西文之间留空，全中文不留：「去 B 站」但「去微信读书」。That spacing rule is
-  // Chinese typography, not a translation, so it is two sources rather than a
-  // `{sep}` param — English maps both to the same 「Open {label}」 and never
-  // has to reason about a separator it does not want.
-  const shown = escapeHtml(g.target_label)
-  const label = g.target_label
-    ? (/^[A-Za-z0-9]/.test(g.target_label) ? t('去 {label}', { label: shown }) : t('去{label}', { label: shown }))
-    : t('去做')
   if (target === '') {
     return `<a class="bind linky" href="/today/goals#goal-${g.id}">${icon('jump')}${t('去绑一个 App，一按就开')}</a>`
   }
   if (/^https?:/i.test(target)) {
-    return `<a class="go" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${label}</a>`
+    return `<a class="go" href="${escapeHtml(target)}" target="_blank" rel="noopener">${icon('jump')}${jumpLabel(g.target_label, t)}</a>`
   }
-  return `<button class="go" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${label}</button>`
+  return `<button class="go" type="button" data-go data-target="${escapeHtml(target)}">${icon('jump')}${jumpLabel(g.target_label, t)}</button>`
 }
 
 function restFold(goals: Goal[], t: T): string {
@@ -279,6 +304,11 @@ const TODAY_CSS = `
 .tk{width:44px;height:44px;display:grid;place-items:center;margin-left:-8px}
 .tk i{display:block;width:20px;height:20px;border-radius:50%;border:1.3px solid var(--ring-prog)}
 .tkr.done .tk i{background:var(--dot);border-color:var(--dot)}
+.chip{display:inline-flex;align-items:center;gap:5px;flex:none;min-height:44px;padding:0 10px;margin-right:-10px;
+  border:0;background:none;color:var(--dim);font-size:13px;letter-spacing:.06em;text-decoration:none}
+.chip:active{opacity:.72}
+.chip .ic{width:13px;height:13px}
+.tkr.done .chip{color:var(--faint)}
 .dots{display:flex;gap:8px;margin:16px 0 0}
 .dots .d{display:block;width:9px;height:9px;border-radius:50%;border:1px solid var(--ring-prog)}
 .dots .d.on{background:var(--dot);border-color:var(--dot)}

@@ -28,7 +28,7 @@ import { renderTodaySetup } from '../src/ui/todaysetup'
 import { handleAccount, handleClaim, handleLogin, handleRecover, handleRegister } from '../src/ui/account'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
-import { createGoal, createTask, shanghaiDate, toggleCheckin, upsertUserApp } from '../src/db'
+import { createGoal, createTask, shanghaiDate, toggleCheckin, updateTaskTarget, upsertUserApp } from '../src/db'
 import type { User } from '../src/types'
 import { translator } from '../src/i18n'
 
@@ -149,6 +149,18 @@ describe('/today in English', () => {
     expect(main).toContain('aria-label="warm up, check off for today"')
     expect(main).toContain('<span class="tkt">stretch</span>')
     expect(main).not.toContain('<span class="nl">')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+  })
+
+  it('says Open {label} on a sub-task chip, inheriting the goal’s app when the row has none', async () => {
+    const g = await seed('健身', { target: 'bilibili://video/BV1', label: 'B 站' })
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: g, title: 'warm up', now: NOW }))!
+    await createTask(env.DB, { userId: 1, goalId: g, title: 'stretch', now: NOW })
+    await updateTaskTarget(env.DB, 1, t1, 'https://weread.qq.com/', '微信读书')
+    const main = mainOf(await todayHtml())
+    expect(main).toMatch(/<a class="chip" href="https:\/\/weread\.qq\.com\/"[^>]*>[\s\S]*?Open 微信读书/)
+    expect(main).toMatch(/<button class="chip" type="button" data-go data-target="bilibili:\/\/video\/BV1">[\s\S]*?Open B 站/)
+    expect(main).not.toMatch(/class="go"/)
     expect(main).not.toMatch(CHINESE_PUNCT)
   })
 
