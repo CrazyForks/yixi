@@ -15,3 +15,10 @@ compatibility_date = "2026-07-01"
 binding = "DB"
 database_name = "yixi"
 database_id = "64215db6-0a05-4ae9-a583-19c8790bef06"
+
+# Smart Placement: run near the D1 database (APAC) instead of near the
+# visitor. Mainland-China traffic lands on a US-west colo while D1 sits in
+# Singapore; every render paid that hop once per query. Decided from live
+# traffic, may take a while to kick in — check the `cf-placement` header.
+[placement]
+mode = "smart"
