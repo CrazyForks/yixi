@@ -123,8 +123,16 @@ export interface GoalTask {
   goal_id: number
   user_id: number
   title: string
+  /** 这条子任务自己的跳转目标；'' 表示跟着所属目标的跳转走。 */
+  target: string
+  /** 「B 站」；行内按钮显示「去 B 站」，空则「去做」。 */
+  target_label: string
   position: number
   created_at: number
+  /**
+   * 一次性待办年代的完成时间戳。0007 之后不再读写：每天的勾选记在
+   * goal_task_checkins 里。列还在，代码里的这个字段会在子任务改造收尾时删掉。
+   */
   done_at: number | null
 }
 

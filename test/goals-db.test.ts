@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  countTasksDoneBetween, countTasksDoneOn, createGoal, createTask, deleteGoal, deleteTask, getGoal, listCheckins,
-  listGoalDays, listGoals, listTasks, listUsersWithLiveGoals, moveGoal, setGoalArchived, setTaskDone, shanghaiDate,
-  toggleCheckin, updateGoal, upsertGoalDay,
+  countTaskCheckinsBetween, countTaskCheckinsOn, countTasksDoneBetween, countTasksDoneOn, createGoal, createTask,
+  deleteGoal, deleteTask, getGoal, getTask, listCheckins, listGoalDays, listGoals, listTaskCheckins, listTasks,
+  listUsersWithLiveGoals, moveGoal, setGoalArchived, setGoalTaskCheckins, setTaskCheckin, setTaskDone, shanghaiDate,
+  syncGoalCheckin, toggleCheckin, updateGoal, updateTaskTarget, upsertGoalDay,
 } from '../src/db'
 
 const NOW = 1_800_000_000_000
@@ -11,6 +12,7 @@ const TODAY = shanghaiDate(NOW)
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_days'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
@@ -227,5 +229,144 @@ describe('goal_days', () => {
     expect(await countTasksDoneBetween(env.DB, 2, '2026-09-14', '2026-09-20')).toBe(0)
     // Narrowing from = to = the mid-week day pins both ends independently: only t3 qualifies.
     expect(await countTasksDoneBetween(env.DB, 1, '2026-09-16', '2026-09-16')).toBe(1)
+  })
+})
+
+describe('task targets', () => {
+  it('starts empty and updates only the owner’s row', async () => {
+    const id = await goal(1, '健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: id, title: '跟练 20 分钟', now: NOW }))!
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ goal_id: id, title: '跟练 20 分钟', target: '', target_label: '' })
+    expect(await getTask(env.DB, 2, t)).toBeNull()
+    expect(await updateTaskTarget(env.DB, 2, t, 'bilibili://', 'B 站')).toBe(false)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '', target_label: '' })
+    expect(await updateTaskTarget(env.DB, 1, t, 'bilibili://', 'B 站')).toBe(true)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: 'bilibili://', target_label: 'B 站' })
+    expect((await listTasks(env.DB, 1))[0]).toMatchObject({ target: 'bilibili://', target_label: 'B 站' })
+  })
+})
+
+describe('task check-ins', () => {
+  it('writes one row per task per day, is idempotent, and takes it away again', async () => {
+    const id = await goal(1, '健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t, '2026-09-14', true, NOW)
+    await setTaskCheckin(env.DB, 1, t, '2026-09-14', true, NOW + 1)
+    expect(await listTaskCheckins(env.DB, 1, '2026-09-14', '2026-09-14')).toEqual([{ task_id: t, date: '2026-09-14' }])
+    await setTaskCheckin(env.DB, 1, t, '2026-09-14', false, NOW)
+    expect(await listTaskCheckins(env.DB, 1, '2026-09-14', '2026-09-14')).toEqual([])
+  })
+
+  it('refuses a task that belongs to somebody else, writing nothing for either side', async () => {
+    const id = await goal(1, '健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    await setTaskCheckin(env.DB, 2, t, '2026-09-14', true, NOW)
+    expect(await listTaskCheckins(env.DB, 2, '2026-09-14', '2026-09-14')).toEqual([])
+    expect(await listTaskCheckins(env.DB, 1, '2026-09-14', '2026-09-14')).toEqual([])
+  })
+
+  it('checks and clears a whole goal at once, touching no other goal', async () => {
+    const a = await goal(1, '健身')
+    const b = await goal(1, '英语')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+    const t3 = (await createTask(env.DB, { userId: 1, goalId: b, title: '三', now: NOW }))!
+    await setGoalTaskCheckins(env.DB, 1, a, '2026-09-14', true, NOW)
+    const ids = (await listTaskCheckins(env.DB, 1, '2026-09-14', '2026-09-14')).map((r) => r.task_id).sort((x, y) => x - y)
+    expect(ids).toEqual([t1, t2].sort((x, y) => x - y))
+    await setGoalTaskCheckins(env.DB, 1, b, '2026-09-14', true, NOW)
+    await setGoalTaskCheckins(env.DB, 1, a, '2026-09-14', false, NOW)
+    expect((await listTaskCheckins(env.DB, 1, '2026-09-14', '2026-09-14')).map((r) => r.task_id)).toEqual([t3])
+  })
+
+  it('counts one check-in per task per day, so the same task on two days counts twice', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, '2026-09-14', true, NOW)
+    await setTaskCheckin(env.DB, 1, t1, '2026-09-15', true, NOW)
+    await setTaskCheckin(env.DB, 1, t2, '2026-09-15', true, NOW)
+    expect(await countTaskCheckinsOn(env.DB, 1, '2026-09-14')).toBe(1)
+    expect(await countTaskCheckinsOn(env.DB, 1, '2026-09-15')).toBe(2)
+    expect(await countTaskCheckinsBetween(env.DB, 1, '2026-09-14', '2026-09-15')).toBe(3)
+    expect(await countTaskCheckinsBetween(env.DB, 1, '2026-09-15', '2026-09-15')).toBe(2)
+    expect(await countTaskCheckinsBetween(env.DB, 2, '2026-09-14', '2026-09-15')).toBe(0)
+  })
+
+  it('keeps the ledger when the task, or the whole goal, is deleted', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, '2026-09-14', true, NOW)
+    await setTaskCheckin(env.DB, 1, t2, '2026-09-14', true, NOW)
+    expect(await deleteTask(env.DB, 1, t1)).toBe(true)
+    expect(await countTaskCheckinsOn(env.DB, 1, '2026-09-14')).toBe(2)
+    expect(await deleteGoal(env.DB, 1, id)).toBe(true)
+    expect(await countTaskCheckinsOn(env.DB, 1, '2026-09-14')).toBe(2)
+  })
+})
+
+describe('syncGoalCheckin', () => {
+  const DATE = '2026-09-14'
+
+  async function checkedDates(goalId: number): Promise<string[]> {
+    const rows = await listCheckins(env.DB, 1, '2026-09-01', '2026-09-30')
+    return rows.filter((c) => c.goal_id === goalId).map((c) => c.date)
+  }
+
+  it('adds the goal check-in on the last sub-task, and removes it again when one is undone', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, DATE, true, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([])
+    await setTaskCheckin(env.DB, 1, t2, DATE, true, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([DATE])
+    await setTaskCheckin(env.DB, 1, t1, DATE, false, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([])
+  })
+
+  it('drops the check-in when a new sub-task lands under a fully checked goal', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, DATE, true, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([DATE])
+    await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW })
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([])
+  })
+
+  it('adds the check-in when the last unchecked sub-task is deleted', async () => {
+    const id = await goal(1, '健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, DATE, true, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([])
+    await deleteTask(env.DB, 1, t2)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([DATE])
+  })
+
+  it('leaves a goal with no sub-tasks alone, manual check-in and all', async () => {
+    const id = await goal(1, '冥想')
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([])
+    await toggleCheckin(env.DB, 1, id, DATE, NOW)
+    await syncGoalCheckin(env.DB, 1, id, DATE, NOW)
+    expect(await checkedDates(id)).toEqual([DATE])
+  })
+
+  it('never reaches into another user’s goal', async () => {
+    const id = await goal(1, '健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t, DATE, true, NOW)
+    await syncGoalCheckin(env.DB, 2, id, DATE, NOW)
+    expect(await listCheckins(env.DB, 2, DATE, DATE)).toEqual([])
+    expect(await checkedDates(id)).toEqual([])
   })
 })

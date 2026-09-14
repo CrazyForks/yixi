@@ -715,7 +715,7 @@ export async function moveGoal(
 export async function listTasks(db: D1Database, userId: number): Promise<GoalTask[]> {
   const res = await db
     .prepare(
-      `SELECT id, goal_id, user_id, title, position, created_at, done_at
+      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at, done_at
        FROM goal_tasks WHERE user_id = ?1
        ORDER BY goal_id, done_at IS NOT NULL, position, id`,
     )
@@ -753,6 +753,32 @@ export async function setTaskDone(db: D1Database, userId: number, id: number, do
 
 export async function deleteTask(db: D1Database, userId: number, id: number): Promise<boolean> {
   const res = await db.prepare('DELETE FROM goal_tasks WHERE user_id = ?1 AND id = ?2').bind(userId, id).run()
+  return (res.meta.changes ?? 0) > 0
+}
+
+/** 单条子任务，按 user_id 圈定——A 永远拿不到 B 的 task，包括「它存不存在」。 */
+export async function getTask(db: D1Database, userId: number, id: number): Promise<GoalTask | null> {
+  return await db
+    .prepare(
+      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at, done_at
+       FROM goal_tasks WHERE user_id = ?1 AND id = ?2`,
+    )
+    .bind(userId, id)
+    .first<GoalTask>()
+}
+
+/** 只改跳转那两列。标题在任何界面上都改不了，这里也不给改。 */
+export async function updateTaskTarget(
+  db: D1Database,
+  userId: number,
+  id: number,
+  target: string,
+  targetLabel: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare('UPDATE goal_tasks SET target = ?3, target_label = ?4 WHERE user_id = ?1 AND id = ?2')
+    .bind(userId, id, target, targetLabel)
+    .run()
   return (res.meta.changes ?? 0) > 0
 }
 
@@ -798,6 +824,162 @@ export async function listCheckins(
     .bind(userId, fromDate, toDate)
     .all<{ goal_id: number; date: string }>()
   return res.results
+}
+
+// --- goal_task_checkins（子任务每天的勾选，以及由它派生的目标打卡）-----------
+//
+// 一条子任务不再是「做完划掉」，而是「每天勾一次」。所以完成状态不在
+// goal_tasks 上，而是 (user_id, task_id, date) 这张按天幂等的表——主键保证同一天
+// 只有一行，重复点不会重复计数，和 goal_checkins 同一套结构。
+//
+// 删任务、删目标都不动这张表：做过的事不因为目标消失而消失，/today/review 的
+// 「这周」直接数这张表，所以删掉任务之后本周计数不会掉下去。
+
+/**
+ * 一条子任务在某一天的勾选：on 就插、off 就删。
+ *
+ * INSERT 把「这条 task 是不是这个人的」压进同一条语句的 WHERE EXISTS 里，所以
+ * 即使调用方忘了先查归属，别人的 task id 也只会写出零行，而不是写进这个人的账。
+ */
+export async function setTaskCheckin(
+  db: D1Database,
+  userId: number,
+  taskId: number,
+  date: string,
+  on: boolean,
+  now: number,
+): Promise<void> {
+  if (!on) {
+    await db
+      .prepare('DELETE FROM goal_task_checkins WHERE user_id = ?1 AND task_id = ?2 AND date = ?3')
+      .bind(userId, taskId, date)
+      .run()
+    return
+  }
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO goal_task_checkins (user_id, task_id, date, ts)
+       SELECT ?1, ?2, ?3, ?4
+       WHERE EXISTS (SELECT 1 FROM goal_tasks WHERE id = ?2 AND user_id = ?1)`,
+    )
+    .bind(userId, taskId, date, now)
+    .run()
+}
+
+/**
+ * 一个目标名下所有子任务当天一起勾、一起撤。有子任务时 /today 上的目标圆圈就是
+ * 这个动作——圆圈自己不写 goal_checkins，它写子任务，然后让 syncGoalCheckin 把
+ * 目标那一行放回它该在的位置。
+ */
+export async function setGoalTaskCheckins(
+  db: D1Database,
+  userId: number,
+  goalId: number,
+  date: string,
+  on: boolean,
+  now: number,
+): Promise<void> {
+  if (!on) {
+    await db
+      .prepare(
+        `DELETE FROM goal_task_checkins WHERE user_id = ?1 AND date = ?3
+         AND task_id IN (SELECT id FROM goal_tasks WHERE user_id = ?1 AND goal_id = ?2)`,
+      )
+      .bind(userId, goalId, date)
+      .run()
+    return
+  }
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO goal_task_checkins (user_id, task_id, date, ts)
+       SELECT ?1, id, ?3, ?4 FROM goal_tasks WHERE user_id = ?1 AND goal_id = ?2`,
+    )
+    .bind(userId, goalId, date, now)
+    .run()
+}
+
+/** 闭区间；一次取整个用户的，调用方按 task 分组，与 listCheckins 同形，不做 N+1。 */
+export async function listTaskCheckins(
+  db: D1Database,
+  userId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<{ task_id: number; date: string }[]> {
+  const res = await db
+    .prepare('SELECT task_id, date FROM goal_task_checkins WHERE user_id = ?1 AND date >= ?2 AND date <= ?3')
+    .bind(userId, fromDate, toDate)
+    .all<{ task_id: number; date: string }>()
+  return res.results
+}
+
+/** 某个上海日里勾了几次子任务。就是下面那个的单日特例（from === to）。 */
+export async function countTaskCheckinsOn(db: D1Database, userId: number, date: string): Promise<number> {
+  return await countTaskCheckinsBetween(db, userId, date, date)
+}
+
+/**
+ * 闭区间内一共勾了几次子任务。同一条任务两天各勾一次算两次——这是「做了多少次」
+ * 而不是「有多少条做完了」。
+ *
+ * 这里没有毫秒窗口的时区算术：date 列本身就是上海日历日，写入时已经折算过一次，
+ * 所以范围查询就是两个字符串比较。这是换表换来的简化，不是省略。
+ */
+export async function countTaskCheckinsBetween(
+  db: D1Database,
+  userId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM goal_task_checkins
+       WHERE user_id = ?1 AND date >= ?2 AND date <= ?3`,
+    )
+    .bind(userId, fromDate, toDate)
+    .first<{ n: number }>()
+  return row?.n ?? 0
+}
+
+/**
+ * 有子任务的目标，当天的打卡是派生的：「当天所有子任务都勾了」⇔「goal_checkins
+ * 有当天这一行」。多则删、少则补。
+ *
+ * 没有子任务的目标一行都不碰——那种目标的圆圈仍然是手动的 toggleCheckin，两种
+ * 目标共用同一张 goal_checkins，所以七日圆点、快照 done、回看页全部不用知道
+ * 这件事存在。
+ *
+ * 每一次改动子任务集合或其勾选状态之后都必须调用：勾、撤、新增、删除。
+ */
+export async function syncGoalCheckin(
+  db: D1Database,
+  userId: number,
+  goalId: number,
+  date: string,
+  now: number,
+): Promise<void> {
+  const row = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM goal_tasks WHERE user_id = ?1 AND goal_id = ?2) AS n,
+         (SELECT COUNT(*) FROM goal_task_checkins c
+            JOIN goal_tasks t ON t.id = c.task_id AND t.user_id = c.user_id
+            WHERE c.user_id = ?1 AND t.goal_id = ?2 AND c.date = ?3) AS x`,
+    )
+    .bind(userId, goalId, date)
+    .first<{ n: number; x: number }>()
+  const n = row?.n ?? 0
+  if (n === 0) return
+  if ((row?.x ?? 0) >= n) {
+    await db
+      .prepare('INSERT OR IGNORE INTO goal_checkins (user_id, goal_id, date, ts) VALUES (?1, ?2, ?3, ?4)')
+      .bind(userId, goalId, date, now)
+      .run()
+    return
+  }
+  await db
+    .prepare('DELETE FROM goal_checkins WHERE user_id = ?1 AND goal_id = ?2 AND date = ?3')
+    .bind(userId, goalId, date)
+    .run()
 }
 
 // --- goal_days（每日快照，由 00:00 Asia/Shanghai 的 cron 写入）------------
