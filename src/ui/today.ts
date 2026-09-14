@@ -13,7 +13,7 @@
 import type { Env, Goal, GoalTask, User } from '../types'
 import { TODAY_GOAL_LIMIT } from '../types'
 import {
-  createGoal, getGoal, getTask, listCheckins, listGoals, listTaskCheckins, listTasks,
+  createGoal, getTask, listCheckins, listGoals, listTaskCheckins, listTasks,
   setGoalTaskCheckins, setTaskCheckin, shanghaiDate, syncGoalCheckin, toggleCheckin,
 } from '../db'
 import { DEFAULT_THEME, escapeHtml, jsonScript, page } from './layout'
@@ -61,10 +61,19 @@ function notFound(): Response {
  * 写完之后的回执，只发给我们自己的脚本：圆圈此刻亮不亮，今天该画的卡片是不是
  * 全勾了。两位都重新从库里读——界面已经被客户端先翻过去了，这里要给的是真相，
  * 不是它的猜测。allDone 跟 render 用同一个 shownGoals，免得两处各算各的。
+ *
+ * `known` 是调用方为了别的事已经取过的那份目标列表。这条路是这次改动想让它变快
+ * 的那条，所以除了 checked 非读不可的那次 listCheckins，一趟多余的查询都不欠。
  */
-async function receipt(env: Env, user: User, goalId: number, date: string): Promise<Response> {
+async function receipt(
+  env: Env,
+  user: User,
+  goalId: number,
+  date: string,
+  known: Goal[] | null,
+): Promise<Response> {
   const [goals, checkins] = await Promise.all([
-    listGoals(env.DB, user.id),
+    known ?? listGoals(env.DB, user.id),
     listCheckins(env.DB, user.id, date, date),
   ])
   const done = new Set(checkins.map((c) => c.goal_id))
@@ -103,14 +112,16 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     const id = intId(field(form, 'goal'))
     if (id === null) return bad()
     const date = shanghaiDate(now)
-    const goal = await getGoal(env.DB, user.id, id)
-    if (!goal) return notFound()
-    const hasTasks = (await listTasks(env.DB, user.id)).some((tk) => tk.goal_id === id)
+    // 一趟取回整张列表：归属校验、有没有子任务、回执里的 shownGoals 全从它来，
+    // 所以回执只欠一次 listCheckins。两条查询并排发，303 那条路也少等一趟。
+    const [goals, tasks] = await Promise.all([listGoals(env.DB, user.id), listTasks(env.DB, user.id)])
+    if (!goals.some((g) => g.id === id)) return notFound()
+    const hasTasks = tasks.some((tk) => tk.goal_id === id)
     if (!hasTasks) {
       // toggle is by day; `check` and `uncheck` are the same request and only
       // differ in what the button said, so a double tap cannot double count.
       await toggleCheckin(env.DB, user.id, id, date, now)
-      return asJson ? await receipt(env, user, id, date) : back()
+      return asJson ? await receipt(env, user, id, date, goals) : back()
     }
     // With sub-tasks the circle is a derived state, so the circle writes the
     // sub-tasks and lets the derivation put the goal's own row back. Writing
@@ -118,18 +129,22 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     // whole change exists to remove.
     await setGoalTaskCheckins(env.DB, user.id, id, date, op === 'check', now)
     await syncGoalCheckin(env.DB, user.id, id, date, now)
-    return asJson ? await receipt(env, user, id, date) : back()
+    return asJson ? await receipt(env, user, id, date, goals) : back()
   }
   if (op === 'task_check' || op === 'task_uncheck') {
     const id = intId(field(form, 'task'))
     if (id === null) return bad()
-    const task = await getTask(env.DB, user.id, id)
+    // 归属校验与回执要用的目标列表并排取：这一条路上没有一次串行的多余等待。
+    const [task, goals] = await Promise.all([
+      getTask(env.DB, user.id, id),
+      asJson ? listGoals(env.DB, user.id) : null,
+    ])
     if (!task) return notFound()
     const date = shanghaiDate(now)
     await setTaskCheckin(env.DB, user.id, id, date, op === 'task_check', now)
     await syncGoalCheckin(env.DB, user.id, task.goal_id, date, now)
     // 一行勾完之后，回执说的是这一行所属目标的状态——圆圈亮不亮由它决定。
-    return asJson ? await receipt(env, user, task.goal_id, date) : back()
+    return asJson ? await receipt(env, user, task.goal_id, date, goals) : back()
   }
   return bad()
 }
@@ -403,11 +418,17 @@ details.rest li a{text-decoration:none}
  * go(): location.href to a custom scheme inside the click's synchronous stack.
  * Nothing awaited, nothing deferred, before the assignment. CONTRIBUTING §2.
  *
- * bloom: a check tap paints the dot immediately, then submits the form after
- * the 260ms transition, so the 303 lands on a page that already looks the way
- * the tap did. Without JS the form submits normally. A second tap while the
- * button still carries `.bloom` is a no-op — nothing re-arms the timer or
- * resubmits — or a fast double tap would fire check, then uncheck.
+ * bloom: a check tap paints the dot immediately. The ink used to also be the
+ * schedule — the form was submitted 260ms later, after the transition, so the
+ * 303 landed on a page that already looked the way the tap did. It is
+ * decoration again now: `requestSubmit` goes out in the tap's own tick and the
+ * transition runs alongside the request, because holding the POST for the
+ * length of an animation put 260ms in front of the one gesture this change
+ * exists to make instant. The class still hands off to `.checked` (same ink,
+ * no transition) and is dropped a frame after the animation ends, so the tap
+ * after next is never refused. Without JS the form submits normally. A second
+ * tap while the button still carries `.bloom` is a no-op — or a fast double
+ * tap would fire check, then uncheck.
  *
  * submit: the check-in itself. A tap used to cost POST → 303 → GET, two round
  * trips to a colo an ocean away before anything moved. Now the page flips at
@@ -423,14 +444,21 @@ details.rest li a{text-decoration:none}
  * one rule. Without JS none of this exists and the forms post as they always
  * did.
  *
- * Three details in there that are not obvious from the code:
- *   - `.bloom` comes off in the same frame `.checked` goes on. The tap's ink is
- *     held by `.checked` from then on, and a page that no longer reloads
- *     between taps would otherwise hand the click handler above a button it
- *     has already decided to ignore.
+ * Four details in there that are not obvious from the code:
+ *   - every row of a card has its own form, so `form.yxSending` serializes one
+ *     widget and orders nothing. Receipts are stamped per card instead
+ *     (`card.yxSeq`) and a receipt that is no longer the newest for its card is
+ *     dropped, or ticking two rows in a row would let the first one's older
+ *     `checked:false` land last and darken a circle the server has lit. The
+ *     closing line is page-wide rather than per-card, so it gets its own
+ *     counter; same rule, wider scope.
+ *   - `op` is derived from the state just painted, never read back off the
+ *     button: the button's `value` is something receipts rewrite, and reading
+ *     it late is how a tap on an empty circle would come to send an uncheck.
  *   - `FormData` leaves the submitter out, so `op` — which IS the request — is
  *     put back on the body by hand, and again as a hidden field before the
- *     fall-back `form.submit()`, which drops it for the same reason.
+ *     fall-back `form.submit()`, which drops it for the same reason. That field
+ *     is reused rather than appended again, so repeated failures cannot pile up.
  *   - the circle writes every sub-task row, so it flips every row, and the undo
  *     restores each row's own state rather than clearing them all: before the
  *     tap they need not have agreed.
@@ -460,7 +488,7 @@ document.addEventListener('click',function(e){
     e.preventDefault();
     if(ck.classList.contains('bloom'))return;
     ck.classList.add('bloom');
-    setTimeout(function(){form.requestSubmit(ck)},260);
+    form.requestSubmit(ck);
     return;
   }
   if(t.closest('#a2hs-x')){
@@ -470,9 +498,15 @@ document.addEventListener('click',function(e){
   }
 });
 
+var finSeq=0;
+
 function label(btn,on){
   var s=btn.getAttribute(on?'data-on':'data-off');
   if(s!==null)btn.setAttribute('aria-label',s);
+}
+function unbloom(b){
+  if(!b.classList.contains('bloom'))return;
+  setTimeout(function(){b.classList.remove('bloom')},300);
 }
 function setRow(row,on){
   row.classList.toggle('done',on);
@@ -482,7 +516,7 @@ function setRow(row,on){
 function setCard(card,on){
   card.classList.toggle('checked',on);
   var b=card.querySelector('button.ck');
-  if(b){b.value=on?'uncheck':'check';label(b,on);b.classList.remove('bloom')}
+  if(b){b.value=on?'uncheck':'check';label(b,on);if(on)unbloom(b);else b.classList.remove('bloom')}
   var dots=card.querySelectorAll('.dots .d');
   var last=dots[dots.length-1];
   if(last)last.classList.toggle('on',on);
@@ -491,19 +525,21 @@ function setCard(card,on){
 document.addEventListener('submit',function(e){
   var form=e.target;
   if(!form||!form.querySelector)return;
-  var btn=form.querySelector('button.ck,button.tk');
-  if(!btn)return;
+  var btn=e.submitter||form.querySelector('button.ck,button.tk');
+  if(!btn||!btn.matches||!btn.matches('button.ck,button.tk'))return;
   e.preventDefault();
   if(form.yxSending)return;
   var card=form.closest('article[data-goal]');
   if(!card)return;
-  var op=btn.value,row=form.closest('li.tkr'),rows=card.querySelectorAll('li.tkr'),undo,i;
+  var row=form.closest('li.tkr'),rows=card.querySelectorAll('li.tkr'),undo,op,i;
   if(row){
     var wasRow=row.classList.contains('done');
+    op=wasRow?'task_uncheck':'task_check';
     setRow(row,!wasRow);
     undo=function(){setRow(row,wasRow)};
   }else{
     var wasCard=card.classList.contains('checked'),before=[];
+    op=wasCard?'uncheck':'check';
     for(i=0;i<rows.length;i++)before.push(rows[i].classList.contains('done'));
     setCard(card,!wasCard);
     for(i=0;i<rows.length;i++)setRow(rows[i],!wasCard);
@@ -512,6 +548,8 @@ document.addEventListener('submit',function(e){
       for(var k=0;k<rows.length;k++)setRow(rows[k],before[k]);
     };
   }
+  var seq=(card.yxSeq||0)+1,fseq=++finSeq;
+  card.yxSeq=seq;
   var data=new URLSearchParams(new FormData(form));
   data.set(btn.name,op);
   form.yxSending=1;
@@ -520,16 +558,20 @@ document.addEventListener('submit',function(e){
     .then(function(d){
       form.yxSending=0;
       if(!d||!d.goal||String(d.goal.id)!==card.getAttribute('data-goal'))throw new Error('elsewhere');
-      setCard(card,d.goal.checked===true);
+      if(seq===card.yxSeq)setCard(card,d.goal.checked===true);
       var fin=document.querySelector('p.fin');
-      if(fin)fin.hidden=d.allDone!==true;
+      if(fin&&fseq===finSeq)fin.hidden=d.allDone!==true;
     })
     .catch(function(){
       form.yxSending=0;
       undo();
-      var h=document.createElement('input');
-      h.type='hidden';h.name=btn.name;h.value=op;
-      form.appendChild(h);
+      var h=form.querySelector('input.yxop');
+      if(!h){
+        h=document.createElement('input');
+        h.type='hidden';h.className='yxop';h.name=btn.name;
+        form.appendChild(h);
+      }
+      h.value=op;
       form.submit();
     });
 });

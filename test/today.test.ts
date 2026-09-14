@@ -509,6 +509,23 @@ describe('what the optimistic script is handed', () => {
     expect(js).not.toMatch(/\bawait\b/)
     expect(js.match(/addEventListener\('click'/g)).toHaveLength(1)
   })
+
+  /**
+   * 这一条是结构性的，只能证明那几行代码在脚本里，证明不了它们在浏览器里做了
+   * 什么——这个套件跑在 workerd 里，没有 DOM。行为那一层由 Chromium 实测覆盖
+   * （task-7 报告 Fix round 1），这里守的是「有人把它删了会红」。
+   */
+  it('keeps the per-card receipt sequence, and sends in the tap’s own tick', async () => {
+    await seed('健身')
+    const js = stripComments(scriptOf(await html()))
+    expect(js).toContain('yxSeq')
+    expect(js).toContain('seq===card.yxSeq')
+    // 打卡请求不再等那 260ms 的墨点动画：requestSubmit 就在这一跳里发出去。
+    expect(js).toContain('form.requestSubmit(ck);')
+    expect(js).not.toMatch(/setTimeout\([\s\S]{0,60}requestSubmit/)
+    // 动画本身还在，只是它现在只是装饰。
+    expect(js).toContain('bloom')
+  })
 })
 
 describe('add-to-home-screen banner', () => {
