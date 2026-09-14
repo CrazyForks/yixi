@@ -426,9 +426,11 @@ details.rest li a{text-decoration:none}
  * length of an animation put 260ms in front of the one gesture this change
  * exists to make instant. The class still hands off to `.checked` (same ink,
  * no transition) and is dropped a frame after the animation ends, so the tap
- * after next is never refused. Without JS the form submits normally. A second
- * tap while the button still carries `.bloom` is a no-op — or a fast double
- * tap would fire check, then uncheck.
+ * after next is never refused. Without JS the form submits normally. The
+ * `.bloom` guard only stops the same check from firing twice: `value` flips
+ * to uncheck in the tap's own tick, so a fast double tap is a check followed
+ * by an uncheck — a toggle behaving like a toggle — and the server ends where
+ * the finger did.
  *
  * submit: the check-in itself. A tap used to cost POST → 303 → GET, two round
  * trips to a colo an ocean away before anything moved. Now the page flips at
