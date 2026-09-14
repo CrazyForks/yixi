@@ -2,7 +2,7 @@
 
 # 一息
 
-一息做两件事，共用一个账号。**拦**：打开小红书这类干扰 App 之前，手机先跳到一个网页让你呼吸十秒，十秒后先给「算了」，再给「继续打开」，并且把这一次记下来。**引**：未来一段时间最重要的三件事放在一页上，每天早上打开它——每件事带着自己的下一步、最近七天的七颗墨点，和一个直接跳进那个 App 的按钮（跟练去 B 站，读书去微信读书）。两件事各自能用，不需要都用。
+一息做两件事，共用一个账号。**拦**：打开小红书这类干扰 App 之前，手机先跳到一个网页让你呼吸十秒，十秒后先给「算了」，再给「继续打开」，并且把这一次记下来。**引**：未来一段时间最重要的三件事放在一页上，每天早上打开它——每件事带着今天要做的几条子任务、最近七天的七颗墨点，和一个直接跳进那个 App 的按钮（跟练去 B 站，读书去微信读书）。两件事各自能用，不需要都用。
 
 整个东西是**一个 Cloudflare Worker 加一个 D1 数据库**，跑在免费额度里，成本约等于零。拦的那一半是自建的 [One Sec](https://one-sec.app/) 替代品，做成网页而不是 iPhone App。
 
@@ -21,11 +21,11 @@
 </td>
 <td width="50%" align="center">
 
-<img src="docs/images/today-paper.png" width="300" alt="今日页浅色：宣纸上三张目标卡，第一张是大卡，带下一步、七颗墨点和一个跳转按钮">
+<img src="docs/images/today-paper.png" width="300" alt="今日页浅色：宣纸上三张目标卡，第一张是大卡，带今天的子任务、七颗墨点和跳转按钮">
 
 <sub>三个目标，第一个画成大卡。没有任何地方显示连续天数。</sub>
 
-未来一段时间最重要的那几件事收在一页上，每天早上打开——每件事带着自己的下一步、最近七天的七颗墨点，和一个直接进 App 的按钮。
+未来一段时间最重要的那几件事收在一页上，每天早上打开——每件事带着今天要做的几条子任务、最近七天的七颗墨点，和一个直接进 App 的按钮。
 
 **[引 →](docs/today.md)**
 
@@ -59,9 +59,9 @@
 | `/b?s=<sid>` | sid | 呼吸页 |
 | `POST /resolve` | sid | 记 proceed／abandon，开免打扰窗口 |
 | `/register` `/login` `/claim` `/recover` | 所有人 | 注册、登录、给老 token 绑账号、用 token 重置密码 |
-| `/today` | 本人 | 每天早上要开的那一页：最重要的目标、下一步、七天墨点 |
+| `/today` | 本人 | 每天早上要开的那一页：最重要的目标、今天的子任务、七天墨点 |
 | `/today/goals` | 本人 | 增删改目标——`/today` 展示但不让改的那部分 |
-| `/today/review` | 本人 | 回看：今天几分之几、最近三十天一排竖条、每个目标的墨点与打卡率、本周划掉的子任务数 |
+| `/today/review` | 本人 | 回看：今天几分之几、最近三十天一排竖条、每个目标的墨点与打卡率、本周勾子任务的次数 |
 | `/today/setup` | 本人 | 把 `/today` 加到主屏幕、配快捷指令或定时自动打开它 |
 | `/goals` | 本人 | 保留为 307 跳 `/today/goals`（保留方法和请求体），旧链接和书签仍能落到有用的地方 |
 | `/review` | 本人 | 今天、七天、哪个 App 最消耗你 |
@@ -230,7 +230,7 @@ npx wrangler d1 execute yixi --remote --command \
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 30 个文件 627 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 30 个文件 663 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构
@@ -253,7 +253,7 @@ src/dates.ts        /today 与 /today/goals 共用的 'YYYY-MM-DD' 日期运算
 src/ui/*.ts         一个页面一个模块，全部服务端渲染
 src/ui/schemefield.ts  /settings 与 /today/goals 共用的 URL scheme 选择字段
 src/ui/pwa.ts       主屏幕的 manifest 和图标——公开，不含任何个人数据
-src/ui/today.ts     /today —— 每天早上打开的那一页：目标、下一步、七天墨点
+src/ui/today.ts     /today —— 每天早上打开的那一页：目标、今天的子任务、七天墨点
 src/ui/goals.ts     /today/goals —— 增删改、排序、归档目标
 src/ui/progress.ts  /today/review —— 回看：三十天竖条、每个目标的打卡率
 src/ui/todaysetup.ts  /today/setup —— 主屏幕、快捷指令与定时自动打开的配置向导

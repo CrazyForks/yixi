@@ -2,7 +2,7 @@ English | [简体中文](README.zh-CN.md)
 
 # yixi (一息)
 
-一息 does two things, sharing one account. **Breathe** (拦): before a distracting app opens, your phone shows a page that asks you to breathe for ten seconds, then offers 「算了」 first and 「继续打开」 second, and keeps the receipt. **Today** (引): your top three goals for the coming weeks on one page you open every morning, each with its next step, seven dots for the last seven days, and a button that jumps straight into the app where the work happens — B 站 for a workout, 微信读书 for a book. Either half is useful on its own.
+一息 does two things, sharing one account. **Breathe** (拦): before a distracting app opens, your phone shows a page that asks you to breathe for ten seconds, then offers 「算了」 first and 「继续打开」 second, and keeps the receipt. **Today** (引): your top three goals for the coming weeks on one page you open every morning, each with its sub-tasks for today, seven dots for the last seven days, and a button that jumps straight into the app where the work happens — B 站 for a workout, 微信读书 for a book. Either half is useful on its own.
 
 One Cloudflare Worker and one D1 database, running entirely on Cloudflare's free tier. On the interception side it is a self-hosted stand-in for [One Sec](https://one-sec.app/), built as a web page instead of an iPhone app.
 
@@ -21,11 +21,11 @@ Before a distracting app opens, the phone jumps to a page that counts ten second
 </td>
 <td width="50%" align="center">
 
-<img src="docs/images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, its next step, seven dots and a wide jump button">
+<img src="docs/images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, today's sub-tasks, seven dots and a wide jump button">
 
 <sub>Three goals, the first one large. No streak number anywhere.</sub>
 
-The few things that matter for the coming weeks on one page you open every morning — each with its next step, seven dots for the last seven days, and one button into the app where the work happens.
+The few things that matter for the coming weeks on one page you open every morning — each with its sub-tasks for today, seven dots for the last seven days, and one button into the app where the work happens.
 
 **[Today →](docs/today.md)**
 
@@ -59,9 +59,9 @@ Three that apply to the whole product. The per-face lists are in [docs/breathe.m
 | `/b?s=<sid>` | sid | the breathing page |
 | `POST /resolve` | sid | records proceed / abandon, opens the grace window |
 | `/register` `/login` `/claim` `/recover` | anyone | sign up, sign in, bind an old token, reset a password with a token |
-| `/today` | you | the one page to open every morning: your top goals, the next task, a seven-day dot strip |
+| `/today` | you | the one page to open every morning: your top goals, today's sub-tasks, a seven-day dot strip |
 | `/today/goals` | you | add, edit, reorder and archive goals — everything `/today` shows but does not let you change |
-| `/today/review` | you | looking back: today's ratio, a 30-day strip, every goal's own dot strip and check-in rate, this week's finished sub-tasks |
+| `/today/review` | you | looking back: today's ratio, a 30-day strip, every goal's own dot strip and check-in rate, this week's sub-task check-ins |
 | `/today/setup` | you | add `/today` to the home screen, a Shortcut, or a timed automation that opens it on its own |
 | `/goals` | you | kept as a 307 to `/today/goals` (preserves method/body), so old links and bookmarks still land somewhere useful |
 | `/review` | you | today, the last seven days, which app costs you most |
@@ -232,7 +232,7 @@ npx wrangler d1 execute yixi --remote --command \
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 627 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 663 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
@@ -255,7 +255,7 @@ src/dates.ts        'YYYY-MM-DD' arithmetic shared by /today and /today/goals
 src/ui/*.ts         one module per page, all server-rendered
 src/ui/schemefield.ts  the URL-scheme picker field shared by /settings and /today/goals
 src/ui/pwa.ts       the home-screen manifest and icon — public, no per-user data
-src/ui/today.ts     /today — the morning page: goals, next task, seven-day dots
+src/ui/today.ts     /today — the morning page: goals, today's sub-tasks, seven-day dots
 src/ui/goals.ts     /today/goals — add, edit, reorder and archive goals
 src/ui/progress.ts  /today/review — looking back: the 30-day strip, per-goal check-in rate
 src/ui/todaysetup.ts  /today/setup — home screen, Shortcut and timed-automation walkthrough

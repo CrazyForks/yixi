@@ -3,14 +3,14 @@
 [← README](../README.md) · the other half of 一息 is [Breathe](breathe.md).
 
 <p align="center">
-  <img src="images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, its next step, seven dots and a wide jump button">
+  <img src="images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, today's sub-tasks, each with its own jump, seven dots and a wide jump button">
 </p>
 
-<p align="center"><sub>Three goals, the first one large because it is the one that matters most today. Each card carries one next step, seven dots for the last seven days, and one wide button into the app the goal is about. No streak number anywhere.</sub></p>
+<p align="center"><sub>Three goals, the first one large because it is the one that matters most today. Each card carries today's sub-tasks, each with its own jump, seven dots for the last seven days, and one wide button into the app the goal is about. No streak number anywhere.</sub></p>
 
-`/today` is the page meant to be opened every morning: the few things that matter for the coming weeks, each with its next step, and a one-tap jump into whichever app the goal is actually about — B 站 for a workout, 微信读书 for a book. Nothing on it is editable. `/today/goals` behind it is where goals get added, reordered, extended and archived; `/today/review` looks back at how the days actually went.
+`/today` is the page meant to be opened every morning: the few things that matter for the coming weeks, each with its sub-tasks for today, and a one-tap jump into whichever app the goal is actually about — B 站 for a workout, 微信读书 for a book. Nothing on it is editable. `/today/goals` behind it is where goals get added, reordered, extended and archived; `/today/review` looks back at how the days actually went.
 
-It is shaped by one observation: the tool has to cost less time than the thing it is for, or it becomes the thing you do instead. So there are three cards and no fourth, one next step per card and not a list, no configuration on the page at all, and no streak counter anywhere in the product — a number that resets to zero is what makes people delete the app rather than start again. What it adds instead of pressure is one button that removes the steps between deciding and starting.
+It is shaped by one observation: the tool has to cost less time than the thing it is for, or it becomes the thing you do instead. So there are three cards and no fourth, today's rows and nothing else on the card, no configuration on the page at all, and no streak counter anywhere in the product — a number that resets to zero is what makes people delete the app rather than start again. What it adds instead of pressure is one button that removes the steps between deciding and starting.
 
 ## The goal model
 
@@ -22,31 +22,36 @@ A **goal** is one of the few most important things for the coming weeks — 「�
 - an optional **jump target**: a custom URL scheme or an `https` link, plus a short label for the button (「B 站」 renders as 「去 B 站」; with no label the button says 「去做」);
 - a position. Order is manual, and the first three live goals are the ones `/today` shows.
 
-**Sub-tasks are one-off.** They hang under a goal, get ticked once and stay ticked — 「买瑜伽垫」, 「找一套 20 分钟跟练」. They are not habits and they do not come back tomorrow.
+**Sub-tasks come back every day.** They hang under a goal and get checked once a day — 「跟练 20 分钟」, 「拉伸」, 「记录体重」 — not crossed off for good. Each one can carry **its own jump target**, so one goal's rows can lead into three different apps; a row with no target of its own inherits the goal's, target and label together.
 
 **A check-in is one per goal per day**, and idempotent by construction: the primary key is `(user_id, goal_id, date)`, and check and uncheck are the same request, so a double tap cannot double count. The day is the Asia/Shanghai calendar day, the same one the interception events use.
 
 Archiving sets `archived_at` and keeps everything. Restoring clears it. Deleting — which is only reachable from inside the archive fold, two steps from the list, behind a confirm — removes the goal and its sub-tasks but **keeps the check-in history**, because the aggregate counts on `/today/review` are about days you showed up, not about goals that still exist.
 
-Four tables carry all of it, added by `migrations/0004_goals.sql` and `0005_goal_days.sql`; nothing on the interception side was touched.
+Five tables carry all of it, added by `migrations/0004_goals.sql`, `0005_goal_days.sql` and `0007_daily_tasks.sql`; nothing on the interception side was touched.
 
 | Table | Key | Holds |
 | --- | --- | --- |
 | `goals` | `id` | title, cue, jump target and its label, position, `until`, `archived_at` |
-| `goal_tasks` | `id` | one-off sub-tasks under a goal, with `done_at` |
+| `goal_tasks` | `id` | daily sub-tasks under a goal, each with its own optional jump target and label |
+| `goal_task_checkins` | `(user_id, task_id, date)` | one row per sub-task per day you checked it |
 | `goal_checkins` | `(user_id, goal_id, date)` | one row per goal per day you showed up |
 | `goal_days` | `(user_id, date)` | the midnight snapshot: `shown`, `done`, `tasks_done` |
 
 `user_id` is carried on every one of them, including `goal_tasks` where it is redundant with the goal, so that every write can be scoped by it — goal and task ids are globally sequential, and that condition is the only thing standing between one account and another's rows.
+
+**A goal with sub-tasks does not get checked in by hand.** Its check-in is derived: `goal_checkins` has today's row exactly when every one of that goal's sub-tasks is checked today. `syncGoalCheckin` re-derives it after every write that could change the answer — a sub-task checked or unchecked, added or deleted — and tapping the goal's own circle checks or clears the whole set rather than writing the goal row directly. A goal with no sub-tasks keeps the plain manual toggle. That is why the seven dots, the snapshot and `/today/review` needed no change at all: there is still exactly one ledger for "did I do this today".
+
+Deleting a goal or a sub-task **keeps `goal_task_checkins`**, the same principle `goal_checkins` follows: work you did does not disappear because the goal did.
 
 ## `/today`
 
 The page meant to be opened every morning, and the only one of the four that is not editable. Date and weekday at the top, links to 回看 and 编辑目标 on the right, and then the cards.
 
 - **Three cards, one hero.** The first three non-archived, non-expired goals get a card; the first one is rendered large. Anything after the third folds into 「其余目标」, which lists names only and links into `/today/goals`. Fewer, with a clear first, is a product position rather than a technical limit — `TODAY_GOAL_LIMIT` in `src/types.ts` is the one constant that decides it.
-- **A card shows three things.** The title (with the cue in small type beside it), one **next step** — the goal's first unfinished sub-task, with a box to tick it — and a check-in circle in the top right. Any further unfinished sub-tasks are one line: 「还有 N 条，去目标里看」. Sub-tasks finished today stay visible, struck through, with 撤销 next to them.
+- **A card shows the goal and today's rows.** The title (with the cue in small type beside it), a check-in circle in the top right, and then one row per sub-task: a circle to check it, the title, and its own 「去 X」 on the right. Rows stay in position order — checking one does not move it — and checked rows go quiet rather than away.
 - **Seven dots.** One row of seven circles inside the card, today rightmost, filled for the days you checked in. No numbers, no colour changes, **no streak count** — see [Design principles](#design-principles).
-- **The button.** Full width at the bottom of the card, the loudest thing on it: 「去 B 站」, 「去微信读书」. With no jump target configured it degrades into a quiet link, 「去绑一个 App，一按就开」, pointing at that goal on `/today/goals`.
+- **The button.** Full width at the bottom of the card, the loudest thing on it: 「去 B 站」, 「去微信读书」 — only on a card with no sub-tasks. With sub-tasks, every jump moves inline onto its own row instead, and the card carries nothing at the bottom — unless nothing on it is jumpable at all (no target on the goal, none on any sub-task either), in which case the same fallback still sits there: a quiet link, 「去绑一个 App，一按就开」, pointing at that goal on `/today/goals`. A goal with no sub-tasks and no jump target gets that same quiet link in place of the button.
 - **Checked cards sink.** Order inside each half is preserved, so the page reorders once per tap and never shuffles.
 - **The empty state is the onboarding.** With no goals at all, the page is one sentence — 「先写一件最重要的事。」 — and one box. Submitting it creates the first goal.
 - **When everything is done**, one quiet line: 「今天的事都做了。」 followed by 「其余的事，明天再说。」
@@ -61,6 +66,7 @@ The planning page. Same shape as `/settings`: an add form folded at the top, one
 - **Expiry is a decision, not a disappearance.** A goal past its `until` is lifted to the top of the page with 「到期了」 and two buttons: **续四周**, which moves the deadline 28 days out from today, or **归档**. Nothing about the copy treats expiry as failure.
 - **Archived goals** fold into a section at the bottom, each with 恢复 and 删除. Delete is the only destructive action in the today face; it exists only here, it asks first, and the confirm text says exactly what it does: sub-tasks go, check-in history stays.
 - **The jump-target field** is the same component `/settings` uses for URL schemes: a 试跳 button, and a folded candidate list by app name with the source of each candidate shown. None of the candidates is verified — only a jump on a real iPhone counts. The hint under the box is the one worth following: link to *that lesson, that book*, not the app's home screen.
+- **Sub-tasks are managed here too**, one `<details>` fold per task inside the goal's own fold: add one with a title only (the title cannot be changed afterward), delete it with no confirmation prompt — its check-in history survives — and give it its own jump target through that same field. Leave it empty and it inherits the goal's target and label together. Reject a sub-task's target (bad scheme, label too long) and only that task's fold re-opens, still holding what was typed, with the error printed inside it; every other row on the page renders as if nothing happened.
 
 ## The nightly snapshot
 
@@ -70,7 +76,7 @@ A second cron, `0 16 * * *` — 00:00 Asia/Shanghai — writes one `goal_days` r
 goal_days (user_id, date, shown, done, tasks_done, ts)
 ```
 
-`shown` is how many goals `/today` would have put a card on that day, `done` how many of those were checked in, `tasks_done` how many sub-tasks were finished. The row is written once and never rewritten.
+`shown` is how many goals `/today` would have put a card on that day, `done` how many of those were checked in, `tasks_done` how many sub-task check-ins happened that day (the same sub-task checked on two days counts twice). The row is written once and never rewritten. History note: in rows written before 2026-09-14, `tasks_done` counted one-off sub-tasks crossed off that day. Both readings answer 「那天做了多少」; nothing is backfilled or converted.
 
 **Why a snapshot rather than recomputation.** Check-ins can tell you how many goals you completed on any past day. They cannot tell you how many you were *supposed* to do — that set depends on order, on deadlines and on which goals were archived, all of which change. Recomputing last month from today's goal list would quietly rewrite history every time you reordered something. The snapshot pins what that day actually showed.
 
@@ -85,7 +91,7 @@ The noon cron is unchanged and knows nothing about this one; it still only trims
 1. **今天** — 「做了 2 / 3」, computed live with the exact selection rule `/today` uses. Today has not ended, so there is no snapshot for it; today is never read from the table even if a row for it somehow exists.
 2. **最近 30 天** — thirty thin bars, today rightmost, each as tall as that day's `done / shown`. A day with a snapshot but nothing shown is a faint baseline; a day with no snapshot at all is a dashed slot. Underneath, two counts: how many of the thirty days have a record, and on how many you finished everything.
 3. **每个目标** — every non-archived goal, not only the three `/today` shows: name, its own seven dots, and 「30 天 · 打卡 12 天」. A goal younger than thirty days uses its real age as the denominator, so a goal created four days ago reads 「4 天 · 打卡 3 天」. No streaks here either.
-4. **这周** — how many sub-tasks you struck off since Monday (Asia/Shanghai). This is the one number on the page that does not come from a snapshot: it counts `goal_tasks` directly, because a snapshot's `shown` set can no longer name a goal that was later archived or deleted, while the work done under it still happened this week.
+4. **这周** — how many sub-task check-ins you made since Monday (Asia/Shanghai). This is the one number on the page that does not come from a snapshot: it counts `goal_task_checkins` directly, because a snapshot's `shown` set can no longer name a goal that was later archived or deleted, while the work done under it still happened this week.
 
 The page ends with one line pointing at the other ledger: 「拦截那边的记录在回顾。」 The two sets of statistics never mix.
 

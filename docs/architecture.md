@@ -160,8 +160,8 @@ shown       = that user's non-archived goals, not expired as of the snapshot
               trimmed to the first TODAY_GOAL_LIMIT
 done        = of those `shown` goals, how many have a goal_checkins row
               for `date`
-tasks_done  = goal_tasks rows across ALL of the user's goals (not just the
-              `shown` ones) whose shanghaiDate(done_at) = date
+tasks_done  = goal_task_checkins rows across ALL of the user's goals (not just
+              the `shown` ones) whose date = the snapshot day
 INSERT OR REPLACE INTO goal_days (user_id, date, shown, done, tasks_done, ts)
 ```
 
@@ -444,7 +444,7 @@ The button hierarchy on a candidate is deliberate: 「试跳」 is the filled da
 
 ## Tests
 
-627 tests over 30 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+663 tests over 30 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
 
 The files worth knowing about before you change something:
 
