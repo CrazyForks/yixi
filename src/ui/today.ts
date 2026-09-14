@@ -57,6 +57,28 @@ function notFound(): Response {
   return new Response('not found', { status: 404 })
 }
 
+/**
+ * 写完之后的回执，只发给我们自己的脚本：圆圈此刻亮不亮，今天该画的卡片是不是
+ * 全勾了。两位都重新从库里读——界面已经被客户端先翻过去了，这里要给的是真相，
+ * 不是它的猜测。allDone 跟 render 用同一个 shownGoals，免得两处各算各的。
+ */
+async function receipt(env: Env, user: User, goalId: number, date: string): Promise<Response> {
+  const [goals, checkins] = await Promise.all([
+    listGoals(env.DB, user.id),
+    listCheckins(env.DB, user.id, date, date),
+  ])
+  const done = new Set(checkins.map((c) => c.goal_id))
+  const shown = shownGoals(goals, date)
+  const payload = {
+    goal: { id: goalId, checked: done.has(goalId) },
+    allDone: shown.length > 0 && shown.every((g) => done.has(g.id)),
+  }
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  })
+}
+
 async function handlePost(request: Request, env: Env, user: User): Promise<Response> {
   let form: FormData
   try {
@@ -66,6 +88,10 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
   }
   const op = field(form, 'op')
   const now = Date.now()
+  // 只有页面里那段脚本会带这一位。没有它的请求——包括没有 JS 的表单提交——一个
+  // 字节都不变，照旧 303 回 /today。同源由 SameSite cookie 与 CSP form-action
+  // 'self' 管着，这一位只用来分辨「谁在问」，不是一道防线。
+  const asJson = request.headers.get('x-yixi') === 'fetch'
 
   if (op === 'quick_add') {
     const title = field(form, 'title')
@@ -84,7 +110,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
       // toggle is by day; `check` and `uncheck` are the same request and only
       // differ in what the button said, so a double tap cannot double count.
       await toggleCheckin(env.DB, user.id, id, date, now)
-      return back()
+      return asJson ? await receipt(env, user, id, date) : back()
     }
     // With sub-tasks the circle is a derived state, so the circle writes the
     // sub-tasks and lets the derivation put the goal's own row back. Writing
@@ -92,7 +118,7 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     // whole change exists to remove.
     await setGoalTaskCheckins(env.DB, user.id, id, date, op === 'check', now)
     await syncGoalCheckin(env.DB, user.id, id, date, now)
-    return back()
+    return asJson ? await receipt(env, user, id, date) : back()
   }
   if (op === 'task_check' || op === 'task_uncheck') {
     const id = intId(field(form, 'task'))
@@ -102,7 +128,8 @@ async function handlePost(request: Request, env: Env, user: User): Promise<Respo
     const date = shanghaiDate(now)
     await setTaskCheckin(env.DB, user.id, id, date, op === 'task_check', now)
     await syncGoalCheckin(env.DB, user.id, task.goal_id, date, now)
-    return back()
+    // 一行勾完之后，回执说的是这一行所属目标的状态——圆圈亮不亮由它决定。
+    return asJson ? await receipt(env, user, task.goal_id, date) : back()
   }
   return bad()
 }
@@ -159,7 +186,7 @@ async function render(request: Request, env: Env, user: User, loc: Locale, t: T)
 <main>
   <div class="dayline"><span class="num">${escapeHtml(prettyDate(today, loc))}</span><span class="dlinks"><a class="linky" href="/today/review">${t('回看')}</a><a class="linky" href="/today/goals">${t('编辑目标')}</a></span></div>
   ${live.length === 0 ? emptyState(t) : ordered.map((c) => cardHtml(c, t)).join('\n')}
-  ${allDone ? `<p class="fin">${t('今天的事都做了。')}<span>${t('其余的事，明天再说。')}</span></p>` : ''}
+  ${finHtml(allDone, t)}
   ${rest.length ? restFold(rest, t) : ''}
   ${iphoneSafari ? banner(t) : ''}
 </main>
@@ -173,6 +200,15 @@ ${jsonScript('cfg', { a2hs: iphoneSafari })}`
     body,
     script: TODAY_JS,
   })
+}
+
+/**
+ * 一直在 DOM 里，没做完时带 hidden。最后一勾之后这句话要能立刻出现，而那一刻
+ * 页面并不会重新渲染——脚本里又不许放文案，所以两句话必须先渲染好，客户端只
+ * 碰 hidden 这一位。全勾时的字节与从前一模一样。
+ */
+function finHtml(allDone: boolean, t: T): string {
+  return `<p class="fin"${allDone ? '' : ' hidden'}>${t('今天的事都做了。')}<span>${t('其余的事，明天再说。')}</span></p>`
 }
 
 function emptyState(t: T): string {
@@ -189,12 +225,16 @@ function cardHtml(c: Card, t: T): string {
   const g = c.goal
   const cls = `card goal${c.hero ? ' hero' : ''}${c.checked ? ' checked' : ''}`
   const title = escapeHtml(g.title)
+  // aria-label 是此刻该念的那句；data-on/data-off 是翻面之后要换上的那两句。
+  // 两句都渲染出来，脚本翻面时只搬属性——它一个字的文案都不带（layout.ts §copy）。
+  const on = t('{title}，已打卡，点击取消', { title })
+  const off = t('{title}，今天打卡', { title })
   return `<article class="${cls}" data-goal="${g.id}">
   <div class="head">
     <div class="tt"><h3>${title}</h3>${g.cue ? `<p class="cue">${escapeHtml(g.cue)}</p>` : ''}</div>
     <form method="post" action="/today" class="ckf">
       <input type="hidden" name="goal" value="${g.id}">
-      <button class="ck" type="submit" name="op" value="${c.checked ? 'uncheck' : 'check'}" aria-label="${c.checked ? t('{title}，已打卡，点击取消', { title }) : t('{title}，今天打卡', { title })}"><i></i></button>
+      <button class="ck" type="submit" name="op" value="${c.checked ? 'uncheck' : 'check'}" aria-label="${c.checked ? on : off}" data-on="${on}" data-off="${off}"><i></i></button>
     </form>
   </div>
   ${tasksHtml(c, t)}
@@ -210,10 +250,12 @@ function tasksHtml(c: Card, t: T): string {
 
 function taskRow(r: TaskRow, g: Goal, t: T): string {
   const title = escapeHtml(r.task.title)
+  const on = t('{title}，已勾上，点击取消', { title })
+  const off = t('{title}，今天勾上', { title })
   return `<li class="tkr${r.done ? ' done' : ''}">
     <form method="post" action="/today">
       <input type="hidden" name="task" value="${r.task.id}">
-      <button class="tk" type="submit" name="op" value="${r.done ? 'task_uncheck' : 'task_check'}" aria-label="${r.done ? t('{title}，已勾上，点击取消', { title }) : t('{title}，今天勾上', { title })}"><i></i></button>
+      <button class="tk" type="submit" name="op" value="${r.done ? 'task_uncheck' : 'task_check'}" aria-label="${r.done ? on : off}" data-on="${on}" data-off="${off}"><i></i></button>
     </form>
     <span class="tkt">${title}</span>${chipHtml(r, g, t)}
   </li>`
@@ -356,7 +398,7 @@ details.rest li a{text-decoration:none}
 `
 
 /**
- * Three small jobs. The first is the hard rule.
+ * Four small jobs. The first is the hard rule.
  *
  * go(): location.href to a custom scheme inside the click's synchronous stack.
  * Nothing awaited, nothing deferred, before the assignment. CONTRIBUTING §2.
@@ -366,6 +408,32 @@ details.rest li a{text-decoration:none}
  * the tap did. Without JS the form submits normally. A second tap while the
  * button still carries `.bloom` is a no-op — nothing re-arms the timer or
  * resubmits — or a fast double tap would fire check, then uncheck.
+ *
+ * submit: the check-in itself. A tap used to cost POST → 303 → GET, two round
+ * trips to a colo an ocean away before anything moved. Now the page flips at
+ * once and the request confirms in the background; the server answers the
+ * marker header with the state it just wrote, and that answer — never the
+ * client's guess — is what the circle, the seventh dot and the closing line
+ * end up showing. Anything other than a 200 puts the optimistic flip back and
+ * submits the form for real, so the user lands on the server's truth.
+ *
+ * This is a separate listener from the click one above on purpose: that one
+ * owns a synchronous jump that must not grow a single deferred line, and
+ * merging the two would put a fetch in the same function as CONTRIBUTING §2's
+ * one rule. Without JS none of this exists and the forms post as they always
+ * did.
+ *
+ * Three details in there that are not obvious from the code:
+ *   - `.bloom` comes off in the same frame `.checked` goes on. The tap's ink is
+ *     held by `.checked` from then on, and a page that no longer reloads
+ *     between taps would otherwise hand the click handler above a button it
+ *     has already decided to ignore.
+ *   - `FormData` leaves the submitter out, so `op` — which IS the request — is
+ *     put back on the body by hand, and again as a hidden field before the
+ *     fall-back `form.submit()`, which drops it for the same reason.
+ *   - the circle writes every sub-task row, so it flips every row, and the undo
+ *     restores each row's own state rather than clearing them all: before the
+ *     tap they need not have agreed.
  *
  * a2hs: the banner is server-rendered hidden for iPhone Safari; the client
  * shows it only outside standalone mode and only until dismissed.
@@ -400,6 +468,70 @@ document.addEventListener('click',function(e){
     if(a)a.hidden=true;
     try{localStorage.setItem('yixi.a2hs','1')}catch(e){}
   }
+});
+
+function label(btn,on){
+  var s=btn.getAttribute(on?'data-on':'data-off');
+  if(s!==null)btn.setAttribute('aria-label',s);
+}
+function setRow(row,on){
+  row.classList.toggle('done',on);
+  var b=row.querySelector('button.tk');
+  if(b){b.value=on?'task_uncheck':'task_check';label(b,on)}
+}
+function setCard(card,on){
+  card.classList.toggle('checked',on);
+  var b=card.querySelector('button.ck');
+  if(b){b.value=on?'uncheck':'check';label(b,on);b.classList.remove('bloom')}
+  var dots=card.querySelectorAll('.dots .d');
+  var last=dots[dots.length-1];
+  if(last)last.classList.toggle('on',on);
+}
+
+document.addEventListener('submit',function(e){
+  var form=e.target;
+  if(!form||!form.querySelector)return;
+  var btn=form.querySelector('button.ck,button.tk');
+  if(!btn)return;
+  e.preventDefault();
+  if(form.yxSending)return;
+  var card=form.closest('article[data-goal]');
+  if(!card)return;
+  var op=btn.value,row=form.closest('li.tkr'),rows=card.querySelectorAll('li.tkr'),undo,i;
+  if(row){
+    var wasRow=row.classList.contains('done');
+    setRow(row,!wasRow);
+    undo=function(){setRow(row,wasRow)};
+  }else{
+    var wasCard=card.classList.contains('checked'),before=[];
+    for(i=0;i<rows.length;i++)before.push(rows[i].classList.contains('done'));
+    setCard(card,!wasCard);
+    for(i=0;i<rows.length;i++)setRow(rows[i],!wasCard);
+    undo=function(){
+      setCard(card,wasCard);
+      for(var k=0;k<rows.length;k++)setRow(rows[k],before[k]);
+    };
+  }
+  var data=new URLSearchParams(new FormData(form));
+  data.set(btn.name,op);
+  form.yxSending=1;
+  fetch('/today',{method:'POST',body:data,headers:{'x-yixi':'fetch'},credentials:'same-origin'})
+    .then(function(r){if(!r.ok)throw new Error('http');return r.json()})
+    .then(function(d){
+      form.yxSending=0;
+      if(!d||!d.goal||String(d.goal.id)!==card.getAttribute('data-goal'))throw new Error('elsewhere');
+      setCard(card,d.goal.checked===true);
+      var fin=document.querySelector('p.fin');
+      if(fin)fin.hidden=d.allDone!==true;
+    })
+    .catch(function(){
+      form.yxSending=0;
+      undo();
+      var h=document.createElement('input');
+      h.type='hidden';h.name=btn.name;h.value=op;
+      form.appendChild(h);
+      form.submit();
+    });
 });
 
 if(cfg.a2hs){

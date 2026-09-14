@@ -34,6 +34,18 @@ function get(ua = 'Mozilla/5.0 (Macintosh) Safari/605', u: User = user): Promise
 function post(fields: Record<string, string>, u: User = user): Promise<Response> {
   return handleToday(new Request('https://yixi.test/today', { method: 'POST', body: new URLSearchParams(fields) }), env, u)
 }
+/** The same POST our own script sends: identical body, plus the marker header. */
+function postFetch(fields: Record<string, string>, u: User = user): Promise<Response> {
+  return handleToday(
+    new Request('https://yixi.test/today', {
+      method: 'POST',
+      body: new URLSearchParams(fields),
+      headers: { 'x-yixi': 'fetch' },
+    }),
+    env,
+    u,
+  )
+}
 async function html(ua?: string, u?: User): Promise<string> {
   return await (await get(ua, u)).text()
 }
@@ -140,10 +152,13 @@ describe('the three cards', () => {
     const a = await seed('健身')
     const b = await seed('英语')
     let h = await html()
-    expect(h).not.toContain('今天的事都做了')
+    // 这一行现在一直在 DOM 里，只是没做完时带 hidden——脚本要能把它亮出来。
+    expect(h).toContain('<p class="fin" hidden>')
     await toggleCheckin(env.DB, 1, a, TODAY, NOW)
     await toggleCheckin(env.DB, 1, b, TODAY, NOW)
     h = await html()
+    expect(h).toContain('<p class="fin">')
+    expect(h).not.toContain('<p class="fin" hidden>')
     expect(h).toContain('今天的事都做了。')
     expect(h).toContain('其余的事，明天再说。')
     // 只查正文：CSS 里有 !important，脚本里有 !=，都不是文案。
@@ -336,7 +351,9 @@ describe('check-in', () => {
   it('ships the ink-bloom script and a check button with a spoken label', async () => {
     await seed('健身')
     const h = await html()
-    expect(h).toMatch(/<button class="ck" type="submit" name="op" value="check" aria-label="健身，今天打卡">/)
+    expect(h).toMatch(
+      /<button class="ck" type="submit" name="op" value="check" aria-label="健身，今天打卡" data-on="健身，已打卡，点击取消" data-off="健身，今天打卡">/,
+    )
     const js = scriptOf(h)
     expect(js).toContain('bloom')
     expect(js).toContain('requestSubmit')
@@ -347,6 +364,150 @@ describe('check-in', () => {
     await seed('健身')
     const js = scriptOf(await html())
     expect(js).toContain("if(ck.classList.contains('bloom'))return;")
+  })
+})
+
+interface CheckinJson {
+  goal: { id: number; checked: boolean }
+  allDone: boolean
+}
+
+/**
+ * The instant-check-in contract. The header is a marker our own script sends,
+ * not a security boundary — so every one of these asserts the *same* writes
+ * happened as on the 303 path, and that the state comes back read from the
+ * database rather than guessed.
+ */
+describe('check-in over fetch', () => {
+  async function body(res: Response): Promise<CheckinJson> {
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    return (await res.json()) as CheckinJson
+  }
+
+  it('lights the circle only when the last sub-task lands, and empties it again', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+
+    expect(await body(await postFetch({ op: 'task_check', task: String(t1) })))
+      .toEqual({ goal: { id: a, checked: false }, allDone: false })
+    // 同一次请求既要写库又要把写完的状态读回来。
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ task_id: t1, date: TODAY }])
+
+    expect(await body(await postFetch({ op: 'task_check', task: String(t2) })))
+      .toEqual({ goal: { id: a, checked: true }, allDone: true })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ goal_id: a, date: TODAY }])
+
+    expect(await body(await postFetch({ op: 'task_uncheck', task: String(t1) })))
+      .toEqual({ goal: { id: a, checked: false }, allDone: false })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+  })
+
+  it('answers the circle on a goal with sub-tasks, and still writes every row', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+
+    expect(await body(await postFetch({ op: 'check', goal: String(a) })))
+      .toEqual({ goal: { id: a, checked: true }, allDone: true })
+    expect((await listTaskCheckins(env.DB, 1, TODAY, TODAY)).map((r) => r.task_id).sort((x, y) => x - y))
+      .toEqual([t1, t2].sort((x, y) => x - y))
+
+    expect(await body(await postFetch({ op: 'uncheck', goal: String(a) })))
+      .toEqual({ goal: { id: a, checked: false }, allDone: false })
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+  })
+
+  it('answers the circle on a goal that has no sub-tasks at all', async () => {
+    const a = await seed('冥想')
+    expect(await body(await postFetch({ op: 'check', goal: String(a) })))
+      .toEqual({ goal: { id: a, checked: true }, allDone: true })
+    expect(await body(await postFetch({ op: 'uncheck', goal: String(a) })))
+      .toEqual({ goal: { id: a, checked: false }, allDone: false })
+  })
+
+  it('counts allDone over the cards /today would draw, not over every goal', async () => {
+    const a = await seed('一')
+    const b = await seed('二')
+    const c = await seed('三')
+    // 第四个目标进不了卡片区，只在折叠里——它没勾也不该拦住那句话。
+    const d = await seed('四')
+
+    expect((await body(await postFetch({ op: 'check', goal: String(a) }))).allDone).toBe(false)
+    expect((await body(await postFetch({ op: 'check', goal: String(b) }))).allDone).toBe(false)
+    expect((await body(await postFetch({ op: 'check', goal: String(c) }))).allDone).toBe(true)
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).not.toContainEqual({ goal_id: d, date: TODAY })
+
+    expect((await body(await postFetch({ op: 'uncheck', goal: String(a) }))).allDone).toBe(false)
+  })
+
+  it('still 303s for the very same POSTs when the header is absent', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const same: Record<string, string>[] = [
+      { op: 'task_check', task: String(t) },
+      { op: 'task_uncheck', task: String(t) },
+      { op: 'check', goal: String(a) },
+      { op: 'uncheck', goal: String(a) },
+    ]
+    for (const fields of same) {
+      const res = await post(fields)
+      expect(res.status, JSON.stringify(fields)).toBe(303)
+      expect(res.headers.get('location')).toBe('/today')
+    }
+  })
+
+  it('leaks nothing to a fetch aimed at somebody else’s row, or at nothing at all', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+
+    const stolen = await postFetch({ op: 'task_check', task: String(t) }, other)
+    expect(stolen.status).toBe(404)
+    expect(stolen.headers.get('content-type') ?? '').not.toContain('json')
+    expect(await stolen.text()).toBe('not found')
+    expect(await listTaskCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    expect(await listTaskCheckins(env.DB, 2, TODAY, TODAY)).toEqual([])
+
+    expect((await postFetch({ op: 'check', goal: String(a) }, other)).status).toBe(404)
+    expect((await postFetch({ op: 'check', goal: '999999' })).status).toBe(404)
+    expect((await postFetch({ op: 'check', goal: 'x' })).status).toBe(400)
+    expect((await postFetch({ op: 'task_done', task: String(t) })).status).toBe(400)
+  })
+})
+
+describe('what the optimistic script is handed', () => {
+  it('renders both spoken labels on both kinds of check button', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
+    const h = await html()
+    expect(h).toContain('data-on="健身，已打卡，点击取消" data-off="健身，今天打卡"')
+    expect(h).toContain('data-on="跟练，已勾上，点击取消" data-off="跟练，今天勾上"')
+    // 勾过之后两个属性都不变，变的只有 aria-label 与 value。
+    expect((await post({ op: 'task_check', task: String(t) })).status).toBe(303)
+    const after = await html()
+    expect(after).toContain('data-on="跟练，已勾上，点击取消" data-off="跟练，今天勾上"')
+    expect(after).toContain('aria-label="跟练，已勾上，点击取消"')
+  })
+
+  it('escapes a title inside the two new attributes as well as inside aria-label', async () => {
+    await createGoal(env.DB, { userId: 1, title: '"x"', cue: '', target: '', targetLabel: '', until: null, now: NOW })
+    const h = await html()
+    expect(h).toContain('data-off="&quot;x&quot;，今天打卡"')
+    expect(h).not.toContain('data-off=""x"')
+  })
+
+  it('takes the submit over with fetch, and leaves the synchronous jump alone', async () => {
+    await seed('健身')
+    const js = stripComments(scriptOf(await html()))
+    expect(js).toContain("addEventListener('submit'")
+    expect(js).toContain("'x-yixi'")
+    expect(js).toContain('fetch(')
+    // 两个监听器各管各的：点击那段仍然只有它自己那一次同步跳转。
+    expect(js.match(/location\.href\s*=/g)).toHaveLength(1)
+    expect(js).not.toMatch(/\bawait\b/)
+    expect(js.match(/addEventListener\('click'/g)).toHaveLength(1)
   })
 })
 
