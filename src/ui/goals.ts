@@ -11,13 +11,13 @@
 import type { Env, Goal, GoalTask, User } from '../types'
 import { GOAL_EXTEND_DAYS } from '../types'
 import {
-  createGoal, createTask, deleteGoal, deleteTask, getGoal, listGoals, listTasks,
-  moveGoal, setGoalArchived, shanghaiDate, updateGoal,
+  createGoal, createTask, deleteGoal, deleteTask, getGoal, getTask, listGoals, listTaskCheckins, listTasks,
+  moveGoal, setGoalArchived, shanghaiDate, syncGoalCheckin, updateGoal, updateTaskTarget,
 } from '../db'
 import { DEFAULT_THEME, escapeHtml, jsSingleQuotedBody, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { icon } from './icons'
-import { SCHEME_FIELD_CSS, schemeFieldJs, schemeField } from './schemefield'
+import { SCHEME_FIELD_CSS, fieldId, schemeFieldJs, schemeField } from './schemefield'
 import { safeScheme } from '../scheme'
 import { addDays, isExpired } from '../dates'
 import { localeOf, translator, type Locale, type T } from '../i18n'
@@ -57,14 +57,21 @@ function validDate(s: string): boolean {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
 }
 
+/** 跳转目标的三条规则，目标和子任务共用。通过返回 null，否则返回给读者看的句子。 */
+function validateTarget(target: string, label: string, t: T): string | null {
+  if (label.length > LABEL_MAX) return t('App 名太长了，{n} 个字以内。', { n: LABEL_MAX })
+  if (target.length > 200) return t('跳转目标太长了。')
+  if (target !== '' && safeScheme(target) === '') return t('跳转目标要长成 xxx:// 或 https:// 的样子，而且不能是脚本。')
+  return null
+}
+
 /** Returns the row to write, or a message for the reader, already translated. */
 function validate(d: Draft, t: T): { title: string; cue: string; target: string; targetLabel: string; until: string | null } | string {
   if (d.title.length === 0) return t('目标名不能空着。')
   if (d.title.length > TITLE_MAX) return t('目标名太长了，{n} 个字以内。', { n: TITLE_MAX })
   if (d.cue.length > CUE_MAX) return t('触发时机太长了，{n} 个字以内。', { n: CUE_MAX })
-  if (d.target_label.length > LABEL_MAX) return t('App 名太长了，{n} 个字以内。', { n: LABEL_MAX })
-  if (d.target.length > 200) return t('跳转目标太长了。')
-  if (d.target !== '' && safeScheme(d.target) === '') return t('跳转目标要长成 xxx:// 或 https:// 的样子，而且不能是脚本。')
+  const badTarget = validateTarget(d.target, d.target_label, t)
+  if (badTarget !== null) return badTarget
   if (d.until !== '' && !validDate(d.until)) return t('日期要写成 2026-10-11 这样。')
   return { title: d.title, cue: d.cue, target: d.target, targetLabel: d.target_label, until: d.until === '' ? null : d.until }
 }
@@ -112,14 +119,32 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     }
     const id = await createTask(env.DB, { userId: user.id, goalId, title, now })
     if (id === null) return notFound()
+    // A goal that was complete for today has just grown an unchecked row, so
+    // today's derived check-in has to come back off.
+    await syncGoalCheckin(env.DB, user.id, goalId, today, now)
     return seeOther(`/today/goals#goal-${goalId}`)
+  }
+
+  if (op === 'task_save') {
+    const taskId = intId(field(form, 'task'))
+    if (taskId === null) return await render(env, user, { error: t('子任务编号不对。'), status: 400 }, loc, t)
+    const target = field(form, 'target')
+    const targetLabel = field(form, 'target_label')
+    const badTarget = validateTarget(target, targetLabel, t)
+    if (badTarget !== null) return await render(env, user, { error: badTarget, status: 400 }, loc, t)
+    const mine = await getTask(env.DB, user.id, taskId)
+    if (!mine || !(await updateTaskTarget(env.DB, user.id, taskId, target, targetLabel))) return notFound()
+    return seeOther(`/today/goals#goal-${mine.goal_id}`)
   }
 
   if (op === 'task_delete') {
     const taskId = intId(field(form, 'task'))
     if (taskId === null) return await render(env, user, { error: t('子任务编号不对。'), status: 400 }, loc, t)
-    const mine = (await listTasks(env.DB, user.id)).find((task: GoalTask) => task.id === taskId)
+    const mine = await getTask(env.DB, user.id, taskId)
     if (!mine || !(await deleteTask(env.DB, user.id, taskId))) return notFound()
+    // Deleting the last unchecked row completes today's set, so the derived
+    // check-in has to appear.
+    await syncGoalCheckin(env.DB, user.id, mine.goal_id, today, now)
     return seeOther(`/today/goals#goal-${mine.goal_id}`)
   }
 
@@ -162,6 +187,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   const today = shanghaiDate(Date.now())
   const goals = await listGoals(env.DB, user.id)
   const tasks = await listTasks(env.DB, user.id)
+  const doneToday = new Set((await listTaskCheckins(env.DB, user.id, today, today)).map((c) => c.task_id))
   const byGoal = new Map<number, GoalTask[]>()
   for (const task of tasks) {
     const arr = byGoal.get(task.goal_id) ?? []
@@ -181,7 +207,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   ${expired.length ? expiredBlock(expired, t) : ''}
   ${addBlock(t, addDraft)}
   ${live.length === 0 && expired.length === 0 ? `<p class="empty">${t('还没有目标。<br>用上面的 {plus} 加第一个。', { plus: icon('plus') })}</p>` : ''}
-  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], { first: i === 0, last: i === live.length - 1, draft: o.draftGoal === g.id ? o.draft : undefined }, t)).join('\n')}
+  ${live.map((g, i) => goalRow(g, byGoal.get(g.id) ?? [], doneToday, { first: i === 0, last: i === live.length - 1, draft: o.draftGoal === g.id ? o.draft : undefined }, t)).join('\n')}
   ${archived.length ? archivedBlock(archived, t) : ''}
 </main>`
 
@@ -245,15 +271,15 @@ function goalFields(d: Draft, ns: string, t: T): string {
   </div>`
 }
 
-function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean; draft?: Draft }, t: T): string {
+function goalRow(g: Goal, tasks: GoalTask[], doneToday: Set<number>, o: { first: boolean; last: boolean; draft?: Draft }, t: T): string {
   const d: Draft = o.draft ?? { title: g.title, cue: g.cue, target: g.target, target_label: g.target_label, until: g.until ?? '' }
-  const undone = tasks.filter((tk) => tk.done_at === null)
   const ns = `g${g.id}`
+  const done = tasks.filter((task) => doneToday.has(task.id)).length
   return `<details class="app" id="goal-${g.id}"${o.draft ? ' open' : ''}>
   <summary>
     <span class="sname">${escapeHtml(g.title)}</span>
     ${g.target_label ? `<span class="skey">${escapeHtml(g.target_label)}</span>` : ''}
-    <span class="mini">${g.until ? `<span class="num">${escapeHtml(g.until)}</span>` : t('长期')}${tasks.length ? ` · ${undone.length}/${tasks.length}` : ''}</span>
+    <span class="mini">${g.until ? `<span class="num">${escapeHtml(g.until)}</span>` : t('长期')}${tasks.length ? ` · ${t('今天 {x}/{n}', { x: done, n: tasks.length })}` : ''}</span>
     ${icon('chev', { cls: 'ic chev' })}
   </summary>
   <form class="card" method="post" action="/today/goals" data-ns="${ns}">
@@ -267,11 +293,8 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
     </div>
   </form>
   <div class="card tasks">
-    <h2>${t('子任务 · 一次性的待办')}</h2>
-    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => `<li class="${task.done_at === null ? '' : 'done'}">
-      <span>${escapeHtml(task.title)}</span>
-      <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
-    </li>`).join('')}</ul>`}
+    <h2>${t('子任务 · 每天都做')}</h2>
+    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, t)).join('')}</ul>`}
     <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
       <input type="text" name="title" placeholder="${t('加一条子任务')}" maxlength="${TITLE_MAX}" required aria-label="${t('子任务')}">
@@ -279,6 +302,41 @@ function goalRow(g: Goal, tasks: GoalTask[], o: { first: boolean; last: boolean;
     </form>
   </div>
 </details>`
+}
+
+/**
+ * 一条子任务：标题、已绑的 App 名、删，外加一个折起来的绑 App 表单。
+ *
+ * 表单是同级而不是嵌套——HTML 里 form 不能套 form，而目标本身那张表单就在上面
+ * 几行。schemefield 的脚本按 `.field.scheme` 和 `form[data-ns]` 找东西，所以这里
+ * 只要给每条子任务一个自己的 ns，试跳、候选和草稿恢复全都照常工作。
+ */
+function taskRow(task: GoalTask, t: T): string {
+  const ns = `t${task.id}`
+  return `<li>
+    <div class="trow">
+      <span class="tname">${escapeHtml(task.title)}</span>
+      ${task.target_label ? `<span class="skey">${escapeHtml(task.target_label)}</span>` : ''}
+      <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
+    </div>
+    <details class="tapp">
+      <summary>${icon('chev', { cls: 'ic chev' })}${task.target === '' ? t('绑 App') : t('改')}</summary>
+      <form method="post" action="/today/goals" data-ns="${ns}">
+        <input type="hidden" name="task" value="${task.id}">
+        ${schemeField({
+          name: 'target', value: task.target, ns, required: false, labelFor: 'target_label', t,
+          label: t('这条子任务跳去哪 · 可不填'),
+          placeholder: t('bilibili:// 或 https://…'),
+          hint: t('不填就跟着目标走。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
+        })}
+        <div class="field">
+          <label for="${fieldId(ns, 'target_label')}">${t('按钮上叫它什么')}</label>
+          <input id="${fieldId(ns, 'target_label')}" type="text" name="target_label" value="${escapeHtml(task.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
+        </div>
+        <div class="actions"><button class="primary" type="submit" name="op" value="task_save">${t('存')}</button></div>
+      </form>
+    </details>
+  </li>`
 }
 
 function archivedBlock(goals: Goal[], t: T): string {
@@ -298,10 +356,16 @@ const GOALS_CSS = `
 .banner.expired .acts{margin-left:auto;display:flex;gap:12px}
 details.app > .card.tasks{border:0;border-top:1px solid var(--rule);border-radius:0;margin:0}
 .tl{list-style:none;margin:0 0 10px;padding:0}
-.tl li{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--rule)}
-.tl li span{flex:1;min-width:0}
-.tl li.done span{color:var(--faint);text-decoration:line-through}
-.tl li form{margin:0}
+.tl li{padding:6px 0;border-bottom:1px solid var(--rule)}
+.tl .trow{display:flex;align-items:center;gap:10px}
+.tl .tname{flex:1;min-width:0}
+.tl .trow form{margin:0}
+details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px;color:var(--dim)}
+/* Same 13px as the 「按 App 名字找」 fold sitting one card lower: two nested
+   folds in one card, drawn alike. Neither rotates — that signal belongs to the
+   goal row itself. */
+details.tapp > summary .ic.chev{width:13px;height:13px}
+details.tapp > form{margin:0 0 10px}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
 details.archived{margin:24px 0 0}

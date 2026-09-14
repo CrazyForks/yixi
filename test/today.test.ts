@@ -287,6 +287,9 @@ describe('check-in', () => {
     expect(await html()).toMatch(new RegExp(`data-goal="${a}"[\\s\\S]*?name="op" value="check"`))
     expect((await post({ op: 'check', goal: String(a) }, other)).status).toBe(404)
     expect((await post({ op: 'check', goal: 'x' })).status).toBe(400)
+    // A well-formed number for a goal nobody owns is the same answer as a goal
+    // somebody else owns: 404 either way, so the page never tells them apart.
+    expect((await post({ op: 'check', goal: '999999' })).status).toBe(404)
   })
 
   it('task_check / task_uncheck respect ownership and toggle exactly one day', async () => {

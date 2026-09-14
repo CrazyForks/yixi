@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleGoals } from '../src/ui/goals'
 import { addDays, isExpired } from '../src/dates'
-import { createGoal, listGoals, listTasks, shanghaiDate } from '../src/db'
+import { createGoal, createTask, getTask, listCheckins, listGoals, listTasks, setTaskCheckin, shanghaiDate, syncGoalCheckin } from '../src/db'
 import type { User } from '../src/types'
 
 const user: User = { id: 1, name: '张三', is_owner: 0, created_at: 0 }
@@ -12,6 +12,7 @@ const TODAY = shanghaiDate(NOW)
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
     env.DB.prepare('DELETE FROM goals'),
@@ -116,6 +117,31 @@ describe('GET /goals', () => {
     await seed('张三的私事')
     expect(await html(other)).not.toContain('张三的私事')
   })
+
+  it('heads the sub-task box with the daily wording and counts today, not what is left', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW })
+    expect(await html()).toContain('子任务 · 每天都做')
+    expect(await html()).toContain('今天 0/2')
+    await setTaskCheckin(env.DB, 1, t1, TODAY, true, NOW)
+    expect(await html()).toContain('今天 1/2')
+  })
+
+  it('gives every sub-task its own folded scheme field, and shows the app it is bound to', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
+    let h = await html()
+    expect(h).toContain('绑 App')
+    expect(h).toContain(`id="f-t${t}-target"`)
+    expect(h).toContain(`id="f-t${t}-target_label"`)
+    expect(h).toContain('name="op" value="task_save"')
+    await post({ op: 'task_save', task: String(t), target: 'bilibili://video/BV1', target_label: 'B 站' })
+    h = await html()
+    expect(h).toContain('改')
+    expect(h).toContain('value="bilibili://video/BV1"')
+    expect(h).toContain('<span class="skey">B 站</span>')
+  })
 })
 
 describe('POST /goals', () => {
@@ -192,6 +218,40 @@ describe('POST /goals', () => {
     expect((await post({ op: 'task_delete', task: String(tasks[0]!.id) }, other)).status).toBe(404)
     expect((await post({ op: 'task_delete', task: String(tasks[0]!.id) })).status).toBe(303)
     expect(await listTasks(env.DB, 1)).toEqual([])
+  })
+
+  it('task_save validates the target the same way a goal does, and is refused for another user', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    expect((await post({ op: 'task_save', task: String(t), target: 'javascript:alert(1)', target_label: '' })).status).toBe(400)
+    expect((await post({ op: 'task_save', task: String(t), target: 'not a scheme', target_label: '' })).status).toBe(400)
+    // LABEL_MAX 是 12，这里正好 13 个字。
+    expect((await post({ op: 'task_save', task: String(t), target: '', target_label: '十三个字十三个字十三个字长' })).status).toBe(400)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '', target_label: '' })
+    expect((await post({ op: 'task_save', task: String(t), target: 'bilibili://', target_label: 'B 站' }, other)).status).toBe(404)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '' })
+    const res = await post({ op: 'task_save', task: String(t), target: 'bilibili://', target_label: 'B 站' })
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe(`/today/goals#goal-${a}`)
+    expect(await getTask(env.DB, 1, t)).toMatchObject({ target: 'bilibili://', target_label: 'B 站' })
+    expect((await post({ op: 'task_save', task: 'x', target: '', target_label: '' })).status).toBe(400)
+  })
+
+  it('re-derives today’s goal check-in when a sub-task is added or deleted', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    await setTaskCheckin(env.DB, 1, t1, TODAY, true, NOW)
+    // 这一步把目标置于「今天做完了」：唯一那条子任务勾上了，派生打卡也在。
+    // 不先摆成这个样子，下面加一条没勾的就无从退回，断言也就证明不了什么。
+    await syncGoalCheckin(env.DB, 1, a, TODAY, NOW)
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ goal_id: a, date: TODAY }])
+    // 加一条没勾的：今天从「做完了」退回「没做完」。
+    await post({ op: 'task_add', goal: String(a), title: '二' })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([])
+    // 把那条没勾的删掉：今天又变回「做完了」。
+    const fresh = (await listTasks(env.DB, 1)).find((tk) => tk.title === '二')!
+    await post({ op: 'task_delete', task: String(fresh.id) })
+    expect(await listCheckins(env.DB, 1, TODAY, TODAY)).toEqual([{ goal_id: a, date: TODAY }])
   })
 
   it('answers an unknown op with 400, and a non-numeric id with 400', async () => {

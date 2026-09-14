@@ -50,6 +50,7 @@ const CHINESE_PUNCT = /[「」，。！？；：（）]/
 async function reset(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM goal_days'),
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
     env.DB.prepare('DELETE FROM goals'),
@@ -207,12 +208,16 @@ describe('/today/goals in English', () => {
     expect(main).not.toMatch(CHINESE_PUNCT)
   })
 
-  it('translates a goal row and its sub-task box', async () => {
-    await seed('健身', { label: 'B 站' })
+  it('translates a goal row, its sub-task box and the per-row app field', async () => {
+    const g = await seed('健身', { label: 'B 站' })
+    await createTask(env.DB, { userId: 1, goalId: g, title: 'warm up', now: NOW })
     const main = mainOf(await goalsHtml())
     expect(main).toContain('Ongoing')
-    expect(main).toContain('Sub-tasks')
-    expect(main).toContain('None yet.')
+    expect(main).toContain('Sub-tasks · every day')
+    expect(main).toContain('Today 0/1')
+    expect(main).toContain('Link an app')
+    expect(main).toContain('Where this sub-task jumps · optional')
+    expect(main).toContain('Leave it empty and it follows the goal.')
     expect(main).not.toMatch(CHINESE_PUNCT)
   })
 })

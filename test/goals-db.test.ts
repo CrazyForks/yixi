@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   countTaskCheckinsBetween, countTaskCheckinsOn, createGoal, createTask,
   deleteGoal, deleteTask, getGoal, getTask, listCheckins, listGoalDays, listGoals, listTaskCheckins, listTasks,
-  listUsersWithLiveGoals, moveGoal, setGoalArchived, setGoalTaskCheckins, setTaskCheckin, setTaskDone, shanghaiDate,
+  listUsersWithLiveGoals, moveGoal, setGoalArchived, setGoalTaskCheckins, setTaskCheckin, shanghaiDate,
   syncGoalCheckin, toggleCheckin, updateGoal, updateTaskTarget, upsertGoalDay,
 } from '../src/db'
 
@@ -117,15 +117,13 @@ describe('tasks', () => {
     expect(await createTask(env.DB, { userId: 1, goalId: id, title: '买垫子', now: NOW })).toEqual(expect.any(Number))
   })
 
-  it('orders undone before done, then by position', async () => {
+  it('orders by position and never reorders a task because it was checked today', async () => {
     const id = await goal(1, '健身')
     const t1 = (await createTask(env.DB, { userId: 1, goalId: id, title: '一', now: NOW }))!
     const t2 = (await createTask(env.DB, { userId: 1, goalId: id, title: '二', now: NOW }))!
     const t3 = (await createTask(env.DB, { userId: 1, goalId: id, title: '三', now: NOW }))!
-    expect(await setTaskDone(env.DB, 1, t1, NOW)).toBe(true)
-    expect((await listTasks(env.DB, 1)).map((t) => t.id)).toEqual([t2, t3, t1])
-    expect(await setTaskDone(env.DB, 2, t2, NOW)).toBe(false)
-    expect(await setTaskDone(env.DB, 1, t1, null)).toBe(true)
+    expect((await listTasks(env.DB, 1)).map((t) => t.id)).toEqual([t1, t2, t3])
+    await setTaskCheckin(env.DB, 1, t1, '2026-09-14', true, NOW)
     expect((await listTasks(env.DB, 1)).map((t) => t.id)).toEqual([t1, t2, t3])
   })
 

@@ -118,6 +118,10 @@ export interface Goal {
   archived_at: number | null
 }
 
+/**
+ * 挂在目标下的子任务：每天都要做的那几件小事，不是一次性待办。
+ * 完成状态不在这里，在 goal_task_checkins（每天一行）。
+ */
 export interface GoalTask {
   id: number
   goal_id: number
@@ -129,11 +133,6 @@ export interface GoalTask {
   target_label: string
   position: number
   created_at: number
-  /**
-   * 一次性待办年代的完成时间戳。0007 之后不再读写：每天的勾选记在
-   * goal_task_checkins 里。列还在，代码里的这个字段会在子任务改造收尾时删掉。
-   */
-  done_at: number | null
 }
 
 /**

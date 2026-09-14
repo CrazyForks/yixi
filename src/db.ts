@@ -715,9 +715,9 @@ export async function moveGoal(
 export async function listTasks(db: D1Database, userId: number): Promise<GoalTask[]> {
   const res = await db
     .prepare(
-      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at, done_at
+      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at
        FROM goal_tasks WHERE user_id = ?1
-       ORDER BY goal_id, done_at IS NOT NULL, position, id`,
+       ORDER BY goal_id, position, id`,
     )
     .bind(userId)
     .all<GoalTask>()
@@ -743,14 +743,6 @@ export async function createTask(
   return Number(res.meta.last_row_id)
 }
 
-export async function setTaskDone(db: D1Database, userId: number, id: number, doneAt: number | null): Promise<boolean> {
-  const res = await db
-    .prepare('UPDATE goal_tasks SET done_at = ?3 WHERE user_id = ?1 AND id = ?2')
-    .bind(userId, id, doneAt)
-    .run()
-  return (res.meta.changes ?? 0) > 0
-}
-
 export async function deleteTask(db: D1Database, userId: number, id: number): Promise<boolean> {
   const res = await db.prepare('DELETE FROM goal_tasks WHERE user_id = ?1 AND id = ?2').bind(userId, id).run()
   return (res.meta.changes ?? 0) > 0
@@ -760,7 +752,7 @@ export async function deleteTask(db: D1Database, userId: number, id: number): Pr
 export async function getTask(db: D1Database, userId: number, id: number): Promise<GoalTask | null> {
   return await db
     .prepare(
-      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at, done_at
+      `SELECT id, goal_id, user_id, title, target, target_label, position, created_at
        FROM goal_tasks WHERE user_id = ?1 AND id = ?2`,
     )
     .bind(userId, id)
