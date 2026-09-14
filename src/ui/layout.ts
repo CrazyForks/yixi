@@ -414,6 +414,129 @@ export function jsSingleQuotedBody(s: string): string {
     .replace(/\u2029/g, '\\u2029')
 }
 
+// --- a line to copy -----------------------------------------------------------
+//
+// The two 「怎么配」 pages exist to move a handful of exact strings off a screen
+// and into somewhere else: an address into Safari, a finished gate URL into the
+// Shortcuts editor, a token into a password manager. Printing them inside
+// <code> or a bare `user-select:all` block makes that a three-gesture job on
+// the phone this product is written for — tap, hunt for 「拷贝」 in the iOS
+// callout, hope the selection took the whole line. One button does it.
+//
+// Two shapes, one component. A URL somebody should be able to *open* is a real
+// <a href>, so a tap goes there and a long press offers 「拷贝链接」; a line
+// that is only ever pasted somewhere else (a gate URL with a token in it, the
+// token itself) stays plain text and keeps `user-select:all`, because a link
+// that navigates to it would put the token in Safari History for good.
+
+export interface CopyLineOptions {
+  /** The exact characters to copy. Also what is shown; escaped here, so pass it raw. */
+  text: string
+  /** Show the text as a link to this address. Leave it out for a paste-only line. */
+  href?: string
+  /** A quiet line above saying what this is. Plain text — it is escaped here. */
+  label?: string
+  /** The table-cell variant: no bottom margin, smaller type. */
+  tight?: boolean
+}
+
+/**
+ * One line plus its button. The payload is the element's own text rather than
+ * a `data-` attribute holding a second copy of it: one string on the page
+ * cannot drift from the other, and what gets copied is by construction what
+ * the reader can see.
+ */
+export function copyLine(t: T, o: CopyLineOptions): string {
+  const shown = escapeHtml(o.text)
+  const body = o.href === undefined ? shown : `<a href="${escapeHtml(o.href)}">${shown}</a>`
+  // `sel` only on the paste-only shape: `user-select:all` over a link turns a
+  // tap meant to open it into a selection.
+  const textClass = o.href === undefined ? 'cpl-t sel' : 'cpl-t'
+  const head = o.label === undefined ? '' : `\n  <p class="cpl-k">${escapeHtml(o.label)}</p>`
+  return `<div class="cpl${o.tight === true ? ' tight' : ''}">${head}
+  <div class="cpl-r"><span class="${textClass}">${body}</span><button class="cpl-b" type="button">${t('复制')}</button></div>
+</div>`
+}
+
+/**
+ * Wiring for every copy line on the page, in one pass.
+ *
+ * The same behaviour src/ui/account.ts's own `copyScript` gives the token card,
+ * generalised from one element pair to N: clipboard where there is one, and
+ * where there is not — `navigator.clipboard` needs a secure context, which
+ * `wrangler dev` over plain http is not — select the line's contents so iOS
+ * offers 「拷贝」 on the long-press menu. A button that silently does nothing is
+ * worse than no button.
+ *
+ * Built per request rather than held as a constant, because the two words it
+ * puts on the button are copy like any other; `jsonForScript` rather than
+ * quotes of our own, because a translation is allowed an apostrophe and this is
+ * a classic `<script>`, where the parser looks for `</script` inside the string
+ * before JavaScript ever sees it.
+ */
+export function copyLinesScript(t: T): string {
+  return `
+(function(){
+  var rows=document.querySelectorAll('.cpl-r');
+  for(var i=0;i<rows.length;i++){(function(row){
+    var text=row.querySelector('.cpl-t'),btn=row.querySelector('.cpl-b');
+    if(!text||!btn)return;
+    function select(){
+      var r=document.createRange();r.selectNodeContents(text);
+      var sel=window.getSelection();
+      if(sel){sel.removeAllRanges();sel.addRange(r)}
+      btn.textContent=${jsonForScript(t('已选中，长按拷贝'))};
+    }
+    btn.addEventListener('click',function(){
+      var s=text.textContent||'';
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(s).then(function(){btn.textContent=${jsonForScript(t('已复制'))}},select);
+      }else{select()}
+    });
+  })(rows[i])}
+})();`
+}
+
+/**
+ * Appended by the two pages that use `copyLine`, and by nothing else — every
+ * other page has to keep rendering byte for byte what it did before.
+ *
+ * The quiet furniture the 怎么配 pages already wear: the `--rule` ground of
+ * `pre.copy`, the `--num` face figures and URLs are set in, `var(--dim)` for
+ * the button, the way `button.linky` is dim rather than accented. Nothing here
+ * is a colour this product does not already use.
+ *
+ * The row is a flexbox rather than a button floated over the text: at 390px a
+ * gate URL with a 32-character token in it is far wider than the screen, and an
+ * overlaid button would sit on top of whichever characters happened to be
+ * scrolled under it. The text scrolls sideways inside its own box — the same
+ * `overflow-x:auto` `pre.copy` has always had — and the button is a fixed
+ * column beside it, 44px tall at the tightest, with a hairline of page ground
+ * between the two so they never read as one slab.
+ */
+export const COPY_LINE_CSS = `
+.cpl{margin:0 0 1rem;max-width:100%}
+.cpl.tight{margin:0}
+.cpl-k{margin:0 0 .35rem;font-size:.86rem;color:var(--dim);line-height:1.5}
+.cpl-r{display:flex;align-items:stretch;background:var(--rule);border-radius:10px;max-width:100%}
+.cpl-t{
+  flex:1 1 auto;min-width:0;
+  font-family:var(--num);font-size:.88rem;line-height:1.7;
+  padding:12px 0 12px 14px;
+  overflow-x:auto;white-space:pre;
+}
+.cpl.tight .cpl-t{padding:8px 0 8px 10px;font-size:.82rem}
+.cpl-t.sel{-webkit-user-select:all;user-select:all}
+.cpl-t a{color:inherit;text-underline-offset:3px}
+.cpl-b{
+  flex:0 0 auto;align-self:stretch;
+  min-height:44px;min-width:44px;padding:0 14px;
+  font-size:.86rem;color:var(--dim);white-space:nowrap;
+  border-left:1px solid var(--bg);border-radius:0 10px 10px 0;
+}
+.cpl-b:active{opacity:.6}
+`
+
 /**
  * The two language names, the one being read rendered as plain text rather
  * than as a link back to the page the reader is already standing on.
