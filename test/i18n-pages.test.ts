@@ -248,6 +248,14 @@ describe('/today/setup in English', () => {
     expect(main).not.toMatch(CHINESE_PUNCT)
     expect(main).not.toMatch(/[!！]/)
   })
+
+  it('translates the copy line — its label and the button beside it', async () => {
+    const main = mainOf(await setupHtml())
+    expect(main).toContain('The address of the Today page')
+    expect(main).toContain(`<button class="cpl-b" type="button">Copy</button>`)
+    expect(main).toContain(`<a href="${BASE}/today">${BASE}/today</a>`)
+    expect(main).not.toMatch(CHINESE_PUNCT)
+  })
 })
 
 // ============================================================================

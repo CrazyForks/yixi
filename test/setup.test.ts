@@ -292,6 +292,67 @@ describe('/setup', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
+  // --- every line to paste has a button that copies it ----------------------
+  //
+  // `user-select:all` alone meant a tap selected the line and then the reader
+  // still had to find 「拷贝」 in the iOS callout. These are lines nobody reads;
+  // they exist to be moved into the Shortcuts editor.
+
+  it('puts a copy button on every pasteable line, in step one and in the table', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    await seedApp(user.id, 'qidian', '起点读书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    // Two per app (step one, then the table) plus the token block and the
+    // zzztest check line.
+    const buttons = html.match(/class="cpl-b"/g) ?? []
+    expect(buttons.length).toBe(6)
+    expect(html).toContain(`${BASE}/gate?app=xhs&amp;k=deadbeef00112233&amp;fmt=text`)
+  })
+
+  it('copies the token itself, rather than asking for a careful drag across it', async () => {
+    const user = await seedUser()
+    const html = await render(user, '?k=deadbeef00112233')
+
+    const tokenBlock = html.slice(html.indexOf('<h2>你的 token</h2>'), html.indexOf('<h2>第一步'))
+    expect(tokenBlock).toContain('deadbeef00112233')
+    expect(tokenBlock).toContain('class="cpl-b"')
+  })
+
+  it('gives the zzztest check line a copy button and keeps the token out of every href', async () => {
+    const user = await seedUser()
+    const html = await render(user, '?k=deadbeef00112233')
+
+    const check = html.slice(html.indexOf('验一下配对没'))
+    expect(check).toContain(`${BASE}/gate?app=zzztest&amp;k=deadbeef00112233`)
+    expect(check).toContain('class="cpl-b"')
+    // Deliberately not an <a href>. Tapping one is a top-level navigation, so
+    // the token would land in Safari History and address-bar autocomplete —
+    // the same leak that turned the tester below into a fetch. Copy, then
+    // paste: one extra gesture, no permanent record.
+    expect(check).not.toMatch(/<a[^>]*href="[^"]*zzztest/)
+  })
+
+  it('loads the copy script whether or not a token is on screen', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+
+    const revealed = await render(user, '?k=deadbeef00112233')
+    const masked = await render(user)
+
+    for (const html of [revealed, masked]) {
+      expect(html).toContain('navigator.clipboard')
+      expect(html).toContain('已选中，长按拷贝')
+    }
+
+    // The tester is the half that still depends on having a token: without one
+    // there is no line whose reachability could be checked.
+    expect(revealed).toContain('data-test=')
+    expect(masked).not.toContain('data-test=')
+    expect(masked).not.toContain('fetch(')
+  })
+
   it('no longer carries the home-screen walkthrough, and does not point at the other face either', async () => {
     const user = await seedUser()
     const html = await render(user)

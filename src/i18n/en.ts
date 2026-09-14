@@ -144,10 +144,14 @@ export const EN: Record<string, string> = {
   '怎么配 · 一息': 'Guide · 一息',
   '让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：':
     'Open the Today page with one tap. <a href="/today">Today</a> is the page you open every morning, so rather than hunting for the address, give it a way in:',
-  '<b>添加到主屏幕</b>。Safari 打开 <code>{origin}/today</code>，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。':
-    '<b>Add to Home Screen</b>. Open <code>{origin}/today</code> in Safari, then “Share” at the bottom → “Add to Home Screen”. Tapping the icon after that is full screen, with no address bar. The first time you open it you will have to <b>sign in once more</b> — the copy on the home screen does not share a login with Safari, and one sign-in lasts half a year.',
-  '<b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填 <code>{origin}/today</code>。\n    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；\n    或「设置→辅助功能→触控→轻点背面」绑它。':
-    '<b>A shortcut</b>. In the Shortcuts app, make one with a single action, “Open URL”, pointing at <code>{origin}/today</code>. Then pick one of three: long-press the home screen → Widgets → “Shortcuts” and put it there; on iPhone 15 Pro and later bind it under “Settings → Action Button”; or bind it under “Settings → Accessibility → Touch → Back Tap”.',
+  // The address itself is a copy line at the top of the page now, so neither
+  // step repeats it: an address printed three times is three chances to copy
+  // the wrong one of them.
+  今日页的网址: 'The address of the Today page',
+  '<b>添加到主屏幕</b>。Safari 打开上面这条网址，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。':
+    '<b>Add to Home Screen</b>. Open the address above in Safari, then “Share” at the bottom → “Add to Home Screen”. Tapping the icon after that is full screen, with no address bar. The first time you open it you will have to <b>sign in once more</b> — the copy on the home screen does not share a login with Safari, and one sign-in lasts half a year.',
+  '<b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填上面这条网址。\n    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；\n    或「设置→辅助功能→触控→轻点背面」绑它。':
+    '<b>A shortcut</b>. In the Shortcuts app, make one with a single action, “Open URL”, pointing at the address above. Then pick one of three: long-press the home screen → Widgets → “Shortcuts” and put it there; on iPhone 15 Pro and later bind it under “Settings → Action Button”; or bind it under “Settings → Accessibility → Touch → Back Tap”.',
   '<b>每天早上自动打开</b>。「快捷指令」→「自动化」→「特定时间」，选每天早上的时刻，运行上面那条，\n    关掉「运行前询问」。这就是提醒，不用推送。':
     '<b>Open it by itself every morning</b>. “Shortcuts” → “Automation” → “Time of Day”, pick a time in the morning, run the shortcut above, and turn off “Ask Before Running”. That is the reminder, with no notification involved.',
   '拦截那边的配置在<a href="/setup">这里</a>。': 'Breathe is set up <a href="/setup">here</a>.',

@@ -1,5 +1,5 @@
 import type { Env, User } from '../types'
-import { DEFAULT_THEME, escapeHtml, page } from './layout'
+import { COPY_LINE_CSS, DEFAULT_THEME, copyLine, copyLinesScript, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { translator } from '../i18n'
 import { inAppBrowserOf } from '../inapp'
@@ -29,6 +29,10 @@ import { revealToken } from '../account'
 export async function renderSetup(request: Request, env: Env, user: User): Promise<Response> {
   const url = new URL(request.url)
   const origin = url.origin
+  // This page is batch 2's to translate and is excluded from the i18n guards;
+  // the one translator it builds is still the real one, so the copy lines'
+  // 「复制」 button comes from the same source strings /account's does.
+  const t = translator('zh')
   // `?k=` still wins: it is the token the reader is holding right now, and it
   // needs no decrypt. Falling back rather than always unsealing also keeps a
   // freshly-issued token working before it has been sealed.
@@ -50,8 +54,10 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   const rawLineFor = (appKey: string): string =>
     `${origin}/gate?app=${appKey}&k=${token ?? ''}&fmt=text`
 
+  // What the reader sees, unescaped — `copyLine` escapes it, and what it copies
+  // is the element's own text, so the string only ever exists once.
   const lineFor = (appKey: string): string =>
-    `${origin}/gate?app=${appKey}&amp;k=${token ?? '&lt;先点上面的「显示」&gt;'}&amp;fmt=text`
+    `${origin}/gate?app=${appKey}&k=${token ?? '<先点上面的「显示」>'}&fmt=text`
 
   // One finished line per configured app, inline in step one.
   //
@@ -75,7 +81,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
           (a) => `<p class="pastefor">${
             apps.length > 1 ? `拦<b>${escapeHtml(a.label)}</b>的那条快捷指令用这行` : '这一整行'
           }${a.enabled ? '' : '<span class="off"> · 这个 App 现在是停用的</span>'}</p>
-<pre class="copy">${lineFor(escapeHtml(a.app))}</pre>`,
+${copyLine(t, { text: lineFor(a.app) })}`,
         )
         .join('\n')
 
@@ -88,7 +94,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
           (a) => `<tr>
   <td>${escapeHtml(a.label)}${a.enabled ? '' : '<span class="off"> · 已停用</span>'}</td>
   <td>
-    <pre class="copy tight">${lineFor(escapeHtml(a.app))}</pre>
+    ${copyLine(t, { text: lineFor(a.app), tight: true })}
     ${
       token
         ? `<button class="linky try" type="button" data-test="${escapeHtml(rawLineFor(a.app))}">试一下这条通不通</button>
@@ -102,7 +108,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
     : `<tr><td colspan="2" class="none">还没有配置 App。先去<a href="/settings">设置</a>加一个，这里就会出现可以直接粘的整行。</td></tr>`
 
   const tokenLine = token
-    ? `<pre class="copy">${escapeHtml(token)}</pre>`
+    ? copyLine(t, { text: token })
     : reveal
       ? `<p class="warn">服务器这边读不到你的 token 原文，只存着它的哈希——这个账号是发号时代建的，
          从来没绑过邮箱和密码。<a href="/claim">绑一次</a>，以后这一页就能直接印出来；
@@ -113,10 +119,12 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
   return page({
     title: '一息 · 怎么配',
     theme: DEFAULT_THEME,
-    css: CONSOLE_CSS + SETUP_CSS,
+    css: CONSOLE_CSS + SETUP_CSS + COPY_LINE_CSS,
     cacheControl: 'no-store',
-    script: token ? TEST_SCRIPT : undefined,
-    body: `${consoleHeader(user, 'setup', translator('zh'))}
+    // The copy buttons are on every render; the tester only exists when there
+    // is a token to build a testable line out of.
+    script: copyLinesScript(t) + (token ? TEST_SCRIPT : ''),
+    body: `${consoleHeader(user, 'setup', t)}
 <main class="wrap doc">
 
 <h1>怎么配</h1>
@@ -260,7 +268,7 @@ ${pasteRows}
 <h2>验一下配对没</h2>
 <p>别在快捷指令编辑页里直接点运行——那样没有输入，<code>app=</code> 是空的，会报一个和你配置无关的错。</p>
 <p>要验地址和 token，在 Safari 里打开这个（<code>zzztest</code> 是个故意没配过的键，服务端一律放行且什么都不记）：</p>
-<pre class="copy">${token ? `${origin}/gate?app=zzztest&amp;k=${escapeHtml(token)}` : `${origin}/gate?app=zzztest&amp;k=&lt;你的token&gt;`}</pre>
+${copyLine(t, { text: `${origin}/gate?app=zzztest&k=${token ?? '<你的token>'}` })}
 <table class="apps">
 <tbody>
 <tr><td><code>{"action":"pass"}</code></td><td>都对，往下走</td></tr>
@@ -494,13 +502,16 @@ const SETUP_CSS = `
   font-family:var(--num);font-size:.86em;
   background:var(--rule);border-radius:4px;padding:.1em .38em;
 }
-pre.copy,pre.shape{
+/* Only the two diagrams are left in a pre. Every line that exists to be moved
+   off this screen is a copy line now — a block with user-select:all asked the
+   reader to tap, then find 「拷贝」 in the iOS callout, and gave them no button
+   to press. */
+pre.shape{
   font-family:var(--num);font-size:.88rem;line-height:1.7;
   background:var(--rule);border-radius:10px;
   padding:12px 14px;margin:0 0 1rem;
   overflow-x:auto;white-space:pre;-webkit-user-select:all;user-select:all;
 }
-pre.copy{-webkit-user-select:all;user-select:all}
 .box{
   border:1px solid var(--rule);border-radius:12px;
   padding:14px 16px 4px;margin:0 0 1.4rem;
@@ -519,7 +530,6 @@ table.apps td{padding:8px 8px 8px 0;border-bottom:1px solid var(--rule);vertical
 table.apps .off{color:var(--faint)}
 table.apps .none{color:var(--dim);text-align:center;padding:18px 0}
 .doc a{color:var(--fg);text-underline-offset:3px}
-pre.copy.tight{margin:0;padding:8px 10px;font-size:.82rem}
 table.paste td{vertical-align:middle}
 button.try{
   display:inline-block;margin-top:6px;font-size:.86rem;color:var(--dim);

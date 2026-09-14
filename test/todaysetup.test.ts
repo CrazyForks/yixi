@@ -32,6 +32,34 @@ describe('/today/setup', () => {
     expect(html).toContain('<a href="/setup">这里</a>')
   })
 
+  it('hands the address over as one tappable, copyable line rather than burying it in prose', async () => {
+    const html = await render()
+
+    // A URL somebody has to get into Safari or into a Shortcut is the one thing
+    // on this page that is not read — it is opened or copied. Inside <code> it
+    // was neither: not a link, and selectable only by dragging across it.
+    expect(html).toContain(`<a href="${BASE}/today">${BASE}/today</a>`)
+    expect(html).toContain('class="cpl-b"')
+    expect(html).toContain('复制')
+    expect(html).toContain('今日页的网址')
+  })
+
+  it('stops repeating the URL inside the steps, and points at the line instead', async () => {
+    const html = await render()
+    expect(html).not.toContain(`<code>${BASE}/today</code>`)
+    expect(html).toContain('上面这条网址')
+  })
+
+  it('carries the copy script inline, since nothing may be fetched', async () => {
+    const html = await render()
+    expect(html).toContain('navigator.clipboard')
+    expect(html).toContain('已复制')
+    expect(html).toContain('已选中，长按拷贝')
+    // CSP is default-src 'none' — a page that needed a file would silently do
+    // nothing on the phone this is written for.
+    expect(html).not.toContain('<script src=')
+  })
+
   it('stays calm — no exclamation marks in the copy, half-width or full-width', async () => {
     const html = await render()
     const main = html.match(/<main>([\s\S]*?)<\/main>/)
