@@ -251,8 +251,8 @@ describe('/today/setup in English', () => {
 
   it('translates the copy line — its label and the button beside it', async () => {
     const main = mainOf(await setupHtml())
-    expect(main).toContain('The address of the Today page')
-    expect(main).toContain(`<button class="cpl-b" type="button">Copy</button>`)
+    expect(main).toContain('Today page address')
+    expect(main).toContain('aria-label="Copy Today page address">Copy</button>')
     expect(main).toContain(`<a href="${BASE}/today">${BASE}/today</a>`)
     expect(main).not.toMatch(CHINESE_PUNCT)
   })

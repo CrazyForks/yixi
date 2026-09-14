@@ -334,6 +334,44 @@ describe('/setup', () => {
     expect(check).not.toMatch(/<a[^>]*href="[^"]*zzztest/)
   })
 
+  it('offers no button on a line that is still a placeholder, whatever the page is showing', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+
+    // The default entry to this page: the token is masked, so every printed
+    // line carries 「先点上面的「显示」」 where the token goes. A 复制 button
+    // there would put that Chinese placeholder on the clipboard and answer
+    // 「已复制」; the reader finds out when Shortcuts returns the
+    // kCFErrorDomainCFNetwork this page's own warning calls undiagnosable.
+    const masked = await render(user)
+    expect(masked).toContain('&lt;先点上面的「显示」&gt;')
+    expect(masked).not.toContain('class="cpl-b"')
+    // The line itself is still there, still selectable by hand, as it was
+    // before any button existed.
+    expect(masked).toContain('class="cpl-t sel"')
+
+    // Reveal it and every one of them can be copied.
+    const revealed = await render(user, '?k=deadbeef00112233')
+    expect(revealed).not.toContain('先点上面的')
+    expect(revealed).toContain('class="cpl-b"')
+
+    // `?show=1` on a row whose plaintext cannot be recovered is the masked
+    // case again, not a third one: there is still no real line to copy.
+    const unreadable = await render(user, '?show=1')
+    expect(unreadable).toContain('&lt;先点上面的「显示」&gt;')
+    expect(unreadable).not.toContain('class="cpl-b"')
+  })
+
+  it('names each button after the line it copies, so six of them are not one word six times', async () => {
+    const user = await seedUser()
+    await seedApp(user.id, 'xhs', '小红书')
+    const html = await render(user, '?k=deadbeef00112233')
+
+    expect(html).toContain('aria-label="复制小红书"')
+    expect(html).toContain('aria-label="复制token"')
+    expect(html).toContain('aria-label="复制测试网址"')
+  })
+
   it('loads the copy script whether or not a token is on screen', async () => {
     const user = await seedUser()
     await seedApp(user.id, 'xhs', '小红书')
@@ -343,7 +381,13 @@ describe('/setup', () => {
 
     for (const html of [revealed, masked]) {
       expect(html).toContain('navigator.clipboard')
-      expect(html).toContain('已选中，长按拷贝')
+      expect(html).toContain('长按拷贝')
+      // 「已复制」 is an event, not a state: it clears itself, and pressing any
+      // button first puts every other one back to its own label. Two buttons
+      // both claiming to hold the clipboard is the same silent mix-up the
+      // per-app lines exist to prevent.
+      expect(html).toContain('setTimeout(restore,2000)')
+      expect(html).toContain('function restore()')
     }
 
     // The tester is the half that still depends on having a token: without one

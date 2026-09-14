@@ -147,7 +147,10 @@ export const EN: Record<string, string> = {
   // The address itself is a copy line at the top of the page now, so neither
   // step repeats it: an address printed three times is three chances to copy
   // the wrong one of them.
-  今日页的网址: 'The address of the Today page',
+  // No article: this is both the quiet label above the line and the {name} in
+  // the button's 「复制{name}」, and 「Copy The address of the Today page」 is
+  // not a thing a screen reader should have to read out.
+  今日页的网址: 'Today page address',
   '<b>添加到主屏幕</b>。Safari 打开上面这条网址，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。':
     '<b>Add to Home Screen</b>. Open the address above in Safari, then “Share” at the bottom → “Add to Home Screen”. Tapping the icon after that is full screen, with no address bar. The first time you open it you will have to <b>sign in once more</b> — the copy on the home screen does not share a login with Safari, and one sign-in lasts half a year.',
   '<b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填上面这条网址。\n    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；\n    或「设置→辅助功能→触控→轻点背面」绑它。':
@@ -329,6 +332,13 @@ export const EN: Record<string, string> = {
   藏起来: 'Hide it',
   已复制: 'Copied',
   '已选中，长按拷贝': 'Selected — press and hold to copy',
+  // The same two words for the shared copy line (src/ui/layout.ts), which has
+  // to fit them into a button beside a URL in a table cell at 390px rather
+  // than under a token card with a whole row to itself. 「复制{name}」 is the
+  // button's aria-label: six 「复制」 in a column are one word six times to a
+  // screen reader.
+  长按拷贝: 'Hold to copy',
+  '复制{name}': 'Copy {name}',
   '换一把新 token': 'Swap in a new token',
   '泄漏了才需要这么做。<b>旧 token 立刻失效</b>，你手机上每一条用到它的快捷指令都得把网址里的\n  <span class="mono">k=</span> 换成新的，改完之前那些 App 不会再被拦。改密码不会换 token，两者互不影响。':
     'Only needed if it has leaked. <b>The old token stops working at once</b>, and every Shortcut on your phone that uses it needs the\n  <span class="mono">k=</span> in its address replaced; until you do, those apps go unstopped. Changing the password does not change the token — the two are independent.',

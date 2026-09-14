@@ -40,8 +40,10 @@ describe('/today/setup', () => {
     // was neither: not a link, and selectable only by dragging across it.
     expect(html).toContain(`<a href="${BASE}/today">${BASE}/today</a>`)
     expect(html).toContain('class="cpl-b"')
-    expect(html).toContain('复制')
     expect(html).toContain('今日页的网址')
+    // Six identical 「复制」 buttons on the other 怎么配 page are one word six
+    // times to a screen reader; each says what it copies.
+    expect(html).toContain('aria-label="复制今日页的网址"')
   })
 
   it('stops repeating the URL inside the steps, and points at the line instead', async () => {
@@ -54,7 +56,7 @@ describe('/today/setup', () => {
     const html = await render()
     expect(html).toContain('navigator.clipboard')
     expect(html).toContain('已复制')
-    expect(html).toContain('已选中，长按拷贝')
+    expect(html).toContain('长按拷贝')
     // CSP is default-src 'none' — a page that needed a file would silently do
     // nothing on the phone this is written for.
     expect(html).not.toContain('<script src=')

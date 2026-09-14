@@ -81,7 +81,7 @@ export async function renderSetup(request: Request, env: Env, user: User): Promi
           (a) => `<p class="pastefor">${
             apps.length > 1 ? `拦<b>${escapeHtml(a.label)}</b>的那条快捷指令用这行` : '这一整行'
           }${a.enabled ? '' : '<span class="off"> · 这个 App 现在是停用的</span>'}</p>
-${copyLine(t, { text: lineFor(a.app) })}`,
+${copyLine(t, { text: lineFor(a.app), name: a.label, incomplete: token === null })}`,
         )
         .join('\n')
 
@@ -94,7 +94,7 @@ ${copyLine(t, { text: lineFor(a.app) })}`,
           (a) => `<tr>
   <td>${escapeHtml(a.label)}${a.enabled ? '' : '<span class="off"> · 已停用</span>'}</td>
   <td>
-    ${copyLine(t, { text: lineFor(a.app), tight: true })}
+    ${copyLine(t, { text: lineFor(a.app), name: a.label, tight: true, incomplete: token === null })}
     ${
       token
         ? `<button class="linky try" type="button" data-test="${escapeHtml(rawLineFor(a.app))}">试一下这条通不通</button>
@@ -108,7 +108,7 @@ ${copyLine(t, { text: lineFor(a.app) })}`,
     : `<tr><td colspan="2" class="none">还没有配置 App。先去<a href="/settings">设置</a>加一个，这里就会出现可以直接粘的整行。</td></tr>`
 
   const tokenLine = token
-    ? copyLine(t, { text: token })
+    ? copyLine(t, { text: token, name: 'token' })
     : reveal
       ? `<p class="warn">服务器这边读不到你的 token 原文，只存着它的哈希——这个账号是发号时代建的，
          从来没绑过邮箱和密码。<a href="/claim">绑一次</a>，以后这一页就能直接印出来；
@@ -268,7 +268,7 @@ ${pasteRows}
 <h2>验一下配对没</h2>
 <p>别在快捷指令编辑页里直接点运行——那样没有输入，<code>app=</code> 是空的，会报一个和你配置无关的错。</p>
 <p>要验地址和 token，在 Safari 里打开这个（<code>zzztest</code> 是个故意没配过的键，服务端一律放行且什么都不记）：</p>
-${copyLine(t, { text: `${origin}/gate?app=zzztest&k=${token ?? '<你的token>'}` })}
+${copyLine(t, { text: `${origin}/gate?app=zzztest&k=${token ?? '<你的token>'}`, name: '测试网址', incomplete: token === null })}
 <table class="apps">
 <tbody>
 <tr><td><code>{"action":"pass"}</code></td><td>都对，往下走</td></tr>
@@ -568,7 +568,11 @@ p.masked .hint{
   font-family:var(--num);font-size:12px;color:var(--dim);margin-top:4px}
 .doc .sbody{flex:1;min-width:0}
 .doc .sbody > p{margin:0 0 .7rem}
-.doc .sbody pre{margin:0 0 .7rem}
+/* The rail is tighter than the document around it: .7rem between a step's own
+   lines, not the 1rem a copy line carries on its own elsewhere. This replaces
+   the identical rule that used to name pre — step one's pasteable lines are
+   copy lines now, and the last pre inside a step went with them. */
+.doc .sbody .cpl{margin:0 0 .7rem}
 .doc p.shead{display:flex;align-items:center;gap:7px;margin:0 0 .5rem;
   font-size:.95rem;line-height:1.5;opacity:1}
 .doc p.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;opacity:1}

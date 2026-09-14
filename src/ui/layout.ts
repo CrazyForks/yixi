@@ -436,8 +436,25 @@ export interface CopyLineOptions {
   href?: string
   /** A quiet line above saying what this is. Plain text — it is escaped here. */
   label?: string
+  /**
+   * What this line is, for the button's `aria-label` — 「复制小红书」 rather
+   * than the sixth 「复制」 in a row. Escaped here.
+   */
+  name?: string
   /** The table-cell variant: no bottom margin, smaller type. */
   tight?: boolean
+  /**
+   * This line is not the real string yet — a placeholder stands where the
+   * token will be — so it gets no button.
+   *
+   * A 「复制」 that puts `<先点上面的「显示」>` on the clipboard and then says
+   * 「已复制」 is worse than no button at all: the reader pastes it into the
+   * Shortcuts editor and the only thing that ever tells them is a
+   * `kCFErrorDomainCFNetwork` this page's own troubleshooting section says is
+   * undiagnosable. The text box stays, `user-select:all` and all, exactly as
+   * it was before any of this existed.
+   */
+  incomplete?: boolean
 }
 
 /**
@@ -453,8 +470,14 @@ export function copyLine(t: T, o: CopyLineOptions): string {
   // tap meant to open it into a selection.
   const textClass = o.href === undefined ? 'cpl-t sel' : 'cpl-t'
   const head = o.label === undefined ? '' : `\n  <p class="cpl-k">${escapeHtml(o.label)}</p>`
-  return `<div class="cpl${o.tight === true ? ' tight' : ''}">${head}
-  <div class="cpl-r"><span class="${textClass}">${body}</span><button class="cpl-b" type="button">${t('复制')}</button></div>
+  const button =
+    o.incomplete === true
+      ? ''
+      : `<button class="cpl-b" type="button"${
+          o.name === undefined ? '' : ` aria-label="${escapeHtml(t('复制{name}', { name: o.name }))}"`
+        }>${t('复制')}</button>`
+  return `<div class="cpl${o.tight === true ? ' tight' : ''}${o.incomplete === true ? ' bare' : ''}">${head}
+  <div class="cpl-r"><span class="${textClass}">${body}</span>${button}</div>
 </div>`
 }
 
@@ -473,24 +496,48 @@ export function copyLine(t: T, o: CopyLineOptions): string {
  * quotes of our own, because a translation is allowed an apostrophe and this is
  * a classic `<script>`, where the parser looks for `</script` inside the string
  * before JavaScript ever sees it.
+ *
+ * Where this has to be more than account.ts's one-button version: with six
+ * buttons on /setup, 「已复制」 left standing on a button is a claim about the
+ * clipboard that stops being true the moment the next one is pressed. Copy
+ * 小红书's line, then 起点读书's, and two buttons say 已复制 while the
+ * clipboard holds one string — which is the exact mix-up the per-app lines
+ * exist to prevent. So every button goes back to its own original label before
+ * the pressed one speaks, and 「已复制」 clears itself after two seconds: it is
+ * an event, not a state.
+ *
+ * The selection fallback is the one label that does NOT time out. It is an
+ * instruction rather than a confirmation — the long press it asks for has not
+ * happened yet — and taking it away mid-gesture would be its own small bug. It
+ * clears the next time any button is pressed, like everything else.
  */
 export function copyLinesScript(t: T): string {
   return `
 (function(){
-  var rows=document.querySelectorAll('.cpl-r');
+  var rows=document.querySelectorAll('.cpl-r'),all=[],timer=null;
+  function restore(){
+    if(timer){clearTimeout(timer);timer=null}
+    for(var j=0;j<all.length;j++)all[j].b.textContent=all[j].l;
+  }
   for(var i=0;i<rows.length;i++){(function(row){
     var text=row.querySelector('.cpl-t'),btn=row.querySelector('.cpl-b');
     if(!text||!btn)return;
+    all.push({b:btn,l:btn.textContent});
     function select(){
       var r=document.createRange();r.selectNodeContents(text);
       var sel=window.getSelection();
       if(sel){sel.removeAllRanges();sel.addRange(r)}
-      btn.textContent=${jsonForScript(t('已选中，长按拷贝'))};
+      restore();
+      btn.textContent=${jsonForScript(t('长按拷贝'))};
     }
     btn.addEventListener('click',function(){
       var s=text.textContent||'';
       if(navigator.clipboard&&navigator.clipboard.writeText){
-        navigator.clipboard.writeText(s).then(function(){btn.textContent=${jsonForScript(t('已复制'))}},select);
+        navigator.clipboard.writeText(s).then(function(){
+          restore();
+          btn.textContent=${jsonForScript(t('已复制'))};
+          timer=setTimeout(restore,2000);
+        },select);
       }else{select()}
     });
   })(rows[i])}
@@ -526,6 +573,9 @@ export const COPY_LINE_CSS = `
   overflow-x:auto;white-space:pre;
 }
 .cpl.tight .cpl-t{padding:8px 0 8px 10px;font-size:.82rem}
+/* No button beside it, so the text box closes its own right edge. */
+.cpl.bare .cpl-t{padding-right:14px}
+.cpl.bare.tight .cpl-t{padding-right:10px}
 .cpl-t.sel{-webkit-user-select:all;user-select:all}
 .cpl-t a{color:inherit;text-underline-offset:3px}
 .cpl-b{

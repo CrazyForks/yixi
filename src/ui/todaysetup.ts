@@ -40,7 +40,7 @@ export async function renderTodaySetup(request: Request, _env: Env, user: User):
 <main>
 <h1>${t('怎么配')}</h1>
 <p class="lede">${t('让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：')}</p>
-${copyLine(t, { label: t('今日页的网址'), text: todayUrl, href: todayUrl })}
+${copyLine(t, { label: t('今日页的网址'), name: t('今日页的网址'), text: todayUrl, href: todayUrl })}
 <ol>
   <li>${t('<b>添加到主屏幕</b>。Safari 打开上面这条网址，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。')}</li>
   <li>${t('<b>快捷指令入口</b>。「快捷指令」App 新建一条，只放一个动作「打开 URL」，网址填上面这条网址。\n    然后三选一：主屏幕长按→小组件→「快捷指令」，把它放上去；iPhone 15 Pro 以上在「设置→操作按钮」里绑它；\n    或「设置→辅助功能→触控→轻点背面」绑它。')}</li>
