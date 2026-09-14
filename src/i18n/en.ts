@@ -142,8 +142,6 @@ export const EN: Record<string, string> = {
 
   // --- /today/setup (src/ui/todaysetup.ts) -----------------------------------
   '怎么配 · 一息': 'Guide · 一息',
-  '让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：':
-    'Open the Today page with one tap. <a href="/today">Today</a> is the page you open every morning, so rather than hunting for the address, give it a way in:',
   // The address itself is a copy line at the top of the page now, so neither
   // step repeats it: an address printed three times is three chances to copy
   // the wrong one of them.

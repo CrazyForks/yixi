@@ -15,7 +15,7 @@ async function render(): Promise<string> {
 describe('/today/setup', () => {
   it('carries the home-screen and Shortcut walkthrough that used to live on /setup', async () => {
     const html = await render()
-    expect(html).toContain('让今日页一按就开')
+    expect(html).toContain('今日页的网址')
     expect(html).toContain('添加到主屏幕')
     expect(html).toContain('再登录一次')
     expect(html).toContain('特定时间')

@@ -39,7 +39,6 @@ export async function renderTodaySetup(request: Request, _env: Env, user: User):
   const body = `${consoleHeader(user, 'todaysetup', t)}
 <main>
 <h1>${t('怎么配')}</h1>
-<p class="lede">${t('让今日页一按就开。<a href="/today">今日</a>是每天要开的那一页，别去找网址，给它一个入口：')}</p>
 ${copyLine(t, { label: t('今日页的网址'), name: t('今日页的网址'), text: todayUrl, href: todayUrl })}
 <ol>
   <li>${t('<b>添加到主屏幕</b>。Safari 打开上面这条网址，底部「分享」→「添加到主屏幕」。\n    之后点图标就是全屏、没有地址栏。装好后第一次打开要<b>再登录一次</b>——主屏幕里的它和 Safari 不共享登录，登一次管半年。')}</li>

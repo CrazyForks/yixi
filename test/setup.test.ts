@@ -402,7 +402,7 @@ describe('/setup', () => {
     const html = await render(user)
     // That whole section moved to the 今日 face's own "怎么配" — /setup is the
     // 拦截 face now, and a reader here has nothing to do with home-screen icons.
-    expect(html).not.toContain('让今日页一按就开')
+    expect(html).not.toContain('今日页的网址')
     // The two faces stay apart: the interception walkthrough does not point at the other face.
     expect(html).not.toContain('/today/setup')
   })
