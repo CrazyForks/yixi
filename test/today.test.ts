@@ -377,7 +377,7 @@ describe('dayline links', () => {
 })
 
 describe('44pt tap-target floor (design §9)', () => {
-  it('never shrinks a .linky button below console.ts’s 44px floor, and keeps .tk at 44px', async () => {
+  it('never shrinks a .linky button below console.ts’s 44px floor, and keeps .tk/.chip at 44px', async () => {
     const h = await html()
     const m = h.match(/<style>([\s\S]*?)<\/style>/)
     expect(m, 'style block missing').toBeTruthy()
@@ -392,5 +392,8 @@ describe('44pt tap-target floor (design §9)', () => {
     const tk = css.match(/\.tk\{[^}]*\}/)
     expect(tk, '.tk rule missing').toBeTruthy()
     expect(tk![0]).toContain('44px')
+    const chip = css.match(/\.chip\{[^}]*\}/)
+    expect(chip, '.chip rule missing').toBeTruthy()
+    expect(chip![0]).toContain('44px')
   })
 })

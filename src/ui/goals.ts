@@ -208,12 +208,14 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   const expired = goals.filter((g) => g.archived_at === null && isExpired(g, today))
   const archived = goals.filter((g) => g.archived_at !== null)
   const addDraft = o.draft && (o.draftGoal === null || o.draftGoal === undefined) ? o.draft : undefined
+  // tdGoal 非空说明这条错误已经摆在对应子任务的折叠里了，顶上不用再重复一遍。
+  const topBanner = o.error && tdGoal === null ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''
 
   const body = `${consoleHeader(user, 'goals', t)}
 <main>
   <h1>${t('目标')}</h1>
   <p class="lede">${t('未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。')}</p>
-  ${o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
+  ${topBanner}
   ${expired.length ? expiredBlock(expired, t) : ''}
   ${addBlock(t, addDraft)}
   ${live.length === 0 && expired.length === 0 ? `<p class="empty">${t('还没有目标。<br>用上面的 {plus} 加第一个。', { plus: icon('plus') })}</p>` : ''}
@@ -392,6 +394,8 @@ details.app > .card.tasks{border:0;border-top:1px solid var(--rule);border-radiu
 /* 尺寸、旋转和去掉系统三角都由 icons.ts 的通用 summary 规则管，这里只管排布。
    details.app 那一段之所以还自带一份，是因为它把 .chev 覆写成了 14px。 */
 details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px;color:var(--dim)}
+/* details.app 在打开时有自己的写法把 summary 变回 --fg；tapp 靠这条补上同一件事。 */
+details.tapp[open] > summary{color:var(--fg)}
 details.tapp > form{margin:0 0 10px}
 details.tapp > form > .banner{margin:10px 0 14px}
 .taskadd{display:flex;gap:8px;align-items:center}

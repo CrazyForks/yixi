@@ -248,7 +248,9 @@ describe('POST /goals', () => {
     // 两层都得张开：折叠在收起来的目标行里，行收着就等于什么都没说。
     expect(h).toContain(`<details class="app" id="goal-${a}" open>`)
     expect(h).toContain('<details class="tapp" open>')
-    // 报错句子就在这条子任务的表单里、输入框上面，不只挂在页面顶上。
+    // 报错句子只挂在这条子任务自己的表单里、输入框上面，页面顶上不再重复一遍。
+    const beforeFold = h.slice(0, h.indexOf('<details class="tapp" open>'))
+    expect(beforeFold).not.toContain('<p class="banner bad">')
     const fold = h.slice(h.indexOf('<details class="tapp" open>'))
     const aboveTheFields = fold.slice(0, fold.indexOf('<div class="field scheme"'))
     expect(aboveTheFields).toContain('<p class="banner bad">')
