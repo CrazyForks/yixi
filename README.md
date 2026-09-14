@@ -103,6 +103,8 @@ Two things to know before copying this pattern:
 
 Also worth knowing: `wrangler pages deploy` does not accept a `-c` config path, which is why the Pages config has to live in its own directory rather than sharing the Worker's `wrangler.toml`.
 
+**When updating an existing install, deploy the Worker and Pages in the same sitting** — in between, the Pages hostname keeps serving the old build, and a sub-task check made there is written to the retired `done_at` column and never shown by the new code.
+
 ## Deploy your own (~15 min)
 
 Prerequisites: a Cloudflare account and Node 18+.

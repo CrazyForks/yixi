@@ -101,6 +101,8 @@
 
 另外：`wrangler pages deploy` 不支持 `-c` 指定配置文件路径，所以 Pages 的配置只能放在自己的目录里，不能和 Worker 共用一份 `wrangler.toml`。
 
+**更新一个已有部署时，Worker 和 Pages 要在同一次操作里前后脚发完**——中间这段时间里 Pages 那个地址还在跑旧代码，这时候勾一次子任务会被写进已经退役的 `done_at` 列，新代码不会再显示它。
+
 ## 自己部署（约 15 分钟）
 
 前置条件：一个 Cloudflare 账号和 Node 18+。

@@ -210,7 +210,7 @@ The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was cheaper
 
 ## D1 tables
 
-Six migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/today/goals`, touching nothing that existed before; `0005_goal_days.sql` adds the one table behind `/today/review`; `0006_user_locale.sql` adds the column a signed-in reader's language choice lives in.
+Seven migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/today/goals`, touching nothing that existed before; `0005_goal_days.sql` adds the one table behind `/today/review`; `0006_user_locale.sql` adds the column a signed-in reader's language choice lives in; `0007_daily_tasks.sql` adds `goal_task_checkins`, gives each sub-task its own `target`/`target_label`, and converts any existing `done_at` timestamp into a check-in row without touching the retired column itself.
 
 `0006` is a deploy prerequisite rather than an optional extra, which is why deploying means `npm run deploy` (migrations first) and never a bare `wrangler deploy`: `users.locale` is in the projection `findUserByTokenHash` selects, so `/gate` — the hot path every intercepted app opening goes through — fails against a database that has not been migrated, and interception stops.
 
@@ -298,13 +298,15 @@ The first version read the count and then incremented it. Under concurrency that
 
 The upsert both resets a lapsed window and increments a live one, so the decision is made from a value that cannot have changed underneath. Requests past the limit still increment but do not extend `window_start`, so the window still closes on schedule.
 
-### `goals`, `goal_tasks`, `goal_checkins` — behind `/today` and `/today/goals`
+### `goals`, `goal_tasks`, `goal_checkins`, `goal_task_checkins` — behind `/today` and `/today/goals`
 
-Three tables, added in `0004_goals.sql`, touching nothing that came before. `goals` is the short list of things that matter over the next while; `goal_tasks` are one-off to-dos hung off a goal; `goal_checkins` is a per-day check-in, primary-keyed `(user_id, goal_id, date)` so tapping the check button twice in one day writes nothing twice.
+Four tables. `goals`, `goal_tasks` and `goal_checkins` were added in `0004_goals.sql`, touching nothing that came before; `goal_task_checkins` was added in `0007_daily_tasks.sql`, alongside two new columns on `goal_tasks` (`target`, `target_label`) that let a sub-task carry its own jump target instead of only inheriting the goal's. `goals` is the short list of things that matter over the next while; `goal_tasks` are the sub-tasks under a goal, checked once per calendar day rather than crossed off once; `goal_checkins` is a per-day check-in on the goal itself, primary-keyed `(user_id, goal_id, date)` so tapping the check button twice in one day writes nothing twice; `goal_task_checkins` is the same idea one level down, primary-keyed `(user_id, task_id, date)`.
 
-`goal_checkins.date` is the same **Asia/Shanghai** calendar string as `events.date` — same computation, same format — so a check-in and a gate interception attribute to the same day rather than drifting across a UTC boundary. Every write against all three tables carries `user_id` explicitly, rather than trusting a join through `goal_id` alone, so a `goal_id` guessed or borrowed from another account can never land a write in someone else's row.
+**A goal with sub-tasks does not get checked in by hand — its `goal_checkins` row is derived.** `syncGoalCheckin` counts that goal's live `goal_tasks` against `goal_task_checkins` for the same date, joined back through `goal_tasks` so a check-in kept for a deleted task can never inflate the count, and writes or deletes today's `goal_checkins` row depending on whether every live sub-task is checked. It reruns after every write that could change the answer — a sub-task checked, unchecked, added or deleted. Tapping the goal's own circle does not write `goal_checkins` directly either: it checks or clears every sub-task and lets `syncGoalCheckin` re-derive the goal row from that. A goal with no sub-tasks keeps the plain manual toggle straight into `goal_checkins`. That is why the seven dots, the snapshot and `/today/review` needed no change at all: there is still exactly one ledger for "did I do this today" per goal.
 
-**`deleteGoal` keeps `goal_checkins`.** Its `db.batch` only deletes from `goal_tasks` and `goals`; the check-in history behind the deleted goal is left in place. `goal_days` is aggregate — the day's `shown`/`done` counts do not name which goal was checked — so a deleted goal cannot corrupt it. The per-goal 7-day/30-day rates on `/today/review` only ever iterate over goals that still exist, so a deleted goal's orphaned `goal_checkins` rows are simply never read; they are kept because the history happened, not because anything currently queries them by a dangling `goal_id`.
+`goal_checkins.date` is the same **Asia/Shanghai** calendar string as `events.date` — same computation, same format — so a check-in and a gate interception attribute to the same day rather than drifting across a UTC boundary. Every write against all four tables carries `user_id` explicitly, rather than trusting a join through `goal_id` (or `task_id`) alone, so an id guessed or borrowed from another account can never land a write in someone else's row.
+
+**`deleteGoal` keeps `goal_checkins` and `goal_task_checkins` both.** Its `db.batch` only deletes from `goal_tasks` and `goals`; the check-in history behind the deleted goal, and behind each of its now-gone sub-tasks, is left in place. `goal_days` is aggregate — the day's `shown`/`done`/`tasks_done` counts do not name which goal or task was checked — so a deleted goal or task cannot corrupt it. The per-goal 7-day/30-day rates on `/today/review` only ever iterate over goals that still exist, so a deleted goal's orphaned `goal_checkins` rows, and a deleted task's orphaned `goal_task_checkins` rows, are simply never read; they are kept because the history happened, not because anything currently queries them by a dangling `goal_id` or `task_id`.
 
 ### `goal_days` — the daily snapshot behind `/today/review`
 
@@ -315,7 +317,7 @@ Added in `0005_goal_days.sql`. One row per `(user_id, date)`, written once by th
 | `user_id` `date` | primary key. `date` is the **Asia/Shanghai** day being summarized, not the day the cron ran |
 | `shown` | how many goals `/today` would have shown that user that day — non-archived, not expired as of `date`, capped at `TODAY_GOAL_LIMIT` |
 | `done` | of those, how many had a `goal_checkins` row for `date` |
-| `tasks_done` | `goal_tasks` completed that day, across every goal the user had, not only the ones in `shown` |
+| `tasks_done` | sub-task check-ins that day, across every goal the user had, not only the ones in `shown` |
 | `ts` | when the row was written, epoch ms |
 
 A day with no row is not zero — it is unknown, and `/today/review` renders it as a gap rather than guessing. "Today" itself never has a row (the cron has not run yet), so `/today/review` computes today's ratio live, with the same selection rule `snapshotUser` would use.
@@ -459,6 +461,6 @@ The files worth knowing about before you change something:
 | `test/stats.test.ts` | the accounting semantics, including the midnight boundary |
 | `test/ratelimit.test.ts` | concurrency, which is how the original limiter was found to be useless |
 | `test/signed-out.test.ts` | that the login redirect cannot be turned into an open redirect |
-| `test/today.test.ts` | that only the first `TODAY_GOAL_LIMIT` live goals get a card and the first is the hero, that a checked card sinks below the unchecked ones, that the check button's ink-bloom guards against a double tap filing two POSTs (check, then uncheck), that the jump script holds exactly one synchronous `location.href=` assignment, and — the newest addition — that no rendered `.linky` button or the `.tk` completion box slips back under the 44px tap-target floor |
+| `test/today.test.ts` | that only the first `TODAY_GOAL_LIMIT` live goals get a card and the first is the hero, that a checked card sinks below the unchecked ones, that the check button's ink-bloom guards against a double tap filing two POSTs (check, then uncheck), that the jump script holds exactly one synchronous `location.href=` assignment, and — the newest addition — that no rendered `.linky` button or the `.tk` per-day check circle slips back under the 44px tap-target floor |
 
 Three of these strip comments from the rendered inline scripts before asserting on them, because the scripts *carry* comments containing the very words being searched for and a naive match would go green on the bug.
