@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
 import { snapshotDate, snapshotGoalDays, snapshotUser, SNAPSHOT_CRON } from '../src/snapshot'
-import { createGoal, createTask, listGoalDays, setGoalArchived, setTaskDone, toggleCheckin } from '../src/db'
+import { createGoal, createTask, listGoalDays, setGoalArchived, setTaskCheckin, toggleCheckin } from '../src/db'
 
 // Fixture date picked far from the real date on purpose, so this file never
 // coincidentally passes only because it happens to run on 2031-03-09.
@@ -12,6 +12,7 @@ const DAY = '2031-03-09'
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_days'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
@@ -36,15 +37,28 @@ describe('snapshotDate', () => {
 })
 
 describe('snapshotUser', () => {
-  it('counts shown as the top three live goals on that day, done among them, and tasks done that day', async () => {
+  it('counts shown as the top three live goals on that day, done among them, and sub-task check-ins that day', async () => {
     const ids = []
     for (const t of ['一', '二', '三', '四']) ids.push(await createGoal(env.DB, { userId: 1, title: t, cue: '', target: '', targetLabel: '', until: null, now: 0 }))
     await toggleCheckin(env.DB, 1, ids[0]!, DAY, 1)
     await toggleCheckin(env.DB, 1, ids[3]!, DAY, 1) // 第四个不在 shown 里，不算 done
     const t = (await createTask(env.DB, { userId: 1, goalId: ids[0]!, title: 'x', now: 0 }))!
-    await setTaskDone(env.DB, 1, t, Date.UTC(2031, 2, 9, 10, 0))
+    await setTaskCheckin(env.DB, 1, t, DAY, true, Date.UTC(2031, 2, 9, 10, 0))
     expect(await snapshotUser(env.DB, 1, DAY)).toMatchObject({ user_id: 1, date: DAY, shown: 3, done: 1, tasks_done: 1 })
   })
+
+  it('counts check-ins, not finished tasks: the same task on two days is two, and a fourth goal’s task still counts', async () => {
+    const ids = []
+    for (const t of ['一', '二', '三', '四']) ids.push(await createGoal(env.DB, { userId: 1, title: t, cue: '', target: '', targetLabel: '', until: null, now: 0 }))
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: ids[0]!, title: 'x', now: 0 }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: ids[3]!, title: 'y', now: 0 }))!
+    await setTaskCheckin(env.DB, 1, t1, DAY, true, 1)
+    await setTaskCheckin(env.DB, 1, t1, '2031-03-10', true, 1) // 第二天的那一次不算进 DAY
+    await setTaskCheckin(env.DB, 1, t2, DAY, true, 1)
+    expect((await snapshotUser(env.DB, 1, DAY)).tasks_done).toBe(2)
+    expect((await snapshotUser(env.DB, 2, DAY)).tasks_done).toBe(0)
+  })
+
   it('judges expiry as of the snapshot day, not today', async () => {
     await createGoal(env.DB, { userId: 1, title: '过期', cue: '', target: '', targetLabel: '', until: '2031-03-08', now: 0 })
     await createGoal(env.DB, { userId: 1, title: '活', cue: '', target: '', targetLabel: '', until: '2031-03-09', now: 0 })

@@ -1,6 +1,6 @@
 import { shownGoals } from './dates'
 import type { GoalDay } from './types'
-import { countTasksDoneOn, listCheckins, listGoals, listUsersWithLiveGoals, shanghaiDate, upsertGoalDay } from './db'
+import { countTaskCheckinsOn, listCheckins, listGoals, listUsersWithLiveGoals, shanghaiDate, upsertGoalDay } from './db'
 
 /** 00:00 Asia/Shanghai. The other cron (noon) only trims tables; this one only snapshots. */
 export const SNAPSHOT_CRON = '0 16 * * *'
@@ -26,7 +26,7 @@ export async function snapshotUser(db: D1Database, userId: number, date: string)
   const shown = shownGoals(goals, date)
   const checkins = await listCheckins(db, userId, date, date)
   const done = shown.filter((g) => checkins.some((c) => c.goal_id === g.id)).length
-  const tasksDone = await countTasksDoneOn(db, userId, date)
+  const tasksDone = await countTaskCheckinsOn(db, userId, date)
   return { user_id: userId, date, shown: shown.length, done, tasks_done: tasksDone, ts: Date.now() }
 }
 

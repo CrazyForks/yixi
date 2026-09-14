@@ -138,8 +138,11 @@ export interface GoalTask {
 
 /**
  * 一天的快照，由 00:00（Asia/Shanghai）的 cron 写入一次后不再改：那天
- * /today 展示了几个目标（shown）、打了几个卡（done）、划掉几条子任务
+ * /today 展示了几个目标（shown）、打了几个卡（done）、勾了几次子任务
  * （tasks_done）。没跑到的日子在 goal_days 里就是空位，不是这个类型的值。
+ *
+ * tasks_done 在 2026-09-14 之前的历史行里是「当天划掉的一次性子任务条数」，
+ * 之后是「当天的子任务勾选次数」。两者都是「那天做了多少」，不回填不换算。
  */
 export interface GoalDay {
   user_id: number

@@ -18,7 +18,7 @@ import {
   createTask,
   deleteGoal,
   setGoalArchived,
-  setTaskDone,
+  setTaskCheckin,
   shanghaiDate,
   toggleCheckin,
   upsertGoalDay,
@@ -47,6 +47,7 @@ function tsAt(date: string, time = '09:00:00'): number {
 
 async function reset(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM goal_task_checkins'),
     env.DB.prepare('DELETE FROM goal_days'),
     env.DB.prepare('DELETE FROM goal_checkins'),
     env.DB.prepare('DELETE FROM goal_tasks'),
@@ -162,9 +163,9 @@ async function setupScenario(): Promise<{ a: number; b: number; c: number; d: nu
   const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '周日夜', now: tsAt(sunBefore) }))!
   const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '周一晨', now: tsAt(MONDAY) }))!
   const t3 = (await createTask(env.DB, { userId: 1, goalId: a, title: '今天', now: tsAt(TODAY) }))!
-  await setTaskDone(env.DB, 1, t1, tsAt(sunBefore, '23:30:00'))
-  await setTaskDone(env.DB, 1, t2, tsAt(MONDAY, '00:30:00'))
-  await setTaskDone(env.DB, 1, t3, tsAt(TODAY, '08:00:00'))
+  await setTaskCheckin(env.DB, 1, t1, sunBefore, true, tsAt(sunBefore, '23:30:00'))
+  await setTaskCheckin(env.DB, 1, t2, MONDAY, true, tsAt(MONDAY, '00:30:00'))
+  await setTaskCheckin(env.DB, 1, t3, TODAY, true, tsAt(TODAY, '08:00:00'))
 
   return { a, b, c, d, e }
 }
@@ -246,11 +247,11 @@ describe('with goals and history', () => {
     expect(main).not.toContain('已归档目标')
   })
 
-  it('counts this week\'s finished sub-tasks from Monday through today, not from a sliding 7 days', async () => {
+  it('counts this week\'s sub-task check-ins from Monday through today, not from a sliding 7 days', async () => {
     await setupScenario()
     const main = mainOf(await render())
-    // Sunday night (last week) excluded; Monday morning + today both included.
-    expect(main).toContain('划掉了 <b class="num">2</b> 条子任务')
+    // 上周日夜里那一次排除；周一早上与今天两次都算。
+    expect(main).toContain('做了 <b class="num">2</b> 次子任务')
   })
 
   it('marks 回看 as the current tab', async () => {
@@ -270,13 +271,13 @@ describe('with goals and history', () => {
     const otherGoalId = otherGoalRows.results[0]!.id
     await toggleCheckin(env.DB, 2, otherGoalId, TODAY, tsAt(TODAY))
     const otherTask = (await createTask(env.DB, { userId: 2, goalId: otherGoalId, title: 'x', now: tsAt(TODAY) }))!
-    await setTaskDone(env.DB, 2, otherTask, tsAt(MONDAY, '00:30:00'))
+    await setTaskCheckin(env.DB, 2, otherTask, MONDAY, true, tsAt(MONDAY, '00:30:00'))
 
     const mine = mainOf(await render(user))
     expect(mine).not.toContain('别人的目标')
     // user 1's numbers are unaffected by user 2's data.
     expect(mine).toContain('<b class="num">2</b> / <span class="num">3</span>')
-    expect(mine).toContain('划掉了 <b class="num">2</b> 条子任务')
+    expect(mine).toContain('做了 <b class="num">2</b> 次子任务')
 
     const theirs = mainOf(await render(user2))
     expect(theirs).toContain('别人的目标')

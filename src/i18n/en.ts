@@ -133,7 +133,7 @@ export const EN: Record<string, string> = {
   每个目标: 'Each goal',
   '没有正在进行的目标。': 'No goals running right now.',
   这周: 'This week',
-  '划掉了 <b class="num">{n}</b> 条子任务。': 'Crossed off <b class="num">{n}</b> sub-tasks.',
+  '做了 <b class="num">{n}</b> 次子任务。': 'Sub-tasks checked: <b class="num">{n}</b>.',
   '拦截那边的记录在<a href="/review">回顾</a>。':
     'Breathe keeps its own record under <a href="/review">Log</a>.',
   '{n} 天 · 打卡 {x} 天': '{n}-day span · {x} checked',

@@ -18,11 +18,12 @@
 //   - Per-goal rows cover every non-archived goal, not only the three /today
 //     shows — a goal folded into /today's "其余目标" still gets its own line
 //     here, with a 30-day (or shorter, for a new goal) check-in rate.
-//   - "这周" is the one number that is not a snapshot at all: goal_tasks is
-//     queried directly, Monday (Asia/Shanghai) through today, because a
-//     snapshot's "shown" set can no longer name a goal that was later
-//     archived or deleted, but the sub-task done under it still happened this
-//     week.
+//   - "这周" is the one number that is not a snapshot at all:
+//     goal_task_checkins is queried directly, Monday (Asia/Shanghai) through
+//     today, because a snapshot's "shown" set can no longer name a goal that
+//     was later archived or deleted, but the sub-task checked under it still
+//     happened this week. It counts check-ins, not tasks: the same sub-task
+//     checked on Monday and again on Tuesday is two.
 //
 // CSS: CONSOLE_CSS (shared shell/nav/.card/.note/.num) plus PROGRESS_CSS
 // below. This file does not import from review.ts — its CSS constant is not
@@ -30,7 +31,7 @@
 // purpose, so the two ledgers read as siblings rather than two designs.
 
 import type { Env, Goal, User } from '../types'
-import { countTasksDoneBetween, listCheckins, listGoalDays, listGoals, shanghaiDate } from '../db'
+import { countTaskCheckinsBetween, listCheckins, listGoalDays, listGoals, shanghaiDate } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
 import { addDays, shownGoals } from '../dates'
@@ -51,7 +52,7 @@ export async function renderProgress(request: Request, env: Env, user: User): Pr
     listGoals(env.DB, user.id),
     listGoalDays(env.DB, user.id, from, today),
     listCheckins(env.DB, user.id, from, today),
-    countTasksDoneBetween(env.DB, user.id, monday, today),
+    countTaskCheckinsBetween(env.DB, user.id, monday, today),
   ])
 
   const nonArchived = goals.filter((g) => g.archived_at === null)
@@ -104,7 +105,7 @@ export async function renderProgress(request: Request, env: Env, user: User): Pr
     <p class="note">${t('{days} 天里有记录的 {n} 天，做完全部的 {full} 天。', { days: MONTH_DAYS, n: snapshotDays, full: fullDays })}</p>
   </section>
   <section class="card"><h2>${t('每个目标')}</h2>${goalRows === '' ? `<p class="note flat">${t('没有正在进行的目标。')}</p>` : `<ul class="gl">${goalRows}</ul>`}</section>
-  <section class="card"><h2>${t('这周')}</h2><p>${t('划掉了 <b class="num">{n}</b> 条子任务。', { n: weekTasksDone })}</p></section>
+  <section class="card"><h2>${t('这周')}</h2><p>${t('做了 <b class="num">{n}</b> 次子任务。', { n: weekTasksDone })}</p></section>
   <p class="note">${t('拦截那边的记录在<a href="/review">回顾</a>。')}</p>
 </main>`
 
