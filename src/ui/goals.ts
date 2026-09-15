@@ -9,10 +9,10 @@
 // /today" reads as data loss; "到期了，续一期或归档" reads as a decision.
 
 import type { Env, Goal, GoalTask, User } from '../types'
-import { GOAL_EXTEND_DAYS } from '../types'
+import { GOAL_EXTEND_DAYS, TODAY_GOALS_MAX, TODAY_GOALS_MIN, todayGoalLimit } from '../types'
 import {
   createGoal, createTask, deleteGoal, deleteTask, getGoal, getTask, listGoals, listTaskCheckins, listTasks,
-  moveGoal, setGoalArchived, shanghaiDate, syncGoalCheckin, updateGoal, updateTaskTarget,
+  moveGoal, setGoalArchived, setUserTodayGoals, shanghaiDate, syncGoalCheckin, updateGoal, updateTaskTarget,
 } from '../db'
 import { DEFAULT_THEME, escapeHtml, jsSingleQuotedBody, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
@@ -151,6 +151,20 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     return seeOther(`/today/goals#goal-${mine.goal_id}`)
   }
 
+  if (op === 'limit') {
+    // 和这一页的编号一样只认纯数字：一个 <select> 只会送回 1…9，所以到这里的
+    // 别的东西都是手捏的请求，回它一句人话而不是一个 500。
+    const n = intId(field(form, 'n'))
+    if (n === null || n < TODAY_GOALS_MIN || n > TODAY_GOALS_MAX) {
+      return await render(env, user, {
+        error: t('只能是 {min} 到 {max} 之间的一个数。', { min: TODAY_GOALS_MIN, max: TODAY_GOALS_MAX }),
+        status: 400,
+      }, loc, t)
+    }
+    await setUserTodayGoals(env.DB, user.id, n)
+    return seeOther('/today/goals')
+  }
+
   const goalOps = new Set(['archive', 'restore', 'delete', 'up', 'down', 'extend'])
   if (!goalOps.has(op)) return await render(env, user, { error: t('不认识这个操作。'), status: 400 }, loc, t)
   const id = intId(field(form, 'goal'))
@@ -214,7 +228,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
   const body = `${consoleHeader(user, 'goals', t)}
 <main>
   <h1>${t('目标')}</h1>
-  <p class="lede">${t('未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。')}</p>
+  <p class="lede">${t('未来一段时间最重要的几件事。排前面的 {n} 个会出现在<a href="/today">今日</a>。', { n: todayGoalLimit(user) })}</p>
   ${topBanner}
   ${expired.length ? expiredBlock(expired, t) : ''}
   ${addBlock(t, addDraft)}
@@ -226,6 +240,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
     taskDraft: tdGoal === g.id ? td : undefined,
     taskError: tdGoal === g.id ? o.error : undefined,
   }, t)).join('\n')}
+  ${limitBlock(todayGoalLimit(user), t)}
   ${archived.length ? archivedBlock(archived, t) : ''}
 </main>`
 
@@ -370,6 +385,27 @@ function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T)
   </li>`
 }
 
+/**
+ * 「今日页放几个目标」——这一页上唯一一件不属于任何一个目标的事，所以它排在
+ * 目标列表之后、归档之前：先看完手上的几件事，再决定今日页放得下几件。
+ *
+ * <select> 而不是 type=number：iPhone 上前者是一个滚轮，一下选完；后者是一个
+ * 数字键盘加一对小箭头，为了在 1 到 9 之间挑一个数实在太吵。
+ */
+function limitBlock(current: number, t: T): string {
+  const options = []
+  for (let n = TODAY_GOALS_MIN; n <= TODAY_GOALS_MAX; n++) {
+    options.push(`<option value="${n}"${n === current ? ' selected' : ''}>${n}</option>`)
+  }
+  return `<form class="card limit" method="post" action="/today/goals">
+  <label for="f-limit-n">${t('今日页放几个目标')}</label>
+  <div class="limitrow">
+    <select id="f-limit-n" name="n" class="num">${options.join('')}</select>
+    <button class="linky" type="submit" name="op" value="limit">${t('存')}</button>
+  </div>
+</form>`
+}
+
 function archivedBlock(goals: Goal[], t: T): string {
   return `<details class="archived">
   <summary>${icon('chev', { cls: 'chev' })}${t('已归档 · {n}', { n: goals.length })}</summary>
@@ -400,6 +436,12 @@ details.tapp > form{margin:0 0 10px}
 details.tapp > form > .banner{margin:10px 0 14px}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
+.card.limit label{margin:0 0 8px}
+.limitrow{display:flex;gap:14px;align-items:center}
+/* 页面作用域的裸 select，和下面那条 input[type=date] 一个道理：console.ts 的通用
+   输入框规则按类型列举，这两种它都没列到。min-height 跟着 44px 的触达底线。 */
+select{font:inherit;font-size:16px;line-height:1.4;padding:10px 12px;color:var(--fg);
+  background:transparent;border:1px solid var(--rule);border-radius:10px;min-height:44px}
 details.archived{margin:24px 0 0}
 .arow{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--rule)}
 .arow .sname{flex:1;color:var(--dim)}

@@ -101,6 +101,31 @@ describe('the three cards', () => {
     expect(h.match(/<article class="card goal/g)).toHaveLength(3)
   })
 
+  it('draws as many cards as the user asked for, and counts the fold from there', async () => {
+    for (const t of ['一', '二', '三', '四', '五']) await seed(t)
+    const one = await html(undefined, { ...user, today_goals: 1 })
+    expect(one.match(/<article class="card goal/g)).toHaveLength(1)
+    expect(one).toContain('<h3>一</h3>')
+    expect(one).not.toContain('<h3>二</h3>')
+    // 折叠里是剩下的四个，数字也是四。
+    expect(one).toContain('其余目标 · 4')
+    const fold = one.slice(one.indexOf('其余目标'))
+    for (const t of ['二', '三', '四', '五']) expect(fold).toContain(t)
+
+    const five = await html(undefined, { ...user, today_goals: 5 })
+    expect(five.match(/<article class="card goal/g)).toHaveLength(5)
+    expect(five).not.toContain('其余目标')
+  })
+
+  it('falls back to three cards for a user who has never chosen, or stored something impossible', async () => {
+    for (const t of ['一', '二', '三', '四', '五']) await seed(t)
+    for (const u of [user, { ...user, today_goals: null }, { ...user, today_goals: 0 }, { ...user, today_goals: 99 }]) {
+      const h = await html(undefined, u)
+      expect(h.match(/<article class="card goal/g), JSON.stringify(u)).toHaveLength(3)
+      expect(h).toContain('其余目标 · 2')
+    }
+  })
+
   it('makes the first goal the hero card and sinks checked cards below unchecked ones', async () => {
     const a = await seed('健身')
     const b = await seed('英语')
@@ -441,6 +466,18 @@ describe('check-in over fetch', () => {
     expect(await listCheckins(env.DB, 1, TODAY, TODAY)).not.toContainEqual({ goal_id: d, date: TODAY })
 
     expect((await body(await postFetch({ op: 'uncheck', goal: String(a) }))).allDone).toBe(false)
+  })
+
+  it('counts allDone against the user’s own card limit, not a constant three', async () => {
+    const a = await seed('一')
+    await seed('二')
+    await seed('三')
+    const one = { ...user, today_goals: 1 }
+    // 只放一张卡时，勾掉第一个就是今天全做完了——后面两个连卡片都没有。
+    expect((await body(await postFetch({ op: 'check', goal: String(a) }, one))).allDone).toBe(true)
+    // 同一份数据，默认三张卡的人还差两个。
+    expect((await body(await postFetch({ op: 'uncheck', goal: String(a) }, one))).allDone).toBe(false)
+    expect((await body(await postFetch({ op: 'check', goal: String(a) }))).allDone).toBe(false)
   })
 
   it('still 303s for the very same POSTs when the header is absent', async () => {

@@ -197,6 +197,16 @@ describe('with goals and history', () => {
     for (const b of nones) expect(b).toBe('<i class="bar none">')
   })
 
+  it('reads 「今天」 against the user’s own card limit', async () => {
+    await setupScenario()
+    // 默认三张卡时是 2/3（A、B 勾了，C 没勾）；只放一张卡时只剩 A，就是 1/1。
+    expect(mainOf(await render())).toContain('<b class="num">2</b> / <span class="num">3</span>')
+    const one = mainOf(await render({ ...user, today_goals: 1 }))
+    expect(one).toContain('<b class="num">1</b> / <span class="num">1</span>')
+    // 每个目标那一段不受影响：它数的是所有没归档的目标，本来就不看上限。
+    expect(one).toContain('<span class="gt">英语</span>')
+  })
+
   it('foots the 30-day strip with the count that has a snapshot and the count that is complete', async () => {
     await setupScenario()
     const main = mainOf(await render())

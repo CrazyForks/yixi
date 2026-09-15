@@ -58,8 +58,8 @@ export const EN: Record<string, string> = {
 
   // --- /today/goals (src/ui/goals.ts) ----------------------------------------
   '目标 · 一息': 'Goals · 一息',
-  '未来一段时间最重要的几件事。排前面的三个会出现在<a href="/today">今日</a>。':
-    'The few things that matter most in the weeks ahead. The top three show up on <a href="/today">Today</a>.',
+  '未来一段时间最重要的几件事。排前面的 {n} 个会出现在<a href="/today">今日</a>。':
+    'The few things that matter most in the weeks ahead. The top {n} show up on <a href="/today">Today</a>.',
   '还没有目标。<br>用上面的 {plus} 加第一个。': 'No goals yet.<br>Use the {plus} above to add the first one.',
   加一个目标: 'Add a goal',
   添加: 'Add',
@@ -99,6 +99,10 @@ export const EN: Record<string, string> = {
   加一条子任务: 'Add a sub-task',
   子任务: 'Sub-task',
   加: 'Add',
+  // How many goal cards /today puts on the page, 1…9. The label names the
+  // page rather than the number, because the number is the control itself.
+  今日页放几个目标: 'How many goals on Today',
+  '只能是 {min} 到 {max} 之间的一个数。': 'It has to be a number between {min} and {max}.',
   '已归档 · {n}': 'Archived · {n}',
   恢复: 'Restore',
   删除: 'Delete',

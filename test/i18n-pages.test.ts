@@ -202,7 +202,7 @@ describe('/today/goals in English', () => {
     expect(main).toContain('Link <b>the exact lesson, the exact book</b>')
 
     expect(main).toContain('<h1>Goals</h1>')
-    expect(main).toContain('The top three show up on <a href="/today">Today</a>.')
+    expect(main).toContain('The top 3 show up on <a href="/today">Today</a>.')
     expect(main).toContain('Add a goal')
     expect(main).toContain('What the button calls it')
     expect(main).not.toMatch(CHINESE_PUNCT)
@@ -219,6 +219,23 @@ describe('/today/goals in English', () => {
     expect(main).toContain('Where this sub-task jumps · optional')
     expect(main).toContain('Leave it empty and it follows the goal.')
     expect(main).not.toMatch(CHINESE_PUNCT)
+  })
+
+  it('translates the card-count setting, its picker and the sentence that refuses a bad one', async () => {
+    const main = mainOf(await goalsHtml())
+    expect(main).toContain('How many goals on Today')
+    expect(main).toContain('<option value="3" selected>3</option>')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+
+    const res = await handleGoals(
+      new Request(`${BASE}/today/goals`, { method: 'POST', headers: headers(true), body: new URLSearchParams({ op: 'limit', n: '0' }) }),
+      env,
+      user,
+    )
+    expect(res.status).toBe(400)
+    const bad = mainOf(await res.text())
+    expect(bad).toContain('It has to be a number between 1 and 9.')
+    expect(bad).not.toMatch(CHINESE_PUNCT)
   })
 })
 

@@ -23,9 +23,21 @@ export function liveGoals<T extends Pick<Goal, 'archived_at' | 'until'>>(goals: 
   return goals.filter((g) => g.archived_at === null && !isExpired(g, date))
 }
 
-/** The first TODAY_GOAL_LIMIT of `liveGoals` — the exact set /today puts a card on. */
-export function shownGoals<T extends Pick<Goal, 'archived_at' | 'until'>>(goals: T[], date: string): T[] {
-  return liveGoals(goals, date).slice(0, TODAY_GOAL_LIMIT)
+/**
+ * The first `limit` of `liveGoals` — the exact set /today puts a card on.
+ *
+ * `limit` is the reader's own setting (`todayGoalLimit(user)` in
+ * src/types.ts), and every caller passes it: /today, /today/review and the
+ * midnight snapshot all have to agree, or `goal_days.shown` records a number
+ * of cards the page never showed. The default is here only so the function
+ * still means something to a caller that has no user in hand.
+ */
+export function shownGoals<T extends Pick<Goal, 'archived_at' | 'until'>>(
+  goals: T[],
+  date: string,
+  limit: number = TODAY_GOAL_LIMIT,
+): T[] {
+  return liveGoals(goals, date).slice(0, limit)
 }
 
 // --- how a day is written out ------------------------------------------------

@@ -2,7 +2,9 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
 import { snapshotDate, snapshotGoalDays, snapshotUser, SNAPSHOT_CRON } from '../src/snapshot'
-import { createGoal, createTask, listGoalDays, setGoalArchived, setTaskCheckin, toggleCheckin } from '../src/db'
+import {
+  createGoal, createTask, listGoalDays, setGoalArchived, setTaskCheckin, setUserTodayGoals, toggleCheckin,
+} from '../src/db'
 
 // Fixture date picked far from the real date on purpose, so this file never
 // coincidentally passes only because it happens to run on 2031-03-09.
@@ -69,6 +71,22 @@ describe('snapshotUser', () => {
     await createGoal(env.DB, { userId: 1, title: 'b', cue: '', target: '', targetLabel: '', until: null, now: 0 })
     await setGoalArchived(env.DB, 1, a, 1)
     expect((await snapshotUser(env.DB, 1, DAY)).shown).toBe(1)
+  })
+
+  // The snapshot has to read the same limit /today rendered against, or
+  // goal_days.shown records a denominator the page never put on screen.
+  it('counts shown against the user’s own card limit, per user', async () => {
+    const ids = []
+    for (const t of ['一', '二', '三', '四', '五']) {
+      ids.push(await createGoal(env.DB, { userId: 1, title: t, cue: '', target: '', targetLabel: '', until: null, now: 0 }))
+      await createGoal(env.DB, { userId: 2, title: t, cue: '', target: '', targetLabel: '', until: null, now: 0 })
+    }
+    await setUserTodayGoals(env.DB, 1, 1)
+    await toggleCheckin(env.DB, 1, ids[0]!, DAY, 1)
+    await toggleCheckin(env.DB, 1, ids[1]!, DAY, 1) // 第二个已经不在 shown 里了
+    expect(await snapshotUser(env.DB, 1, DAY)).toMatchObject({ shown: 1, done: 1 })
+    // 另一个用户没设过，还是默认的三个——两人各按各的数。
+    expect((await snapshotUser(env.DB, 2, DAY)).shown).toBe(3)
   })
 })
 

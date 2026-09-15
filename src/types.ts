@@ -43,6 +43,15 @@ export interface User {
    * like a NULL one.
    */
   locale?: string | null
+  /**
+   * How many goal cards this user wants on /today, or NULL/unset for the
+   * default. Optional for the same reason `locale` is — every existing `User`
+   * literal in the test suite keeps compiling unedited. Read it through
+   * `todayGoalLimit` below rather than directly: a stored value is only a
+   * number somebody once posted, and this column is the one place a bad one
+   * could reach a page.
+   */
+  today_goals?: number | null
 }
 
 export interface UserApp {
@@ -152,7 +161,28 @@ export interface GoalDay {
   ts: number
 }
 
-/** /today 只展示排前面的这几个；其余折叠。产品立场，不是技术限制。 */
+/**
+ * /today 只展示排前面的这几个；其余折叠。产品立场，不是技术限制——但「几个」
+ * 由用户自己定，这里是没选过时的那个数。
+ */
 export const TODAY_GOAL_LIMIT = 3
+/** 用户能选的范围。下界是 1（总得有一件事），上界 9 是一屏还看得完的量。 */
+export const TODAY_GOALS_MIN = 1
+export const TODAY_GOALS_MAX = 9
+
+/**
+ * 这个用户的 /today 放几张卡片。
+ *
+ * 存的是整数或 NULL，但读的时候一律当「可能是任何东西」：没选过、被别的写入
+ * 路径塞进来一个 0、一个 3.5、一个 99——都回落到默认值，而不是把一个荒唐的
+ * 数字交给 slice()。这是 /today、/today/review 和午夜快照三处共用的口径，三处
+ * 各算各的正是 shownGoals 当初合并出来要避免的那种 bug。
+ */
+export function todayGoalLimit(user: Pick<User, 'today_goals'>): number {
+  const n = user.today_goals
+  if (typeof n !== 'number' || !Number.isInteger(n)) return TODAY_GOAL_LIMIT
+  if (n < TODAY_GOALS_MIN || n > TODAY_GOALS_MAX) return TODAY_GOAL_LIMIT
+  return n
+}
 /** 到期目标「续一期」的长度。 */
 export const GOAL_EXTEND_DAYS = 28

@@ -38,21 +38,21 @@ export interface StoredUser extends User {
 
 export async function findUserByTokenHash(db: D1Database, tokenHash: string): Promise<StoredUser | null> {
   return await db
-    .prepare('SELECT id, name, is_owner, created_at, locale, token_hash FROM users WHERE token_hash = ?1')
+    .prepare('SELECT id, name, is_owner, created_at, locale, today_goals, token_hash FROM users WHERE token_hash = ?1')
     .bind(tokenHash)
     .first<StoredUser>()
 }
 
 export async function getUserById(db: D1Database, id: number): Promise<User | null> {
   return await db
-    .prepare('SELECT id, name, is_owner, created_at, locale FROM users WHERE id = ?1')
+    .prepare('SELECT id, name, is_owner, created_at, locale, today_goals FROM users WHERE id = ?1')
     .bind(id)
     .first<User>()
 }
 
 export async function listUsers(db: D1Database): Promise<User[]> {
   const res = await db
-    .prepare('SELECT id, name, is_owner, created_at, locale FROM users ORDER BY id')
+    .prepare('SELECT id, name, is_owner, created_at, locale, today_goals FROM users ORDER BY id')
     .all<User>()
   return res.results
 }
@@ -62,6 +62,13 @@ export async function listUsers(db: D1Database): Promise<User[]> {
  * it back as the second of five precedence levels. */
 export async function setUserLocale(db: D1Database, userId: number, locale: Locale): Promise<void> {
   await db.prepare('UPDATE users SET locale = ?2 WHERE id = ?1').bind(userId, locale).run()
+}
+
+/** How many goal cards this user wants on /today. The caller validates the
+ * range (src/types.ts's TODAY_GOALS_MIN/MAX); read it back through
+ * `todayGoalLimit`, which falls back to the default for anything odd. */
+export async function setUserTodayGoals(db: D1Database, userId: number, n: number): Promise<void> {
+  await db.prepare('UPDATE users SET today_goals = ?2 WHERE id = ?1').bind(userId, n).run()
 }
 
 /**
@@ -116,7 +123,7 @@ export interface AccountRecord extends User {
 }
 
 const ACCOUNT_COLUMNS =
-  'id, name, is_owner, created_at, locale, email, password_hash, password_salt, password_iters'
+  'id, name, is_owner, created_at, locale, today_goals, email, password_hash, password_salt, password_iters'
 
 /** `email` must already be lowercased by the caller; the index is not collating. */
 export async function findAccountByEmail(db: D1Database, email: string): Promise<AccountRecord | null> {
@@ -287,7 +294,7 @@ export async function getWebSession(db: D1Database, id: string): Promise<WebSess
 export async function findUserByWebSession(db: D1Database, id: string, now: number): Promise<User | null> {
   return await db
     .prepare(
-      `SELECT u.id, u.name, u.is_owner, u.created_at, u.locale
+      `SELECT u.id, u.name, u.is_owner, u.created_at, u.locale, u.today_goals
        FROM sessions_web s JOIN users u ON u.id = s.user_id
        WHERE s.id = ?1 AND s.expires_at > ?2`,
     )

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { liveGoals, prettyDate, shownGoals, weekdayName } from '../src/dates'
-import { TODAY_GOAL_LIMIT } from '../src/types'
+import { TODAY_GOALS_MAX, TODAY_GOALS_MIN, TODAY_GOAL_LIMIT, todayGoalLimit } from '../src/types'
 
 const TODAY = '2026-09-13'
 
@@ -64,6 +64,40 @@ describe('shownGoals', () => {
   it('returns fewer than the limit when there are fewer live goals', () => {
     const only = g(1)
     expect(shownGoals([only], TODAY)).toEqual([only])
+  })
+
+  it('honours a caller-supplied limit, filtering first and slicing second', () => {
+    const goals = [g(1, { archived_at: 1 }), g(2), g(3), g(4), g(5)]
+    expect(shownGoals(goals, TODAY, 1).map((x) => x.id)).toEqual([2])
+    expect(shownGoals(goals, TODAY, 4).map((x) => x.id)).toEqual([2, 3, 4, 5])
+    // Asking for more than there are is not an error, it is just all of them.
+    expect(shownGoals(goals, TODAY, 9).map((x) => x.id)).toEqual([2, 3, 4, 5])
+  })
+
+  it('still caps at TODAY_GOAL_LIMIT when no limit is given', () => {
+    const goals = Array.from({ length: TODAY_GOAL_LIMIT + 2 }, (_, i) => g(i))
+    expect(shownGoals(goals, TODAY)).toHaveLength(TODAY_GOAL_LIMIT)
+    expect(TODAY_GOAL_LIMIT).toBe(3)
+  })
+})
+
+// The clamp between the column and every page that reads it. A stored value
+// is only a number somebody once posted, and `slice()` would take any of them.
+describe('todayGoalLimit', () => {
+  it('uses the stored number when it is one of the nine the form can produce', () => {
+    for (let n = TODAY_GOALS_MIN; n <= TODAY_GOALS_MAX; n++) {
+      expect(todayGoalLimit({ today_goals: n })).toBe(n)
+    }
+  })
+
+  it('falls back to the default for never-chosen, out-of-range and non-integer values', () => {
+    expect(todayGoalLimit({})).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: null })).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: 0 })).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: -1 })).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: TODAY_GOALS_MAX + 1 })).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: 2.5 })).toBe(TODAY_GOAL_LIMIT)
+    expect(todayGoalLimit({ today_goals: NaN })).toBe(TODAY_GOAL_LIMIT)
   })
 })
 

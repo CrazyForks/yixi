@@ -2,8 +2,10 @@
 // editable; that is /today/goals.
 //
 // Three things are deliberate:
-//   1. Only the first TODAY_GOAL_LIMIT live goals get a card, and the first of
-//      them is the hero. Fewer, with a clear first, is the point.
+//   1. Only the first few live goals get a card — how many is the reader's own
+//      setting (users.today_goals, read through todayGoalLimit), three unless
+//      they said otherwise — and the first of them is the hero. Fewer, with a
+//      clear first, is the point.
 //   2. No streak number anywhere. Seven dots for the last seven days, empty
 //      where nothing happened, and that is the whole statement.
 //   3. The jump to a custom scheme is `location.href` inside the synchronous
@@ -11,7 +13,7 @@
 //      because navigating the standalone window itself would strand the user.
 
 import type { Env, Goal, GoalTask, User } from '../types'
-import { TODAY_GOAL_LIMIT } from '../types'
+import { todayGoalLimit } from '../types'
 import {
   createGoal, getTask, listCheckins, listGoals, listTaskCheckins, listTasks,
   setGoalTaskCheckins, setTaskCheckin, shanghaiDate, syncGoalCheckin, toggleCheckin,
@@ -60,7 +62,7 @@ function notFound(): Response {
 /**
  * 写完之后的回执，只发给我们自己的脚本：圆圈此刻亮不亮，今天该画的卡片是不是
  * 全勾了。两位都重新从库里读——界面已经被客户端先翻过去了，这里要给的是真相，
- * 不是它的猜测。allDone 跟 render 用同一个 shownGoals，免得两处各算各的。
+ * 不是它的猜测。allDone 跟 render 用同一个 shownGoals、同一个上限，免得两处各算各的。
  *
  * `known` 是调用方为了别的事已经取过的那份目标列表。这条路是这次改动想让它变快
  * 的那条，所以除了 checked 非读不可的那次 listCheckins，一趟多余的查询都不欠。
@@ -77,7 +79,7 @@ async function receipt(
     listCheckins(env.DB, user.id, date, date),
   ])
   const done = new Set(checkins.map((c) => c.goal_id))
-  const shown = shownGoals(goals, date)
+  const shown = shownGoals(goals, date, todayGoalLimit(user))
   const payload = {
     goal: { id: goalId, checked: done.has(goalId) },
     allDone: shown.length > 0 && shown.every((g) => done.has(g.id)),
@@ -176,8 +178,9 @@ async function render(request: Request, env: Env, user: User, loc: Locale, t: T)
     listTaskCheckins(env.DB, user.id, today, today),
   ])
   const live = liveGoals(goals, today)
-  const top = shownGoals(goals, today)
-  const rest = live.slice(TODAY_GOAL_LIMIT)
+  const limit = todayGoalLimit(user)
+  const top = shownGoals(goals, today, limit)
+  const rest = live.slice(limit)
   const checked = new Set(checkins.map((c) => `${c.goal_id}:${c.date}`))
   const doneTasks = new Set(taskCheckins.map((c) => c.task_id))
 

@@ -305,6 +305,55 @@ describe('POST /goals', () => {
   })
 })
 
+describe('今日页放几个目标', () => {
+  async function stored(id: number): Promise<number | null> {
+    const row = await env.DB.prepare('SELECT today_goals FROM users WHERE id = ?1').bind(id).first<{ today_goals: number | null }>()
+    return row?.today_goals ?? null
+  }
+
+  it('renders a 1…9 picker between the goals and the archive, with the stored value selected', async () => {
+    const a = await seed('健身')
+    await post({ op: 'archive', goal: String(a) })
+    const h = await html({ ...user, today_goals: 5 })
+    expect(h).toContain('今日页放几个目标')
+    expect(h).toContain('name="op" value="limit"')
+    expect(h).toContain('<option value="5" selected>5</option>')
+    expect(h).toContain('<option value="3">3</option>')
+    expect((h.match(/<option value="\d"/g) ?? [])).toHaveLength(9)
+    expect(h.indexOf('name="op" value="limit"')).toBeLessThan(h.indexOf('已归档'))
+  })
+
+  it('shows the default selected for a user who has never chosen', async () => {
+    expect(await html()).toContain('<option value="3" selected>3</option>')
+  })
+
+  it('stores a number in range and sends the reader back to the page', async () => {
+    const res = await post({ op: 'limit', n: '5' })
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/today/goals')
+    expect(await stored(1)).toBe(5)
+    // 存过一次之后还能再改。
+    expect((await post({ op: 'limit', n: '1' })).status).toBe(303)
+    expect(await stored(1)).toBe(1)
+  })
+
+  it('refuses anything outside 1…9 with a 400 and writes nothing', async () => {
+    await post({ op: 'limit', n: '4' })
+    for (const n of ['0', '10', '99', 'abc', '', '-1', '3.5', ' ']) {
+      const res = await post({ op: 'limit', n })
+      expect(res.status, JSON.stringify(n)).toBe(400)
+      expect(await (await post({ op: 'limit', n })).text()).toContain('class="banner bad"')
+      expect(await stored(1), JSON.stringify(n)).toBe(4)
+    }
+  })
+
+  it('is one user’s setting only', async () => {
+    expect((await post({ op: 'limit', n: '7' }, other)).status).toBe(303)
+    expect(await stored(2)).toBe(7)
+    expect(await stored(1)).toBeNull()
+  })
+})
+
 describe('44pt tap-target floor (design §9)', () => {
   it('never shrinks a .linky button below console.ts’s 44px floor', async () => {
     const h = await html()

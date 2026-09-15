@@ -8,14 +8,14 @@
 // (docs/plans/yixi/2026-09-13-today-face-and-review-design.md §2-3):
 //
 //   - "今天" is computed live, with the exact selection /today uses
-//     (non-archived, not expired, first TODAY_GOAL_LIMIT) — there is no
+//     (non-archived, not expired, first todayGoalLimit(user)) — there is no
 //     midnight snapshot yet for a day that has not ended.
 //   - The 30-day strip reads goal_days snapshots for every day except today,
 //     which is always the live value, even overriding a stale/incorrect row
 //     that happens to already exist for it — the cron (src/snapshot.ts) never
 //     writes "today" in production, but a live override costs nothing and
 //     means this page can never show yesterday's cron mistake as today's.
-//   - Per-goal rows cover every non-archived goal, not only the three /today
+//   - Per-goal rows cover every non-archived goal, not only the few /today
 //     shows — a goal folded into /today's "其余目标" still gets its own line
 //     here, with a 30-day (or shorter, for a new goal) check-in rate.
 //   - "这周" is the one number that is not a snapshot at all:
@@ -31,6 +31,7 @@
 // purpose, so the two ledgers read as siblings rather than two designs.
 
 import type { Env, Goal, User } from '../types'
+import { todayGoalLimit } from '../types'
 import { countTaskCheckinsBetween, listCheckins, listGoalDays, listGoals, shanghaiDate } from '../db'
 import { DEFAULT_THEME, escapeHtml, page } from './layout'
 import { CONSOLE_CSS, consoleHeader } from './console'
@@ -67,8 +68,8 @@ export async function renderProgress(request: Request, env: Env, user: User): Pr
     })
   }
 
-  // Same selection /today renders: live (not expired), first TODAY_GOAL_LIMIT.
-  const top = shownGoals(goals, today)
+  // Same selection /today renders: live (not expired), first todayGoalLimit(user).
+  const top = shownGoals(goals, today, todayGoalLimit(user))
   const topIds = new Set(top.map((g) => g.id))
 
   const todayShown = top.length
@@ -91,7 +92,8 @@ export async function renderProgress(request: Request, env: Env, user: User): Pr
   // Per-goal rows cover every non-archived goal, expired or not — design §3.3:
   // an expired-but-not-archived goal's history is exactly what someone
   // deciding 续四周／归档 on /today/goals wants to see. Only the "今天" row
-  // above (`top`/`shownGoals`) excludes expired goals; this list does not.
+  // above (`top`/`shownGoals`) excludes expired goals and caps at the
+  // reader's own limit; this list does neither.
   const goalRows = nonArchived
     .map((g) => goalRowHtml(g, today, dotDays, checkinsByGoal.get(g.id) ?? new Set(), t))
     .join('')

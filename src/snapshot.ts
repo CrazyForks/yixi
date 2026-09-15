@@ -1,6 +1,9 @@
 import { shownGoals } from './dates'
 import type { GoalDay } from './types'
-import { countTaskCheckinsOn, listCheckins, listGoals, listUsersWithLiveGoals, shanghaiDate, upsertGoalDay } from './db'
+import { todayGoalLimit } from './types'
+import {
+  countTaskCheckinsOn, getUserById, listCheckins, listGoals, listUsersWithLiveGoals, shanghaiDate, upsertGoalDay,
+} from './db'
 
 /** 00:00 Asia/Shanghai. The other cron (noon) only trims tables; this one only snapshots. */
 export const SNAPSHOT_CRON = '0 16 * * *'
@@ -20,10 +23,15 @@ export function snapshotDate(now: number): string {
  * a cron that always ran with `shanghaiDate(Date.now())` would judge
  * expiry against whatever day it happens to execute on, not the day it is
  * snapshotting. Pure; does not write anything.
+ *
+ * The user row is read for one column: how many cards /today puts on the page
+ * for them. Without it `shown` would be a constant 3 while the page showed
+ * five, and the 30-day strip on /today/review would read against a
+ * denominator that never existed.
  */
 export async function snapshotUser(db: D1Database, userId: number, date: string): Promise<GoalDay> {
-  const goals = await listGoals(db, userId)
-  const shown = shownGoals(goals, date)
+  const [goals, user] = await Promise.all([listGoals(db, userId), getUserById(db, userId)])
+  const shown = shownGoals(goals, date, todayGoalLimit(user ?? {}))
   const checkins = await listCheckins(db, userId, date, date)
   const done = shown.filter((g) => checkins.some((c) => c.goal_id === g.id)).length
   const tasksDone = await countTaskCheckinsOn(db, userId, date)
