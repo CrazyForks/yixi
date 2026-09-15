@@ -348,6 +348,19 @@ export function schemeFieldJs(t: T): string {
         if (node.tagName === 'DETAILS') node.open = true;
         node = node.parentNode;
       }
+
+      // The scheme field can also sit inside a fold of its own *within* the
+      // form — /today/goals folds a goal's jump section, and a form cannot
+      // nest a form, so that one is form > details rather than details > form
+      // and the walk above never reaches it. A draft exists only because a
+      // jump left from this field, so the fold holding it is exactly the one
+      // the reader needs open on the way back.
+      var scheme = form.querySelector('.field.scheme');
+      var inner = scheme ? scheme.parentNode : null;
+      while (inner && inner !== form) {
+        if (inner.tagName === 'DETAILS') inner.open = true;
+        inner = inner.parentNode;
+      }
     }
   }
 

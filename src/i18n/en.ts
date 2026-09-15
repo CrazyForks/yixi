@@ -65,21 +65,14 @@ export const EN: Record<string, string> = {
   添加: 'Add',
   '目标 · 一句话': 'Goal · one line',
   '什么时候做 · 可不填': 'When you do it · optional',
-  早饭后: 'After breakfast',
+  // The goal's jump section folds behind this, the same way each sub-task's
+  // does. Both summaries say it, so the two folds read as one idea.
+  跳去哪: 'Where it jumps',
   '去做时跳去哪 · 可不填': 'Where the button jumps · optional',
   'bilibili:// 或 https://…': 'instagram:// or https://…',
   '填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。':
     'Link <b>the exact lesson, the exact book</b> rather than the app home screen — two steps fewer. After typing a custom scheme, <b>test it</b>: it counts only once the app really opens. An https link needs no test.',
   按钮上叫它什么: 'What the button calls it',
-  // An example inside a placeholder, not a translation: 「B 站」 here is the
-  // sample answer to 「按钮上叫它什么」, so English offers an app an English
-  // reader would name. It has to be the *same* app as the scheme placeholder a
-  // few lines above — the two boxes sit next to each other in the form, and two
-  // different apps in one worked example read as an instruction rather than as
-  // an example. A label a user actually typed is data — it is escaped and
-  // interpolated, never passed through `t()`, so 「Open B 站」 stays 「Open B 站」
-  // in both languages.
-  'B 站': 'Instagram',
   '做到哪天 · 可不填': 'Until · optional',
   长期: 'Ongoing',
   保存: 'Save',
@@ -88,8 +81,6 @@ export const EN: Record<string, string> = {
   归档: 'Archive',
   '子任务 · 每天都做': 'Sub-tasks · every day',
   '今天 {x}/{n}': 'Today {x}/{n}',
-  '绑 App': 'Link an app',
-  改: 'Change',
   存: 'Save',
   '这条子任务跳去哪 · 可不填': 'Where this sub-task jumps · optional',
   '不填就跟着目标走。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。':
@@ -445,7 +436,7 @@ export const EN: Record<string, string> = {
 
   // --- the scheme field and its picker (src/ui/schemefield.ts) --------------
   // The worked examples are apps an English reader would actually have, same
-  // rule as /today's 「B 站」. Both schemes are real.
+  // rule as /today's 「健身」. Both schemes are real.
   '例：小红书 <code class="mono">xhsdiscover://</code>，起点读书 <code class="mono">QDReader://</code>。候选都<b>没验证过</b>，填完必须点<b>试跳</b>，App 真打开了才算数。':
     'For instance Instagram <code class="mono">instagram://</code>, Reddit <code class="mono">reddit://</code>. No candidate here is <b>verified</b>, so once you have filled one in you have to tap <b>test it</b> — it counts only when the app really opens.',
   试跳: 'Test it',

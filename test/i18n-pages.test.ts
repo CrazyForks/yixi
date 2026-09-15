@@ -215,7 +215,7 @@ describe('/today/goals in English', () => {
     expect(main).toContain('Ongoing')
     expect(main).toContain('Sub-tasks · every day')
     expect(main).toContain('Today 0/1')
-    expect(main).toContain('Link an app')
+    expect(main).toContain('Where it jumps')
     expect(main).toContain('Where this sub-task jumps · optional')
     expect(main).toContain('Leave it empty and it follows the goal.')
     expect(main).not.toMatch(CHINESE_PUNCT)

@@ -112,8 +112,8 @@ describe('GET /goals', () => {
   })
 
   it('never lists another user’s goals', async () => {
-    // Not '健身': that's also the add form's placeholder copy, so it would still
-    // show up on other's empty page and this assertion would pass for the wrong reason.
+    // A title no other part of the page could ever print on its own, so this
+    // cannot pass because the string simply is not in the template anywhere.
     await seed('张三的私事')
     expect(await html(other)).not.toContain('张三的私事')
   })
@@ -132,15 +132,30 @@ describe('GET /goals', () => {
     const a = await seed('健身')
     const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
     let h = await html()
-    expect(h).toContain('绑 App')
     expect(h).toContain(`id="f-t${t}-target"`)
     expect(h).toContain(`id="f-t${t}-target_label"`)
     expect(h).toContain('name="op" value="task_save"')
     await post({ op: 'task_save', task: String(t), target: 'bilibili://video/BV1', target_label: 'B 站' })
     h = await html()
-    expect(h).toContain('改')
     expect(h).toContain('value="bilibili://video/BV1"')
     expect(h).toContain('<span class="skey">B 站</span>')
+  })
+
+  it('says the same thing on a sub-task fold bound or not — the row itself already shows the app', async () => {
+    const a = await seed('健身')
+    const t = (await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW }))!
+    const unbound = await html()
+    // 目标自己的跳转折叠也是 details.tapp，所以从子任务那张卡片切起，别切到它。
+    const foldOf = (h: string): string => h.slice(h.indexOf('<div class="card tasks">'))
+    expect(foldOf(unbound)).toContain('跳去哪')
+    await post({ op: 'task_save', task: String(t), target: 'bilibili://video/BV1', target_label: 'B 站' })
+    const bound = await html()
+    expect(foldOf(bound)).toContain('跳去哪')
+    // 两种状态都不再说「绑 App」或「改」：绑没绑看标题旁那枚 App 名。
+    for (const h of [unbound, bound]) {
+      expect(h).not.toContain('绑 App')
+      expect(h).not.toContain('>改<')
+    }
   })
 })
 
@@ -302,6 +317,66 @@ describe('POST /goals', () => {
   it('answers an unknown op with 400, and a non-numeric id with 400', async () => {
     expect((await post({ op: 'explode' })).status).toBe(400)
     expect((await post({ op: 'archive', goal: 'abc' })).status).toBe(400)
+  })
+})
+
+describe('the goal form’s jump section', () => {
+  it('folds the two jump fields behind 「跳去哪」 and leaves 做到哪天 outside it', async () => {
+    const a = await seed('健身')
+    const h = await html()
+    const row = h.slice(h.indexOf(`id="goal-${a}"`))
+    const form = row.slice(0, row.indexOf('</form>'))
+    const fold = form.slice(form.indexOf('<details class="tapp">'), form.indexOf(`<label for="f-g${a}-until"`))
+    expect(fold).toContain('跳去哪')
+    expect(fold).toContain(`id="f-g${a}-target"`)
+    expect(fold).toContain(`id="f-g${a}-target_label"`)
+    // 折叠在 until 之前就关上了，「做到哪天」是它后面独立的一格。
+    expect(form).toMatch(new RegExp(`</details>\\s*<div class="field">\\s*<label for="f-g${a}-until"`))
+    // 原先「按钮上叫它什么」和「做到哪天」并排的那两栏没有了。
+    expect(h).not.toContain('<div class="row">')
+  })
+
+  it('keeps the fold shut for a stored target — the row’s own summary already names the app', async () => {
+    const a = await seed('健身', { target: 'bilibili://video/BV1' })
+    const h = await html()
+    const row = h.slice(h.indexOf(`id="goal-${a}"`))
+    expect(row.slice(0, row.indexOf('</form>'))).toContain('<details class="tapp">')
+    expect(row.slice(0, row.indexOf('</form>'))).not.toContain('<details class="tapp" open>')
+  })
+
+  it('opens the fold on a rejected draft, in the row that was rejected and nowhere else', async () => {
+    const a = await seed('健身')
+    await seed('英语')
+    const res = await post({ op: 'save', goal: String(a), title: '健身', cue: '', target: 'not a scheme', target_label: '', until: '' })
+    expect(res.status).toBe(400)
+    const h = await res.text()
+    const row = h.slice(h.indexOf(`id="goal-${a}"`))
+    expect(row.slice(0, row.indexOf('</form>'))).toContain('<details class="tapp" open>')
+    expect(row).toContain('value="not a scheme"')
+    // 加一个目标那张表单没被退回来，它的折叠照旧收着。
+    const addForm = h.slice(h.indexOf('class="card addform"'), h.indexOf(`id="goal-${a}"`))
+    expect(addForm).toContain('<details class="tapp">')
+    expect(addForm).not.toContain('<details class="tapp" open>')
+  })
+
+  it('opens the add form’s own fold when the new goal is the one rejected', async () => {
+    const res = await post({ op: 'add', title: 'x', cue: '', target: 'javascript:alert(1)', target_label: '', until: '' })
+    expect(res.status).toBe(400)
+    const h = await res.text()
+    const addForm = h.slice(h.indexOf('class="card addform"'))
+    expect(addForm.slice(0, addForm.indexOf('</form>'))).toContain('<details class="tapp" open>')
+  })
+
+  it('offers no example answers in any box — a placeholder read as a default value', async () => {
+    const a = await seed('健身')
+    await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW })
+    const h = await html()
+    for (const example of ['placeholder="健身"', 'placeholder="早饭后"', 'placeholder="B 站"']) {
+      expect(h, example).not.toContain(example)
+    }
+    // 留下的两个是格子自己的标签和格式提示，不是示例答案。
+    expect(h).toContain('placeholder="加一条子任务"')
+    expect(h).toContain('placeholder="bilibili:// 或 https://…"')
   })
 })
 

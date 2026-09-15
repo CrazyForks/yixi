@@ -270,37 +270,49 @@ function addBlock(t: T, d?: Draft): string {
   return `<details class="add"${d ? ' open' : ''}>
   <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>${t('加一个目标')}</span></summary>
   <form class="card addform" method="post" action="/today/goals" data-ns="NEW">
-  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW', t)}
+  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW', t, d !== undefined)}
   <div class="actions"><button class="primary" type="submit" name="op" value="add">${t('添加')}</button></div>
   </form>
 </details>`
 }
 
-function goalFields(d: Draft, ns: string, t: T): string {
+/**
+ * 一个目标的四格。跳转那两格（跳去哪、按钮上叫它什么）折起来，和子任务的
+ * 「跳去哪」用同一个 details.tapp，看起来是同一件事——因为它就是同一件事。
+ *
+ * 折叠默认收着，即使已经绑了 App：目标行自己的摘要上已经挂着那枚 App 名
+ * （.skey），不必把整段跳转设置摊开来再说一遍。只有这张表单是被退回来的
+ * （`open`，即手上有 draft）才张开，否则用户刚敲的字藏在折叠里，等于没退回。
+ *
+ * 「做到哪天」不属于跳转，留在折叠外面，单独一格——原先它和「按钮上叫它什么」
+ * 并排成一行，现在那一半进了折叠，两栏的 .row 也就没有了。
+ */
+function goalFields(d: Draft, ns: string, t: T, open: boolean): string {
   const id = (n: string): string => `f-${ns}-${n}`
   return `<div class="field">
     <label for="${id('title')}">${t('目标 · 一句话')}</label>
-    <input id="${id('title')}" type="text" name="title" value="${escapeHtml(d.title)}" placeholder="${t('健身')}" required maxlength="${TITLE_MAX}">
+    <input id="${id('title')}" type="text" name="title" value="${escapeHtml(d.title)}" required maxlength="${TITLE_MAX}">
   </div>
   <div class="field">
     <label for="${id('cue')}">${t('什么时候做 · 可不填')}</label>
-    <input id="${id('cue')}" type="text" name="cue" value="${escapeHtml(d.cue)}" placeholder="${t('早饭后')}" maxlength="${CUE_MAX}">
+    <input id="${id('cue')}" type="text" name="cue" value="${escapeHtml(d.cue)}" maxlength="${CUE_MAX}">
   </div>
-  ${schemeField({
-    name: 'target', value: d.target, ns, required: false, labelFor: 'target_label', t,
-    label: t('去做时跳去哪 · 可不填'),
-    placeholder: t('bilibili:// 或 https://…'),
-    hint: t('填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
-  })}
-  <div class="row">
+  <details class="tapp"${open ? ' open' : ''}>
+    <summary>${icon('chev', { cls: 'ic chev' })}${t('跳去哪')}</summary>
+    ${schemeField({
+      name: 'target', value: d.target, ns, required: false, labelFor: 'target_label', t,
+      label: t('去做时跳去哪 · 可不填'),
+      placeholder: t('bilibili:// 或 https://…'),
+      hint: t('填<b>具体那一节课、那一本书</b>的链接，比填 App 首页少走两步。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
+    })}
     <div class="field">
       <label for="${id('target_label')}">${t('按钮上叫它什么')}</label>
-      <input id="${id('target_label')}" type="text" name="target_label" value="${escapeHtml(d.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
+      <input id="${id('target_label')}" type="text" name="target_label" value="${escapeHtml(d.target_label)}" maxlength="${LABEL_MAX}">
     </div>
-    <div class="field">
-      <label for="${id('until')}">${t('做到哪天 · 可不填')}</label>
-      <input id="${id('until')}" type="date" name="until" value="${escapeHtml(d.until)}" class="num">
-    </div>
+  </details>
+  <div class="field">
+    <label for="${id('until')}">${t('做到哪天 · 可不填')}</label>
+    <input id="${id('until')}" type="date" name="until" value="${escapeHtml(d.until)}" class="num">
   </div>`
 }
 
@@ -324,7 +336,7 @@ function goalRow(
   </summary>
   <form class="card" method="post" action="/today/goals" data-ns="${ns}">
     <input type="hidden" name="goal" value="${g.id}">
-    ${goalFields(d, ns, t)}
+    ${goalFields(d, ns, t, o.draft !== undefined)}
     <div class="actions">
       <button class="primary" type="submit" name="op" value="save">${t('保存')}</button>
       <button class="linky" type="submit" name="op" value="up" formnovalidate${o.first ? ' disabled' : ''}>${t('上移')}</button>
@@ -345,15 +357,15 @@ function goalRow(
 }
 
 /**
- * 一条子任务：标题、已绑的 App 名、删，外加一个折起来的绑 App 表单。
+ * 一条子任务：标题、已绑的 App 名、删，外加一个折起来的跳转设置表单。
  *
  * 表单是同级而不是嵌套——HTML 里 form 不能套 form，而目标本身那张表单就在上面
  * 几行。schemefield 的脚本按 `.field.scheme` 和 `form[data-ns]` 找东西，所以这里
  * 只要给每条子任务一个自己的 ns，试跳、候选和草稿恢复全都照常工作。
  *
  * 被退回来的那一条（`o.draft` 指着它）张着、填着用户刚敲的字、报错就摆在字上面；
- * 其余各条照常用库里的值。标题旁那枚 App 名和折叠上的「绑 App／改」读的都是已存
- * 的值——它们说的是「现在绑着什么」，不是「你刚敲了什么」。
+ * 其余各条照常用库里的值。折叠上的那句话两种状态一模一样：绑没绑得看标题旁那枚
+ * App 名（.skey），摘要只负责说清这里面装的是什么。
  */
 function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T): string {
   const ns = `t${task.id}`
@@ -365,7 +377,7 @@ function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T)
       <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
     </div>
     <details class="tapp"${d ? ' open' : ''}>
-      <summary>${icon('chev', { cls: 'ic chev' })}${task.target === '' ? t('绑 App') : t('改')}</summary>
+      <summary>${icon('chev', { cls: 'ic chev' })}${t('跳去哪')}</summary>
       <form method="post" action="/today/goals" data-ns="${ns}">
         <input type="hidden" name="task" value="${task.id}">
         ${d && o.error ? `<p class="banner bad">${escapeHtml(o.error)}</p>` : ''}
@@ -377,7 +389,7 @@ function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T)
         })}
         <div class="field">
           <label for="${fieldId(ns, 'target_label')}">${t('按钮上叫它什么')}</label>
-          <input id="${fieldId(ns, 'target_label')}" type="text" name="target_label" value="${escapeHtml(d ? d.target_label : task.target_label)}" placeholder="${t('B 站')}" maxlength="${LABEL_MAX}">
+          <input id="${fieldId(ns, 'target_label')}" type="text" name="target_label" value="${escapeHtml(d ? d.target_label : task.target_label)}" maxlength="${LABEL_MAX}">
         </div>
         <div class="actions"><button class="primary" type="submit" name="op" value="task_save">${t('存')}</button></div>
       </form>
@@ -433,6 +445,9 @@ details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;f
 /* details.app 在打开时有自己的写法把 summary 变回 --fg；tapp 靠这条补上同一件事。 */
 details.tapp[open] > summary{color:var(--fg)}
 details.tapp > form{margin:0 0 10px}
+/* 目标那一份是 form > details（HTML 里 form 不能套 form，子任务只好反过来），
+   所以折叠里直接躺着几个 .field，最后一格的下边距由它自己带。 */
+details.tapp > .field:last-child{margin-bottom:10px}
 details.tapp > form > .banner{margin:10px 0 14px}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
