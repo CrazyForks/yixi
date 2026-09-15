@@ -345,7 +345,7 @@ function goalRow(
     </div>
   </form>
   <div class="card tasks">
-    <h2>${t('子任务 · 每天都做')}</h2>
+    <h2>${t('子任务 · 每天都做')}${tasks.length ? `<span class="n num">${t('今天 {x}/{n}', { x: done, n: tasks.length })}</span>` : ''}</h2>
     ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, { draft: o.taskDraft, error: o.taskError }, t)).join('')}</ul>`}
     <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
@@ -433,17 +433,38 @@ function archivedBlock(goals: Goal[], t: T): string {
 const GOALS_CSS = `
 .banner.expired{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .banner.expired .acts{margin-left:auto;display:flex;gap:12px}
-details.app > .card.tasks{border:0;border-top:1px solid var(--rule);border-radius:0;margin:0}
+/* 赭石 · 子任务。整块铺一层淡底，边框就该退场——填色和边框说的是同一句话，
+   两个一起上就是把一句话说两遍，所以原来那条 border-top 去掉了。标题染赭石，
+   行与行之间的细线也跟着赭石，一眼看得出这几行是同一段里的东西。 */
+details.app > .card.tasks{border:0;border-radius:0;margin:0;background:var(--zhe-wash)}
+.card.tasks h2{display:flex;align-items:baseline;color:var(--zhe)}
+/* 「今天 1/2」搬进标题右端。目标行摘要上那一份留着——行收起来时这个标题不在
+   眼前，两处各答各的问题。标记上挂的 .num 是为了数字不随宽窄跳动。 */
+.card.tasks h2 .n{margin-left:auto;letter-spacing:0;color:var(--faint)}
 .tl{list-style:none;margin:0 0 10px;padding:0}
-.tl li{padding:6px 0;border-bottom:1px solid var(--rule)}
+.tl li{padding:6px 0;border-bottom:1px solid var(--zhe-rule)}
 .tl .trow{display:flex;align-items:center;gap:10px}
 .tl .tname{flex:1;min-width:0}
 .tl .trow form{margin:0}
+/* 花青 · 跳转。目标的那一份和每条子任务的那一份是同一个 details.tapp，所以
+   底色、圆角、摘要的颜色只写一遍——它们本来就是同一件事。填色代替边框，段上
+   不再叠线。收着的时候摘要用负外边距把自己撑到底色的两边，那 44px 的一行整条
+   都可按；张开时下边距换成正的 8px，给里面的表单让出一口气。 */
+details.tapp{background:var(--qing-wash);border-radius:12px;padding:12px 12px 4px}
+/* 目标那一份夹在两格中间，底下得自己带 14px，和 .field 的节奏对齐；子任务那
+   一份是 li 的第二行，留着 icons.ts 给 details 的 7px 就够。 */
+form > details.tapp{margin:0 0 14px}
 /* 尺寸、旋转和去掉系统三角都由 icons.ts 的通用 summary 规则管，这里只管排布。
    details.app 那一段之所以还自带一份，是因为它把 .chev 覆写成了 14px。 */
-details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px;color:var(--dim)}
-/* details.app 在打开时有自己的写法把 summary 变回 --fg；tapp 靠这条补上同一件事。 */
-details.tapp[open] > summary{color:var(--fg)}
+details.tapp > summary{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px;
+  color:var(--qing);margin:-12px -12px -4px;padding:0 12px}
+/* icons.ts 的通用规则会把张开的 summary 拽回 --fg，details.app 也有自己的一份；
+   跳转这一段两种状态都是花青，收着和张开说的是同一件事。 */
+details.tapp[open] > summary{color:var(--qing);margin-bottom:8px}
+/* 输入框浮在底色上——透明的框会把那层淡底吃进去，看着像被按暗了一块。 */
+details.tapp input[type=text],.card.tasks .taskadd input{background:var(--bg)}
+/* 「按 App 名字找」那一格是这段里唯一还需要一条边的东西，边也换成花青。 */
+details.tapp details.pickwrap > summary{border-color:var(--qing-rule)}
 details.tapp > form{margin:0 0 10px}
 /* 目标那一份是 form > details（HTML 里 form 不能套 form，子任务只好反过来），
    所以折叠里直接躺着几个 .field，最后一格的下边距由它自己带。 */

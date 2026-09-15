@@ -119,13 +119,26 @@ describe('GET /goals', () => {
   })
 
   it('heads the sub-task box with the daily wording and counts today, not what is left', async () => {
+    // 计数有两处，各答各的问题：目标行收着的时候看摘要那一行，摊开来之后看子
+    // 任务那一段自己的标题。两处都得是「今天做了几条」，不是「还剩几条」。
+    const tasksH2 = (h: string): string => {
+      const box = h.slice(h.indexOf('<div class="card tasks">'))
+      return box.slice(0, box.indexOf('</h2>'))
+    }
     const a = await seed('健身')
+    // 一条子任务都没有的时候标题上不挂计数：0/0 不是一句要说的话。
+    expect(tasksH2(await html())).not.toContain('class="n')
     const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
     await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW })
-    expect(await html()).toContain('子任务 · 每天都做')
-    expect(await html()).toContain('今天 0/2')
+    let h = await html()
+    expect(h).toContain('子任务 · 每天都做')
+    expect(h).toContain('今天 0/2')
+    expect(tasksH2(h)).toContain('今天 0/2')
+    expect(h.slice(0, h.indexOf('<div class="card tasks">'))).toContain('今天 0/2')
     await setTaskCheckin(env.DB, 1, t1, TODAY, true, NOW)
-    expect(await html()).toContain('今天 1/2')
+    h = await html()
+    expect(h).toContain('今天 1/2')
+    expect(tasksH2(h)).toContain('今天 1/2')
   })
 
   it('gives every sub-task its own folded scheme field, and shows the app it is bound to', async () => {
