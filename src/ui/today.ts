@@ -373,7 +373,10 @@ const TODAY_CSS = `
 .ckf{margin:0;flex:none}
 .ck{width:44px;height:44px;display:grid;place-items:center;border-radius:50%}
 .ck i{display:block;width:26px;height:26px;border-radius:50%;border:1.3px solid var(--ring-prog);position:relative}
-.ck i::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--dot);transform:scale(0);opacity:0}
+/* 朱砂 · 今天做过。这一点是整页唯一的红，所以它只说这一件事。墨点那一下
+   （.bloom）的动画一行没动——它和 .checked 是同一个 ::after，同一跳里一起
+   挂上，两个颜色会在交接的那一帧闪一下，所以这里只有一种填色。 */
+.ck i::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--zhu);transform:scale(0);opacity:0}
 .goal.checked .ck i::after,.ck.bloom i::after{transform:scale(1);opacity:1}
 .ck.bloom i::after{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
 .tks{list-style:none;margin:14px 0 0;padding:0}
@@ -383,15 +386,23 @@ const TODAY_CSS = `
 .tkr.done .tkt{color:var(--faint)}
 .tk{width:44px;height:44px;display:grid;place-items:center;margin-left:-8px}
 .tk i{display:block;width:20px;height:20px;border-radius:50%;border:1.3px solid var(--ring-prog)}
-.tkr.done .tk i{background:var(--dot);border-color:var(--dot)}
-.chip{display:inline-flex;align-items:center;gap:5px;flex:none;min-height:44px;padding:0 10px;margin-right:-10px;
-  border:0;background:none;color:var(--dim);font-size:13px;letter-spacing:.06em;text-decoration:none}
+.tkr.done .tk i{background:var(--zhu);border-color:var(--zhu)}
+/* 花青 · 跳转，和编辑页那两段折叠同一个颜色：一行上唯一能把你送出这个 App 的
+   东西，值得自己的形状。44px 是触达底线（test/today.test.ts 守着），所以药丸有
+   44px 高；原先那 -10px 的右外边距是给没有边的文字对齐用的，有了边之后药丸
+   自己贴着卡片的内边距站好。 */
+.chip{display:inline-flex;align-items:center;gap:5px;flex:none;min-height:44px;padding:0 12px;
+  border:1px solid var(--qing-rule);border-radius:99px;background:var(--qing-wash);
+  color:var(--qing);font-size:13px;letter-spacing:.06em;text-decoration:none}
 .chip:active{opacity:.72}
 .chip .ic{width:13px;height:13px}
-.tkr.done .chip{color:var(--faint)}
+/* 勾掉的那一行，整枚药丸一起淡下去，而不是只把字变灰、花青的边和底留在原处
+   ——那样看着像一枚禁用的按钮，可它照样按得动，那一跳随时还能跳。 */
+.tkr.done .chip{color:var(--qing);opacity:.7}
+.tkr.done .chip:active{opacity:.45}
 .dots{display:flex;gap:8px;margin:16px 0 0}
 .dots .d{display:block;width:9px;height:9px;border-radius:50%;border:1px solid var(--ring-prog)}
-.dots .d.on{background:var(--dot);border-color:var(--dot)}
+.dots .d.on{background:var(--zhu);border-color:var(--zhu)}
 .go{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:16px 0 0;
   min-height:48px;border-radius:12px;background:var(--stop-bg);color:var(--stop-fg);border:1px solid var(--stop-border);
   font-size:16px;letter-spacing:.12em;text-decoration:none}
