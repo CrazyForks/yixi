@@ -46,7 +46,7 @@
 
 三条是整个产品的。两面各自的清单在 [docs/breathe.md](docs/breathe.md#known-limits) 和 [docs/today.md](docs/today.md#known-limits)，部署之前都值得读一遍。
 
-- **界面中英双语。**页脚（落地页、登录、注册）或 `/account` 里的「语言」区块可以切换，任意页加上 `?lang=en`／`?lang=zh` 也行；什么都不指定时默认中文。`/setup` 那份「怎么配」快捷指令教程目前仍只有中文。
+- **界面中英双语。**页脚（落地页、登录、注册）或 `/account` 里的「语言」区块可以切换，任意页加上 `?lang=en`／`?lang=zh` 也行；什么都不指定时默认中文。所有页面都已翻译，包括 `/setup` 那份最长的快捷指令教程；里面引用的 iOS 界面名，英文版给的是英文 iOS 的实际叫法。
 - **中国大陆访问要用 Pages 那个地址。**见[为什么要部署两次](#为什么要部署两次)。`pages.dev` 是共享后缀，今天干净不代表永远——绑自有域名是唯一持久的解法。
 - **它是提醒，不是拦路。**任何人都能两下关掉那条自动化。这是刻意的设计——整套东西坏了就放行——也意味着这个工具只对自己想要它的人有效。
 
@@ -232,7 +232,7 @@ npx wrangler d1 execute yixi --remote --command \
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 30 个文件 701 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 30 个文件 708 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构

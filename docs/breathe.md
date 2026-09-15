@@ -72,7 +72,7 @@ The price is that the animation is not as smooth as native, and a Safari cold st
   <img src="images/shortcut.png" width="330" alt="The finished shortcut in the iOS Shortcuts editor: Get Contents of URL with the gate URL, If Contents of URL contains https, and Open URL nested inside it, then End If">
 </p>
 
-<p align="center"><sub>The same thing on a real phone. The token is masked; yours is already filled in on <code>/setup</code>. Note that <b>Open URL sits inside the If</b> — that nesting is the one part a written list conveys badly, and getting it wrong makes the shortcut jump on every launch, including the ones the gate just told it to leave alone.</sub></p>
+<p align="center"><sub>The same thing on a real phone. The token is masked; yours is already filled in on <code>/setup</code>. The shot was taken on a Chinese iPhone, so the actions read 「获取 URL 的内容」, 「如果」, 「打开 URL」 and 「结束如果」 — on an English one those are <b>Get Contents of URL</b>, <b>If</b>, <b>Open URL</b> and <b>End If</b>, and the 「URL 的内容」 filled into the If and the Open URL is <b>Contents of URL</b>. Note that <b>Open URL sits inside the If</b> — that nesting is the one part a written list conveys badly, and getting it wrong makes the shortcut jump on every launch, including the ones the gate just told it to leave alone.</sub></p>
 
 
 **① Get Contents of URL.** Paste the whole line into the URL field:
@@ -151,4 +151,4 @@ Read these before deploying. Some of them cannot be fixed in code.
 - **JavaScript is required** on the breathing page (there is a `<noscript>` telling you to go back to the home screen).
 - **JavaScript is also required to register, once Turnstile is configured.** The widget cannot produce a token without it, and a missing token is refused — the form says so in a `<noscript>` line. Not configuring Turnstile leaves `/register` working without JavaScript, as before.
 - **The two visual skins are still unresolved.** `/mock?v=1` is 「墨」 (ink washes on near-black, serif) and `?v=2` is 「息」 (a hairline ring and one dot). `DEFAULT_THEME` in `src/ui/layout.ts` is `ink`. Flip that one constant to change the product's face.
-- **The breathing page follows the account's language, not the browser's.** An iOS Shortcut opens `/b` with no cookie at all, so a signed-in session's language comes from `users.locale` — set on `/account` — rather than from `yixi_lang`; a visitor with no session falls back to `Accept-Language`. The 「怎么配」 Shortcut tutorial at `/setup` is Chinese only for now.
+- **The breathing page follows the account's language, not the browser's.** An iOS Shortcut opens `/b` with no cookie at all, so a signed-in session's language comes from `users.locale` — set on `/account` — rather than from `yixi_lang`; a visitor with no session falls back to `Accept-Language`. The 「怎么配」 Shortcut tutorial at `/setup` follows the same rules as every other console page.
