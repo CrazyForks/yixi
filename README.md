@@ -21,7 +21,7 @@ Before a distracting app opens, the phone jumps to a page that counts ten second
 </td>
 <td width="50%" align="center">
 
-<img src="docs/images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, today's sub-tasks, seven dots and a wide jump button">
+<img src="docs/images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal and today's sub-tasks, each with its own check circle and jump chip, plus seven dots; a card with no sub-tasks shows a wide jump button instead">
 
 <sub>Three goals, the first one large. No streak number anywhere.</sub>
 

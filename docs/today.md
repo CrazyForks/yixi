@@ -3,10 +3,10 @@
 [← README](../README.md) · the other half of 一息 is [Breathe](breathe.md).
 
 <p align="center">
-  <img src="images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal, today's sub-tasks, each with its own jump, seven dots and a wide jump button">
+  <img src="images/today-paper.png" width="300" alt="/today in light mode: three goal cards on paper, the first a large card carrying the goal and today's sub-tasks, each with its own check circle and jump chip, plus seven dots; a card with no sub-tasks shows a wide jump button instead">
 </p>
 
-<p align="center"><sub>Three goals by default, the first one large because it is the one that matters most today. Each card carries today's sub-tasks, each with its own jump, seven dots for the last seven days, and one wide button into the app the goal is about. No streak number anywhere.</sub></p>
+<p align="center"><sub>Three goals by default, the first one large because it is the one that matters most today. Each card carries today's sub-tasks, each with its own check circle and jump chip, and seven dots for the last seven days; a goal with no sub-tasks gets one wide button into the app instead. No streak number anywhere.</sub></p>
 
 `/today` is the page meant to be opened every morning: the few things that matter for the coming weeks, each with its sub-tasks for today, and a one-tap jump into whichever app the goal is actually about — B 站 for a workout, 微信读书 for a book. Nothing on it is editable. `/today/goals` behind it is where goals get added, reordered, extended and archived; `/today/review` looks back at how the days actually went.
 

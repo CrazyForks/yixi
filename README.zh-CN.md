@@ -21,7 +21,7 @@
 </td>
 <td width="50%" align="center">
 
-<img src="docs/images/today-paper.png" width="300" alt="今日页浅色：宣纸上三张目标卡，第一张是大卡，带今天的子任务、七颗墨点和跳转按钮">
+<img src="docs/images/today-paper.png" width="300" alt="今日页浅色：宣纸上三张目标卡，第一张是大卡，带今天的子任务——每条子任务自己一个勾选圈和跳转药丸，外加七颗墨点；没有子任务的目标改用一个跳转大按钮">
 
 <sub>三个目标，第一个画成大卡。没有任何地方显示连续天数。</sub>
 
