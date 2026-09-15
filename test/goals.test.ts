@@ -380,6 +380,16 @@ describe('the goal form’s jump section', () => {
     expect(addForm.slice(0, addForm.indexOf('</form>'))).toContain('<details class="tapp" open>')
   })
 
+  it('gives the add form a draft namespace of its own, not the one /settings already uses', async () => {
+    const h = await html()
+    // 草稿键是 'yixi.draft.' + ns，全 origin 共用一个 localStorage：/settings 的
+    // 加 App 表单也叫 NEW，两页曾经写同一个键，串味的是别人半填的一行。
+    expect(h).toContain('data-ns="NEW_GOAL"')
+    expect(h).not.toContain('data-ns="NEW"')
+    expect(h).toContain('id="f-NEW_GOAL-title"')
+    expect(h).toContain('id="f-NEW_GOAL-target"')
+  })
+
   it('offers no example answers in any box — a placeholder read as a default value', async () => {
     const a = await seed('健身')
     await createTask(env.DB, { userId: 1, goalId: a, title: '跟练', now: NOW })
@@ -439,6 +449,31 @@ describe('今日页放几个目标', () => {
     expect((await post({ op: 'limit', n: '7' }, other)).status).toBe(303)
     expect(await stored(2)).toBe(7)
     expect(await stored(1)).toBeNull()
+  })
+
+  /**
+   * 选完就存，不用再点一下「存」——和同页的上移／归档一样，动了就算数。
+   *
+   * 套件跑在 workerd 里没有 DOM，所以这里守的是发出去的那段脚本本身：监听器挂在
+   * 那个 select 的 change 上，提交时把「存」当 submitter 传进去——`op=limit` 就在
+   * 那枚按钮的 name/value 上，裸调 requestSubmit() 提交不到它，服务端会拿一个没有
+   * op 的表单回 400。按钮本身必须留在标记里：没 JS 的人只有它。
+   */
+  it('wires the picker to submit on change, with 「存」 as the submitter, and keeps the button', async () => {
+    const h = await html()
+    const script = h.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/)
+    expect(script, 'inline script missing').toBeTruthy()
+    const js = script![1]!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+    expect(js).toContain("document.getElementById('f-limit-n')")
+    expect(js).toContain("sel.addEventListener('change'")
+    // 传 submitter 的那一句是这条路能存下来的全部理由，所以单独钉住。
+    expect(js).toContain('form.requestSubmit(save)')
+    expect(js).toContain('save.click()')
+    expect(js).toContain('button[type="submit"]')
+
+    // 没 JS 的出口还在，而且还是那个 op。
+    expect(h).toContain('<button class="linky" type="submit" name="op" value="limit">')
   })
 })
 

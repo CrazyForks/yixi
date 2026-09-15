@@ -45,10 +45,12 @@ describe('liveGoals', () => {
   })
 })
 
+// `limit` is mandatory — there is no default to fall through to, which is the
+// whole point: a reader that forgets it does not compile.
 describe('shownGoals', () => {
-  it('caps at TODAY_GOAL_LIMIT, keeping the first ones in order', () => {
+  it('caps at the limit it is given, keeping the first ones in order', () => {
     const goals = Array.from({ length: TODAY_GOAL_LIMIT + 2 }, (_, i) => g(i))
-    expect(shownGoals(goals, TODAY).map((x) => x.id)).toEqual(
+    expect(shownGoals(goals, TODAY, TODAY_GOAL_LIMIT).map((x) => x.id)).toEqual(
       Array.from({ length: TODAY_GOAL_LIMIT }, (_, i) => i),
     )
   })
@@ -58,12 +60,12 @@ describe('shownGoals', () => {
     const expired = g(2, { until: '2026-09-01' })
     const live1 = g(3)
     const live2 = g(4)
-    expect(shownGoals([archived, expired, live1, live2], TODAY)).toEqual([live1, live2])
+    expect(shownGoals([archived, expired, live1, live2], TODAY, TODAY_GOAL_LIMIT)).toEqual([live1, live2])
   })
 
   it('returns fewer than the limit when there are fewer live goals', () => {
     const only = g(1)
-    expect(shownGoals([only], TODAY)).toEqual([only])
+    expect(shownGoals([only], TODAY, TODAY_GOAL_LIMIT)).toEqual([only])
   })
 
   it('honours a caller-supplied limit, filtering first and slicing second', () => {
@@ -74,9 +76,9 @@ describe('shownGoals', () => {
     expect(shownGoals(goals, TODAY, 9).map((x) => x.id)).toEqual([2, 3, 4, 5])
   })
 
-  it('still caps at TODAY_GOAL_LIMIT when no limit is given', () => {
+  it('is the default only when a caller hands it the default', () => {
     const goals = Array.from({ length: TODAY_GOAL_LIMIT + 2 }, (_, i) => g(i))
-    expect(shownGoals(goals, TODAY)).toHaveLength(TODAY_GOAL_LIMIT)
+    expect(shownGoals(goals, TODAY, TODAY_GOAL_LIMIT)).toHaveLength(TODAY_GOAL_LIMIT)
     expect(TODAY_GOAL_LIMIT).toBe(3)
   })
 })

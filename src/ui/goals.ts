@@ -250,7 +250,7 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
     lang: loc,
     css: CONSOLE_CSS + SCHEME_FIELD_CSS + GOALS_CSS,
     body,
-    script: schemeFieldJs(t),
+    script: schemeFieldJs(t) + LIMIT_JS,
     status: o.status ?? 200,
   })
 }
@@ -266,11 +266,21 @@ function expiredBlock(goals: Goal[], t: T): string {
   </form>`).join('\n')
 }
 
+/**
+ * `data-ns` is the localStorage key a 试跳 draft is parked under, and it is
+ * global to the origin — `'yixi.draft.' + ns` in schemefield.ts. /settings'
+ * add-App form calls itself `NEW` too, so both pages used to write the same
+ * key: probe a scheme there, come here inside the 30-minute TTL, and this
+ * form would spring open holding another page's half-filled row. Named per
+ * page, the two drafts stop colliding.
+ */
+const ADD_NS = 'NEW_GOAL'
+
 function addBlock(t: T, d?: Draft): string {
   return `<details class="add"${d ? ' open' : ''}>
   <summary class="addbtn">${icon('plus', { cls: 'ic lg' })}<span>${t('加一个目标')}</span></summary>
-  <form class="card addform" method="post" action="/today/goals" data-ns="NEW">
-  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, 'NEW', t, d !== undefined)}
+  <form class="card addform" method="post" action="/today/goals" data-ns="${ADD_NS}">
+  ${goalFields(d ?? { title: '', cue: '', target: '', target_label: '', until: '' }, ADD_NS, t, d !== undefined)}
   <div class="actions"><button class="primary" type="submit" name="op" value="add">${t('添加')}</button></div>
   </form>
 </details>`
@@ -403,6 +413,10 @@ function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T)
  *
  * <select> 而不是 type=number：iPhone 上前者是一个滚轮，一下选完；后者是一个
  * 数字键盘加一对小箭头，为了在 1 到 9 之间挑一个数实在太吵。
+ *
+ * 「存」这个按钮在标记里是常驻的，不是可有可无的备份：有 JS 时 LIMIT_JS 让选完
+ * 就存（和同页的上移／归档一样，点了就算数），没 JS 时它就是唯一的出口。两条路
+ * 发的是同一个 POST。
  */
 function limitBlock(current: number, t: T): string {
   const options = []
@@ -417,6 +431,37 @@ function limitBlock(current: number, t: T): string {
   </div>
 </form>`
 }
+
+/**
+ * Spin the wheel, and it is saved — no second tap on 「存」.
+ *
+ * Everything else on this page acts on tap (上移, 归档, 删), so a picker that
+ * remembered nothing until you found a second button was the odd one out: spin
+ * it, walk away, and the change was gone with no signal that it had not stuck.
+ *
+ * `requestSubmit` is given the 「存」 button as its submitter on purpose. A bare
+ * `requestSubmit()` submits no button, so `op=limit` — which lives on that
+ * button's name/value — would never reach the server and the write would come
+ * back 400. `click()` is the fallback for an engine without `requestSubmit`; it
+ * submits with the same button as submitter, so the body is identical either
+ * way. Nothing here removes or hides the button: without JS it is still the
+ * only way to save, and this listener is the only thing that changes.
+ *
+ * Carries no copy, so it needs no translator — same rule as TODAY_JS.
+ */
+const LIMIT_JS = `
+(function () {
+  var sel = document.getElementById('f-limit-n');
+  if (!sel) return;
+  var form = sel.form;
+  var save = form ? form.querySelector('button[type="submit"]') : null;
+  if (!form || !save) return;
+  sel.addEventListener('change', function () {
+    if (form.requestSubmit) form.requestSubmit(save);
+    else save.click();
+  });
+})();
+`
 
 function archivedBlock(goals: Goal[], t: T): string {
   return `<details class="archived">
