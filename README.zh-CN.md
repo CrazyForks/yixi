@@ -2,7 +2,7 @@
 
 # 一息
 
-一息做两件事，共用一个账号。**拦**：打开小红书这类干扰 App 之前，手机先跳到一个网页让你呼吸十秒，十秒后先给「算了」，再给「继续打开」，并且把这一次记下来。**引**：未来一段时间最重要的三件事放在一页上，每天早上打开它——每件事带着今天要做的几条子任务、最近七天的七颗墨点，和一个直接跳进那个 App 的按钮（跟练去 B 站，读书去微信读书）。两件事各自能用，不需要都用。
+一息做两件事，共用一个账号。**拦**：打开小红书这类干扰 App 之前，手机先跳到一个网页让你呼吸十秒，十秒后先给「算了」，再给「继续打开」，并且把这一次记下来。**引**：未来一段时间最重要的那几件事放在一页上（默认三件，想放到九件也行），每天早上打开它——每件事带着今天要做的几条子任务、最近七天的七颗墨点，和一个直接跳进那个 App 的按钮（跟练去 B 站，读书去微信读书）。两件事各自能用，不需要都用。
 
 整个东西是**一个 Cloudflare Worker 加一个 D1 数据库**，跑在免费额度里，成本约等于零。拦的那一半是自建的 [One Sec](https://one-sec.app/) 替代品，做成网页而不是 iPhone App。
 
@@ -155,7 +155,7 @@ npm run deploy    # 先对远端 D1 apply migration，再发布
 
 migration 只需要跑一次，Pages 那份共用同一个数据库。
 
-**部署一律走 `npm run deploy`，不要直接 `wrangler deploy`**——「先 migration 再发布」这个顺序就是两边不脱节的全部保证。当前版本尤其依赖 `0006_user_locale.sql`：`/gate` 认人的路径上会读 `users.locale`，数据库里没有这一列的话，Worker 一上去就谁也拦不住了。
+**部署一律走 `npm run deploy`，不要直接 `wrangler deploy`**——「先 migration 再发布」这个顺序就是两边不脱节的全部保证。当前版本尤其依赖 `0006_user_locale.sql` 和 `0008_today_goals.sql`：`/gate` 认人的路径上会读 `users.locale` 和 `users.today_goals`，数据库里缺哪一列，Worker 一上去就谁也拦不住了。
 
 ### 5. 部署 Pages
 
@@ -232,7 +232,7 @@ npx wrangler d1 execute yixi --remote --command \
 | 渲染 | 服务端 HTML，CSS/JS 内联，零外部请求（CSP 强制）——唯一例外是 `/register` 上的 Turnstile widget，且仅在配置了之后 |
 | 加密 | 只用 WebCrypto —— PBKDF2-SHA256 密码，AES-GCM 封存 token |
 | 客户端 | iOS 快捷指令 + Safari |
-| 测试 | 30 个文件 663 条（Vitest + `@cloudflare/vitest-pool-workers`） |
+| 测试 | 30 个文件 694 条（Vitest + `@cloudflare/vitest-pool-workers`） |
 | 成本 | 在 Cloudflare 免费额度内 |
 
 ## 目录结构

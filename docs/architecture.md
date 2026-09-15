@@ -157,7 +157,10 @@ shown       = that user's non-archived goals, not expired as of the snapshot
               day — isExpired(g, date), the same rule /today applies, but
               pinned to `date` rather than "today" so a cron that runs late
               still judges expiry against the day it is closing out —
-              trimmed to the first TODAY_GOAL_LIMIT
+              trimmed to that user's own card limit, todayGoalLimit(user),
+              which is why snapshotUser reads the user row as well as the
+              goals: a constant 3 here would record a denominator /today
+              never put on screen
 done        = of those `shown` goals, how many have a goal_checkins row
               for `date`
 tasks_done  = goal_task_checkins rows across ALL of the user's goals (not just
@@ -210,9 +213,9 @@ The cookie used to be a stateless HMAC of `<userId>.<expiry>`, which was cheaper
 
 ## D1 tables
 
-Seven migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/today/goals`, touching nothing that existed before; `0005_goal_days.sql` adds the one table behind `/today/review`; `0006_user_locale.sql` adds the column a signed-in reader's language choice lives in; `0007_daily_tasks.sql` adds `goal_task_checkins`, gives each sub-task its own `target`/`target_label`, and converts any existing `done_at` timestamp into a check-in row without touching the retired column itself.
+Eight migrations. `0001_init.sql` is the original single-purpose schema; `0002_accounts.sql` adds self-service accounts; `0003_rate_limit.sql` adds the throttle that open registration made necessary; `0004_goals.sql` adds the three tables behind `/today` and `/today/goals`, touching nothing that existed before; `0005_goal_days.sql` adds the one table behind `/today/review`; `0006_user_locale.sql` adds the column a signed-in reader's language choice lives in; `0007_daily_tasks.sql` adds `goal_task_checkins`, gives each sub-task its own `target`/`target_label`, and converts any existing `done_at` timestamp into a check-in row without touching the retired column itself; `0008_today_goals.sql` adds the column holding how many goal cards `/today` puts on the page for that reader.
 
-`0006` is a deploy prerequisite rather than an optional extra, which is why deploying means `npm run deploy` (migrations first) and never a bare `wrangler deploy`: `users.locale` is in the projection `findUserByTokenHash` selects, so `/gate` — the hot path every intercepted app opening goes through — fails against a database that has not been migrated, and interception stops.
+`0006` and `0008` are deploy prerequisites rather than optional extras, which is why deploying means `npm run deploy` (migrations first) and never a bare `wrangler deploy`: both `users.locale` and `users.today_goals` are in the projection `findUserByTokenHash` selects, so `/gate` — the hot path every intercepted app opening goes through — fails against a database that has not been migrated, and interception stops.
 
 ### `users`
 
@@ -226,6 +229,8 @@ Seven migrations. `0001_init.sql` is the original single-purpose schema; `0002_a
 | `email` | added in 0002; stored lowercased; `UNIQUE` via a partial index `WHERE email IS NOT NULL` so pre-accounts rows (NULL email) do not collide with each other |
 | `password_hash` `password_salt` `password_iters` | base64 PBKDF2-SHA256, base64 16-byte salt, and the iteration count **recorded per row** so the cost can be raised later without invalidating old hashes |
 | `token_cipher` `token_iv` | added in 0002; AES-GCM ciphertext of the same token under `TOKEN_KEY`, plus a fresh 96-bit IV. Exists solely so a signed-in holder can read their own key back. See [SECURITY.md](../SECURITY.md#the-token-trade-off-read-this-one) — this is a deliberate downgrade from hash-only. |
+| `locale` | added in 0006; `'zh'`/`'en'`, or NULL for a reader who has never chosen |
+| `today_goals` | added in 0008; how many goal cards `/today` draws for this reader, 1…9, or NULL for the default. Read through `todayGoalLimit()` in `src/types.ts`, never directly: it is the one number a page hands to `slice()`, so anything stored outside the range falls back to `TODAY_GOAL_LIMIT` rather than reaching the page |
 
 Every account column is nullable, because a token handed out before accounts existed is still a complete identity; it just cannot log in with a password until somebody `/claim`s it.
 
@@ -315,7 +320,7 @@ Added in `0005_goal_days.sql`. One row per `(user_id, date)`, written once by th
 | column | notes |
 | --- | --- |
 | `user_id` `date` | primary key. `date` is the **Asia/Shanghai** day being summarized, not the day the cron ran |
-| `shown` | how many goals `/today` would have shown that user that day — non-archived, not expired as of `date`, capped at `TODAY_GOAL_LIMIT` |
+| `shown` | how many goals `/today` would have shown that user that day — non-archived, not expired as of `date`, capped at that user's own `users.today_goals` (`TODAY_GOAL_LIMIT` when they have not chosen one) |
 | `done` | of those, how many had a `goal_checkins` row for `date` |
 | `tasks_done` | sub-task check-ins that day, across every goal the user had, not only the ones in `shown` |
 | `ts` | when the row was written, epoch ms |
@@ -446,7 +451,7 @@ The button hierarchy on a candidate is deliberate: 「试跳」 is the filled da
 
 ## Tests
 
-663 tests over 30 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
+694 tests over 30 files, `vitest` with `@cloudflare/vitest-pool-workers`, running against a real Miniflare D1 with the real migrations applied (`vitest.config.ts` reads `./migrations` and hands them to `test/apply-migrations.ts`).
 
 The files worth knowing about before you change something:
 
@@ -461,6 +466,6 @@ The files worth knowing about before you change something:
 | `test/stats.test.ts` | the accounting semantics, including the midnight boundary |
 | `test/ratelimit.test.ts` | concurrency, which is how the original limiter was found to be useless |
 | `test/signed-out.test.ts` | that the login redirect cannot be turned into an open redirect |
-| `test/today.test.ts` | that only the first `TODAY_GOAL_LIMIT` live goals get a card and the first is the hero, that a checked card sinks below the unchecked ones, that the check button's ink-bloom guards against a double tap filing two POSTs (check, then uncheck), that the jump script holds exactly one synchronous `location.href=` assignment, and — the newest addition — that no rendered `.linky` button or the `.tk` per-day check circle slips back under the 44px tap-target floor |
+| `test/today.test.ts` | that only the first `todayGoalLimit(user)` live goals get a card and the first is the hero, that a checked card sinks below the unchecked ones, that the check button's ink-bloom guards against a double tap filing two POSTs (check, then uncheck), that the jump script holds exactly one synchronous `location.href=` assignment, and — the newest addition — that no rendered `.linky` button or the `.tk` per-day check circle slips back under the 44px tap-target floor |
 
 Three of these strip comments from the rendered inline scripts before asserting on them, because the scripts *carry* comments containing the very words being searched for and a naive match would go green on the bug.

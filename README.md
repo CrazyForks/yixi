@@ -2,7 +2,7 @@ English | [简体中文](README.zh-CN.md)
 
 # yixi (一息)
 
-一息 does two things, sharing one account. **Breathe** (拦): before a distracting app opens, your phone shows a page that asks you to breathe for ten seconds, then offers 「算了」 first and 「继续打开」 second, and keeps the receipt. **Today** (引): your top three goals for the coming weeks on one page you open every morning, each with its sub-tasks for today, seven dots for the last seven days, and a button that jumps straight into the app where the work happens — B 站 for a workout, 微信读书 for a book. Either half is useful on its own.
+一息 does two things, sharing one account. **Breathe** (拦): before a distracting app opens, your phone shows a page that asks you to breathe for ten seconds, then offers 「算了」 first and 「继续打开」 second, and keeps the receipt. **Today** (引): your top few goals for the coming weeks — three by default, as many as nine if you want — on one page you open every morning, each with its sub-tasks for today, seven dots for the last seven days, and a button that jumps straight into the app where the work happens — B 站 for a workout, 微信读书 for a book. Either half is useful on its own.
 
 One Cloudflare Worker and one D1 database, running entirely on Cloudflare's free tier. On the interception side it is a self-hosted stand-in for [One Sec](https://one-sec.app/), built as a web page instead of an iPhone app.
 
@@ -157,7 +157,7 @@ npm run deploy    # applies migrations against the remote D1, then deploys
 
 Migrations only need to run once; the Pages deployment shares the same database.
 
-**Always deploy with `npm run deploy`, never a bare `wrangler deploy`** — it is the migrations-then-deploy order that keeps the two in step. The current Worker needs `0006_user_locale.sql` in particular: `/gate` reads `users.locale` on its way to knowing who you are, so a Worker deployed against a database without that column stops intercepting anything.
+**Always deploy with `npm run deploy`, never a bare `wrangler deploy`** — it is the migrations-then-deploy order that keeps the two in step. The current Worker needs `0006_user_locale.sql` and `0008_today_goals.sql` in particular: `/gate` reads `users.locale` and `users.today_goals` on its way to knowing who you are, so a Worker deployed against a database without those columns stops intercepting anything.
 
 ### 5. Deploy Pages
 
@@ -234,7 +234,7 @@ npx wrangler d1 execute yixi --remote --command \
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 663 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 694 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
