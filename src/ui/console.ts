@@ -145,9 +145,12 @@ export const CONSOLE_CSS = `
      (--qing) a jump out to another app, 赭石 (--zhe) the sub-tasks a goal is
      made of, 朱砂 (--zhu) what was done today. A -wash is a fill that REPLACES
      a border rather than joining one; a -rule is for the hairlines inside a
-     washed section. Dark is a second tuning rather than an inversion — the
-     light values go muddy on near-black. --danger is not one of the three:
-     删除 keeps its own red, and nothing else may borrow it. */
+     washed section. 朱砂 has neither: it only ever paints a dot or a small
+     filled circle, never a section, so a --zhu-wash was defined and never
+     referenced — every token here has a user. Dark is a second tuning rather
+     than an inversion — the light values go muddy on near-black. --danger is
+     not one of the three: 删除 keeps its own red, and nothing else may borrow
+     it. */
   --qing:#4a6482;
   --qing-wash:rgba(74,100,130,.085);
   --qing-rule:rgba(74,100,130,.28);
@@ -155,13 +158,12 @@ export const CONSOLE_CSS = `
   --zhe-wash:rgba(138,99,56,.085);
   --zhe-rule:rgba(138,99,56,.28);
   --zhu:#b5452f;
-  --zhu-wash:rgba(181,69,47,.10);
 }
 @media (prefers-color-scheme:dark){:root{
   --danger:#c9795c;--dim:rgba(238,235,228,.68);--faint:rgba(238,235,228,.44);
   --qing:#9db4cf;--qing-wash:rgba(157,180,207,.09);--qing-rule:rgba(157,180,207,.30);
   --zhe:#d0a978;--zhe-wash:rgba(208,169,120,.09);--zhe-rule:rgba(208,169,120,.30);
-  --zhu:#e0846c;--zhu-wash:rgba(224,132,108,.12);
+  --zhu:#e0846c;
 }}
 body{font-size:17px;line-height:1.75}
 header,main{max-width:520px;margin:0 auto;padding:0 18px}
