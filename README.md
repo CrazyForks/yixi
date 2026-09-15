@@ -234,7 +234,7 @@ npx wrangler d1 execute yixi --remote --command \
 | Rendering | server-side HTML, inline CSS/JS, zero external requests (CSP-enforced) — one exception: the Turnstile widget on `/register`, only when configured |
 | Crypto | WebCrypto only — PBKDF2-SHA256 passwords, AES-GCM token sealing |
 | Client | iOS Shortcuts + Safari |
-| Tests | 708 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
+| Tests | 709 tests over 30 files (Vitest + `@cloudflare/vitest-pool-workers`) |
 | Cost | fits inside Cloudflare's free tier |
 
 ## Project layout
