@@ -57,6 +57,7 @@ import uiPwaRaw from '../src/ui/pwa.ts?raw'
 import uiReviewRaw from '../src/ui/review.ts?raw'
 import uiSchemefieldRaw from '../src/ui/schemefield.ts?raw'
 import uiSettingsRaw from '../src/ui/settings.ts?raw'
+import uiSetupRaw from '../src/ui/setup.ts?raw'
 import uiTodayRaw from '../src/ui/today.ts?raw'
 import uiTodaysetupRaw from '../src/ui/todaysetup.ts?raw'
 
@@ -462,6 +463,7 @@ export const CONVERTED: string[] = [
   'src/ui/settings.ts',
   'src/ui/schemefield.ts',
   'src/ui/review.ts',
+  'src/ui/setup.ts',
 ]
 
 /** Raw source for each CONVERTED path, keyed the same way. */
@@ -480,12 +482,13 @@ const SOURCES: Record<string, string> = {
   'src/ui/settings.ts': uiSettingsRaw,
   'src/ui/schemefield.ts': uiSchemefieldRaw,
   'src/ui/review.ts': uiReviewRaw,
+  'src/ui/setup.ts': uiSetupRaw,
 }
 
 /**
- * Every file under src/ meant to carry user-visible copy, minus the two that
- * never will: api/admin.ts (owner-only tool) and ui/setup.ts (batch 2's long
- * tutorial, translated in its own task so it never sits half-done here).
+ * Every file under src/ meant to carry user-visible copy, minus the one that
+ * never will: api/admin.ts, the owner-only tool. ui/setup.ts was the other
+ * exclusion until batch 2 translated it; the whole product is covered now.
  *
  * schemes.ts is in the list but is not in CONVERTED, and the split is the
  * point: its `caveat` strings are copy and are wrapped, while `name`,
@@ -530,6 +533,7 @@ const ALL_SOURCES: Record<string, string> = {
   'src/ui/review.ts': uiReviewRaw,
   'src/ui/schemefield.ts': uiSchemefieldRaw,
   'src/ui/settings.ts': uiSettingsRaw,
+  'src/ui/setup.ts': uiSetupRaw,
   'src/ui/today.ts': uiTodayRaw,
   'src/ui/todaysetup.ts': uiTodaysetupRaw,
 }
@@ -545,7 +549,7 @@ const ALL_SOURCES: Record<string, string> = {
  * must also bump this number in the same diff, or "guard rail: ALL_SOURCES
  * count" below goes red. Bump both together.
  */
-const ALL_SOURCES_EXPECTED_COUNT = 33
+const ALL_SOURCES_EXPECTED_COUNT = 34
 
 describe('guard rail: ALL_SOURCES has not silently drifted from its pinned count', () => {
   it('covers exactly as many files as it is pinned to', () => {
@@ -713,7 +717,7 @@ describe('guard ①: every CONVERTED file carries no residual Chinese', () => {
 })
 
 describe('guard ②: every t()/msg() source anywhere in src/ has an EN key', () => {
-  it('covers every file except api/admin.ts and ui/setup.ts', () => {
+  it('covers every file except api/admin.ts', () => {
     const missing: string[] = []
     for (const [path, src] of Object.entries(ALL_SOURCES)) {
       for (const call of extractCalls(src)) {

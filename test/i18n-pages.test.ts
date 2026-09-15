@@ -28,7 +28,9 @@ import { renderTodaySetup } from '../src/ui/todaysetup'
 import { handleAccount, handleClaim, handleLogin, handleRecover, handleRegister } from '../src/ui/account'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
+import { renderSetup } from '../src/ui/setup'
 import { createGoal, createTask, shanghaiDate, toggleCheckin, updateTaskTarget, upsertUserApp } from '../src/db'
+import { register } from '../src/account'
 import type { User } from '../src/types'
 import { translator } from '../src/i18n'
 
@@ -560,6 +562,146 @@ describe('/review in English', () => {
 })
 
 // ============================================================================
+// /setup — the Shortcut walkthrough
+// ============================================================================
+
+/**
+ * The longest page in the product, and the one an English reader could not use
+ * at all before batch 2: it is the only way to install the Breathe half.
+ *
+ * Two fixtures, because the page has two shapes and only one of them carries
+ * the tester. `?k=` is a token in the address bar; `?show=1` on an account
+ * whose token was sealed unseals it. A row from the ticket-window era has only
+ * a hash, so `?show=1` there is the degraded shape — no token, no tester, and
+ * a paragraph saying why.
+ */
+async function setupUserWithApps(): Promise<{ user: User; token: string }> {
+  const created = await register(env, { email: 'setup-en@example.com', password: 'correct-horse-1' })
+  expect(created.ok, 'register failed').toBe(true)
+  if (!created.ok) throw new Error('register failed')
+  // Latin labels on purpose: a label somebody typed is data and is never
+  // translated, so a Chinese one would defeat the CJK sweep below.
+  await upsertUserApp(env.DB, {
+    user_id: created.user.id, app: 'instagram', label: 'Instagram', scheme: 'instagram://',
+    wait_seconds: 10, grace_seconds: 90, enabled: 1,
+  })
+  return { user: created.user, token: created.token }
+}
+
+async function setupHtmlEn(user: User, query: string): Promise<string> {
+  const res = await renderSetup(new Request(`${BASE}/setup${query}`, { headers: EN }), env, user)
+  expect(res.status).toBe(200)
+  return await res.text()
+}
+
+describe('/setup in English', () => {
+  it('declares the language and names the iOS actions the way English iOS does', async () => {
+    const { user, token } = await setupUserWithApps()
+    const html = await setupHtmlEn(user, `?k=${token}`)
+
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('<title>Guide · 一息</title>')
+
+    const main = inside(html, '<main class="wrap doc">')
+    expect(main).toContain('<h1>Guide</h1>')
+    expect(main).toContain('Shortcuts')
+    expect(main).toContain('Get Contents of URL')
+    expect(main).toContain('Contents of URL')
+    expect(main).toContain('End If')
+    expect(main).toContain('Ask Before Running')
+    expect(main).toContain('Notify When Run')
+    expect(main).toContain('Is Opened')
+    expect(main).not.toMatch(CHINESE_PUNCT)
+    expect(main).not.toMatch(/[!！]/)
+  })
+
+  /**
+   * The strongest clause on this page, and the reason it is written as a CJK
+   * sweep rather than a punctuation one: a tutorial this long is exactly where
+   * one untranslated sentence hides. 一息 is the product's name and stays in
+   * both languages; nothing else Chinese may survive into <main>.
+   */
+  it('leaves no Chinese anywhere in the page except the brand', async () => {
+    const { user, token } = await setupUserWithApps()
+    const main = inside(await setupHtmlEn(user, `?k=${token}`), '<main class="wrap doc">')
+    expect(main.split('一息').join('')).not.toMatch(/[一-鿿]/)
+  })
+
+  it('translates the copy lines, and leaves the addresses they copy alone', async () => {
+    const { user, token } = await setupUserWithApps()
+    const main = inside(await setupHtmlEn(user, `?k=${token}`), '<main class="wrap doc">')
+
+    expect(main).toContain('>Copy</button>')
+    expect(main).toContain('aria-label="Copy token"')
+    expect(main).toContain('aria-label="Copy test address"')
+    // The label is the reader's own data and is never translated.
+    expect(main).toContain('aria-label="Copy Instagram"')
+    // The gate line is bytes to paste, not copy: unchanged in either language.
+    expect(main).toContain(`${BASE}/gate?app=instagram&amp;k=${token}&amp;fmt=text`)
+    expect(main).toContain(`${BASE}/gate?app=zzztest&amp;k=${token}`)
+  })
+
+  it('hands the tester its sentences in English, through the JSON escape', async () => {
+    const { user, token } = await setupUserWithApps()
+    const html = await setupHtmlEn(user, `?k=${token}`)
+
+    const js = scriptOf(html)
+    expect(js).toContain('data-test')
+    expect(html).toContain('Check whether this line gets through')
+    expect(js).toContain('"Connecting…"')
+    expect(js).toContain('"The server refused it: {body}"')
+    expect(js).toContain('Through · this line will stop you')
+    // Never a bare interpolation: every sentence arrives as a JSON literal.
+    expect(js).not.toMatch(/[一-鿿]/)
+  })
+
+  it('unseals the token behind ?show=1, and keeps the tester with it', async () => {
+    const { user } = await setupUserWithApps()
+    const html = await setupHtmlEn(user, '?show=1')
+
+    expect(html).toContain('data-test=')
+    expect(html).toContain('Check whether this line gets through')
+    const main = inside(html, '<main class="wrap doc">')
+    expect(main).not.toContain('[tap “Show” above first]')
+    expect(main.split('一息').join('')).not.toMatch(/[一-鿿]/)
+  })
+
+  it('explains an unreadable token in English, and offers no tester for it', async () => {
+    // A ticket-window row: only the hash was ever stored, so nothing can
+    // reproduce the plaintext and there is no line worth testing.
+    const res = await env.DB.prepare(
+      "INSERT INTO users (name, token_hash, is_owner, created_at) VALUES ('Old', 'hash-only', 0, 0)",
+    ).run()
+    const user: User = { id: Number(res.meta.last_row_id), name: 'Old', is_owner: 0, created_at: 0 }
+    const html = await setupHtmlEn(user, '?show=1')
+
+    const main = inside(html, '<main class="wrap doc">')
+    expect(main).toContain('This server cannot read the plaintext of your token')
+    expect(main).toContain('<a href="/claim">Attach them once</a>')
+    expect(main).not.toContain('data-test=')
+    expect(main.split('一息').join('')).not.toMatch(/[一-鿿]/)
+  })
+
+  it('translates the empty state and the Breathe face nav', async () => {
+    const created = await register(env, { email: 'setup-empty@example.com', password: 'correct-horse-1' })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    const html = await setupHtmlEn(created.user, '?show=1')
+
+    const main = inside(html, '<main class="wrap doc">')
+    expect(main).toContain('You have no apps configured')
+    expect(main).toContain('<a href="/settings">Settings</a>')
+    expect(main).toContain('No apps configured yet.')
+
+    const nav = html.match(/<nav aria-label="Navigation">([\s\S]*?)<\/nav>/)
+    expect(nav, 'nav missing or still labelled in Chinese').toBeTruthy()
+    for (const label of ['Log', 'Settings', 'Guide', 'Account']) {
+      expect(nav![1]).toContain(`<span class="lb">${label}</span>`)
+    }
+  })
+})
+
+// ============================================================================
 // The nav, and the Chinese baseline
 // ============================================================================
 
@@ -642,6 +784,11 @@ describe('with no language header at all, nothing changed', () => {
     const review = await (await renderReview(req('/review', false), env, user)).text()
     expect(review).toContain('<h2>还没有记录</h2>')
     expect(review).toContain('你还没有被拦下过一次。')
+
+    const setup = await (await renderSetup(req('/setup', false), env, user)).text()
+    expect(setup).toContain('<html lang="zh-Hans">')
+    expect(setup).toContain('<h1>怎么配</h1>')
+    expect(setup).toContain('先记住一件事：一个 App 一条，各配各的')
   })
 })
 

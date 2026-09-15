@@ -560,4 +560,234 @@ export const EN: Record<string, string> = {
   // table carry the same sentence, hence one entry.
   '作者的 iPhone 上从呼吸页点「继续」跳转成功':
     'Tapping “Open it anyway” on the breathing page jumped successfully, on the author’s iPhone',
+
+  // --- /setup (src/ui/setup.ts) ----------------------------------------------
+  // The Shortcut walkthrough, and the last page in the product to be
+  // translated. Ordered the way the page is read rather than the way the file
+  // is written, so this can be checked against a phone held beside it.
+  //
+  // Every quoted name here is the label English iOS actually prints — Shortcuts,
+  // Automation, Get Contents of URL, If, End If, Open URL, Contents of URL,
+  // Is Opened, Ask Before Running, Notify When Run, Show More, Duplicate. The
+  // Chinese quotes them in 「」 and the English in curly quotes, so a reader can
+  // still tell a label to hunt for from the sentence around it. Where the
+  // Chinese explains a quirk of Chinese iOS, the English says what the quirk is
+  // rather than transliterating the menu.
+  //
+  // The worked examples follow the rest of the dictionary: 小红书 is Instagram
+  // and 起点读书 is Reddit, and the app KEYS in the examples move with them
+  // (`xhs` becomes `instagram`) — a key is the reader's own invention, matched
+  // only against what they type into their own automation, so an example key is
+  // a suggestion and not a contract. 「一息 小红书」, the suggested name for the
+  // shortcut itself, becomes 「一息 Instagram」: the product's name stays, the
+  // example app follows.
+  '一息 · 怎么配': 'Guide · 一息',
+  '全部在 iPhone 自带的「快捷指令」App 里完成，不用越狱，不用装别的东西。\n第一次约 5 分钟，之后每多拦一个 App 再花 1 分钟。':
+    'All of it happens in the Shortcuts app the iPhone already has — no jailbreak, nothing else to install. The first one takes about 5 minutes, and each app after that about 1 more.',
+
+  // The in-app-browser banner. 「{name}」 is the host app's own name and never
+  // translated; 「{escape}」 is src/inapp.ts quoting that app's menu, which does
+  // read in Chinese inside all seven of them.
+  '你现在是在<b>{name}</b>内置的浏览器里。\n    下面凡是要「跳回 App」的步骤在这里都不会有反应——它不让网页跳去别的 App。\n    {escape}，用 Safari 打开这一页再照着做。':
+    'You are inside the browser built into <b>{name}</b>. None of the steps below that jump back to an app will do anything here — it will not let a page open another app. {escape}, then open this page in Safari and follow it there.',
+
+  '先记住一件事：一个 App 一条，各配各的': 'One thing first: one shortcut per app, each with its own settings',
+  '没有「共用」那一说。<b>每个要拦的 App 都要单独建一条快捷指令</b>，各自的网址里\n<code>app=</code> 后面写各自的 App 键——拦小红书就写 <code>xhs</code>，拦起点读书就写\n<code>qidian</code>。写错了不会报错，只会用错那个 App 的配置：按别人的秒数呼吸、\n跳回别人的 App、记录也记在别人名下。':
+    'There is no such thing as a shared one. <b>Every app you want stopped needs a shortcut of its own</b>, and each address carries that app’s own key after <code>app=</code> — for Instagram write <code>instagram</code>, for Reddit write <code>reddit</code>. Getting it wrong raises no error; it quietly uses another app’s settings: another app’s seconds to breathe through, another app’s scheme to jump back to, and the count filed under another app’s name.',
+  '曾经想过让所有 App 共用一条、把 App 键当输入传进去。做不到：\n「获取 URL 的内容」的网址栏里挑不到「快捷指令输入」那个变量（真机上验过两次），\n所以只能整条粘。代价就是 token 在每条快捷指令里各出现一次，<b>将来换 token\n要每一条都改</b>。':
+    'One shortcut for every app, with the app key passed in as its input, was considered and cannot be done: the URL field of “Get Contents of URL” does not offer the “Shortcut Input” variable at all (checked twice on a real phone), so the whole line has to be pasted. The price is that the token appears once in every shortcut, and <b>swapping the token later means editing every one of them</b>.',
+
+  // The token section. 「你的 token」 is the account page's heading, reused.
+  '下面第一步那串网址里已经带上它了，正常配置不用单独复制。放在这里是为了你换设备、\n或者想核对时能拿到：':
+    'The address in step one below already carries it, so an ordinary setup never needs to copy it on its own. It is here for changing devices, or for checking it against something:',
+  '服务器这边读不到你的 token 原文，只存着它的哈希——这个账号是发号时代建的，\n         从来没绑过邮箱和密码。<a href="/claim">绑一次</a>，以后这一页就能直接印出来；\n         或者现在带上 <code>?k=你的token</code> 重新打开这一页。':
+    'This server cannot read the plaintext of your token, only the hash it keeps — this account was made in the ticket-window days and never had an email address or a password attached. <a href="/claim">Attach them once</a> and this page can print it outright from then on; or reopen this page right now with <code>?k=your-token</code> on the end.',
+  '它是你所有记录的钥匙，别在别人能看见屏幕的时候点。':
+    'It is the key to every record you have. Do not tap it where somebody else can see the screen.',
+
+  '第一步 · 给一个 App 建快捷指令': 'Step one · build a shortcut for one app',
+  '装好之后整条是这个形状——三个动作，加一个自动补上的「结束如果」：':
+    'Finished, the whole thing has this shape — three actions, plus an “End If” that appears on its own:',
+
+  // The diagram of the assembled shortcut, drawn rather than photographed.
+  '快捷指令的三个动作：获取 URL 的内容、如果内容包含 https、在如果里面打开 URL 的内容':
+    'The shortcut’s three actions: Get Contents of URL, If the contents contain https, and Open URL nested inside the If',
+  '获取 <code class="sc-u">…/gate?app=<b class="sc-ph">这个 App 的键</b>&amp;k=…&amp;fmt=text</code> 内容':
+    'Get contents of <code class="sc-u">…/gate?app=<b class="sc-ph">this app’s key</b>&amp;k=…&amp;fmt=text</code>',
+  '如果 <b class="sc-v">URL 的内容</b> 包含 <b class="sc-k">https</b>':
+    'If <b class="sc-v">Contents of URL</b> contains <b class="sc-k">https</b>',
+  '打开 <b class="sc-v">URL 的内容</b>': 'Open <b class="sc-v">Contents of URL</b>',
+  '结束如果 <span class="sc-note">（加完「如果」自己就有了）</span>':
+    'End If <span class="sc-note">(it appears with the If)</span>',
+  '第三个动作必须在「如果」<b>里面</b>。拖到「结束如果」下面就等于每次都跳——包括服务端刚说了「这次别拦」的那些次。':
+    'The third action has to sit <b>inside</b> the If. Dragged below “End If” it jumps on every single launch — including the ones the server has just said to leave alone.',
+  '为什么不能只用一个「打开 URL」': 'Why one Open URL on its own will not do',
+  '因为 <code>/gate</code> 回的是<b>文本</b>，不是跳转。该拦你时回一条\n    <code>https://…</code>（呼吸页的地址），不该拦时回 <code>pass</code> 这个词。':
+    'Because <code>/gate</code> answers with <b>text</b> rather than a redirect. When it should stop you it returns a <code>https://…</code> address, the breathing page; when it should not, the single word <code>pass</code>.',
+  '所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，\n    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），\n    不该拦时是 <code>pass</code> 三个字母。<b>每次开 App 都会被丢到这个页面上</b>，\n    包括本该放你过去的那些次。':
+    'So pointing Open URL straight at <code>…/gate?…</code> opens the gate itself in Safari, and what you get is <b>a white page with one line of text on it</b> — the address when it should stop you, which you then have to tap yourself, and just the word <code>pass</code> when it should not. <b>Every launch drops you on that page</b>, including the ones meant to let you through.',
+  '三个动作的结构是：先把答案<b>取回来</b>，答案本身就是「要打开的地址」，\n    「如果 包含 https」是在问「这次取回来的是个地址，还是 <code>pass</code>」。':
+    'The shape of the three actions is this: <b>fetch</b> the answer first, where the answer is itself the address to open, and “If contains https” asks whether what came back this time is an address or <code>pass</code>.',
+  '<b>「不拦」必须能表达成「什么都不做」，而一个「打开 URL」永远会打开点什么。</b>\n    这也是它同时成为 fail-open 开关的原因：服务挂了、超时、返回一整页错误 HTML，\n    结果里都没有 <code>https</code>，条件不成立，快捷指令静默结束，你的 App 正常打开。':
+    '<b>“Do not stop me” has to be sayable as doing nothing at all, and an Open URL always opens something.</b> That is also what makes it the fail-open switch: a dead service, a timeout, a whole page of error HTML — none of them contain <code>https</code>, the condition is false, the shortcut ends in silence and your app opens as usual.',
+
+  '一个变量都不用挑': 'Not one variable to pick',
+  '网址直接整条粘进去，不要去找「快捷指令输入」那个变量——它只有在快捷指令被设成\n「接收输入」时才会出现，新建的默认没有。整条链路只有三个动作，全部照抄即可。':
+    'Paste the address in whole, and do not go looking for the “Shortcut Input” variable — it appears only once a shortcut is set to accept input, which a new one is not. The whole chain is three actions, every one of them copied as it stands.',
+
+  // Step one, and the finished line to paste into it.
+  '「获取 URL 的内容」': '“Get Contents of URL”',
+  '动作搜索框里搜 <code>URL</code>，把下面对应那一整条<b>粘进 URL 那一栏</b>。\n    地址、token、App 键都已经填好了，<b>一个字都不用改</b>：':
+    'Search the action box for <code>URL</code>, then <b>paste the matching whole line below into the URL field</b>. The address, the token and the app key are filled in already, so <b>not one character needs changing</b>:',
+  '你还没配置任何 App，所以这里没有可粘的网址。\n       先去<a href="/settings">设置</a>加一个，再回来。':
+    'You have no apps configured, so there is no address here to paste. Add one under <a href="/settings">Settings</a> first, then come back.',
+  '拦<b>{label}</b>的那条快捷指令用这行': 'This line goes in the shortcut for <b>{label}</b>',
+  '这一整行': 'This whole line',
+  '<span class="off"> · 这个 App 现在是停用的</span>': '<span class="off"> · this app is switched off right now</span>',
+  // Square brackets rather than angle ones, for the reason the scheme-caveat
+  // group above gives: a bare English word inside <> is exactly the shape of an
+  // HTML tag, and guard ③ would pin it into the translation as markup.
+  '<先点上面的「显示」>': '[tap “Show” above first]',
+  '显示更多 · 方法 GET': 'Show More · Method GET',
+  '请求头 空': 'Headers empty',
+  '请求体 空': 'Request Body empty',
+
+  // Step two: the condition, and the one passage on the page that stays open.
+  '「如果」': '“If”',
+  '如果   「URL 的内容」   包含   https': 'If   “Contents of URL”   contains   https',
+  '左栏 自动接上一步': 'Left filled by the step above',
+  '中间 包含': 'Middle contains',
+  '右栏 手打 https': 'Right typed by hand https',
+  '<b>这个条件只能这么写。</b>它是整套配置里唯一一处写反了会把你锁在手机外面的地方。':
+    '<b>This condition can only be written this way.</b> It is the one place in the whole setup where writing it backwards locks you out of your own phone.',
+  '服务器只回两种东西：该拦你时回一条 <code>https://…</code> 开头的网址，不该拦时回 <code>pass</code> 这个词。':
+    'The server answers with two things only: an address beginning <code>https://…</code> when it should stop you, and the word <code>pass</code> when it should not.',
+  '所以这一条同时干了两件事：该拦时打开呼吸页；而<b>只要出任何问题</b>——服务挂了、\n    token 错了、网络断了、返回空白——结果里都没有 <code>https</code>，\n    「如果」不成立，快捷指令什么都不做，<b>你的 App 正常打开</b>。':
+    'So this one line does two things at once. It opens the breathing page when you should be stopped; and <b>should anything at all go wrong</b> — a dead service, a wrong token, no network, a blank answer — none of those contain <code>https</code>, the If is false, the shortcut does nothing, and <b>your app opens as usual</b>.',
+  '所以<b>绝对不能反过来写成「不包含 pass」</b>。那样服务一挂，\n    每次开 App 都跳去一个打不开的网页，你会被自己写的工具锁在手机外面。':
+    'So <b>never turn it around into “does not contain pass”</b>. Written that way, the moment the service goes down every launch jumps to a page that will not load, and the tool you built locks you out of your own phone.',
+
+  '「打开 URL」，拖到「如果」<b>里面</b>': '“Open URL”, dragged <b>inside</b> the If',
+  'URL 栏 自动接「URL 的内容」': 'URL field filled with Contents of URL',
+
+  '建完是这三行': 'Built, it reads as these three lines',
+  '获取 URL 的内容    （粘好的整条网址）        GET\n如果   「URL 的内容」   包含   https\n    打开 URL   「URL 的内容」\n结束如果':
+    'Get Contents of URL    (the whole pasted line)        GET\nIf   “Contents of URL”   contains   https\n    Open URL   “Contents of URL”\nEnd If',
+  '起个名字，比如 <b>一息 小红书</b>，存好。': 'Give it a name — <b>一息 Instagram</b>, say — and save it.',
+
+  // Step two: the automation that runs it.
+  '第二步 · 让它在打开 App 时自动跑': 'Step two · make it run by itself when the app opens',
+  '「快捷指令」App → 底部 <b>自动化</b> → 右上角 <b>+</b>：':
+    'Shortcuts app → <b>Automation</b> along the bottom → <b>+</b> in the top-right corner:',
+  '触发条件选 <b>App</b>，点进去勾选<b>要拦的那一个</b>':
+    'Pick <b>App</b> as the trigger, go in and tick <b>the one you want stopped</b>',
+  '选 <b>已打开</b>（不是「已关闭」），下一步': 'Choose <b>Is Opened</b> (not “Is Closed”), then Next',
+  '让你选运行什么时，直接选刚建的 <b>「一息 小红书」</b>——不用加动作、不用传输入':
+    'When it asks what to run, pick the <b>“一息 Instagram”</b> you just built — no action to add, no input to pass',
+  '<b>关掉「运行前询问」</b>，弹出确认时选「不询问」':
+    '<b>Turn off “Ask Before Running”</b>, and choose “Don’t Ask” at the confirmation',
+  '把「运行时通知我」也关掉，不然每次开 App 都弹横幅':
+    'Turn off “Notify When Run” as well, or a banner drops down every time the app opens',
+
+  '再加一个 App': 'Adding another app',
+  '不用重头来。快捷指令列表里<b>长按「一息 小红书」→ 拷贝</b>，\n在副本里把网址中的 <code>app=</code> 后面那个词换成新 App 的键，改个名字，\n再照第二步建一条自动化。<b>只有那一个词要改。</b>':
+    'No need to start over. In the shortcuts list, <b>press and hold “一息 Instagram” → Duplicate</b>; in the copy, replace the word after <code>app=</code> in the address with the new app’s key, rename it, and build it an automation the way step two says. <b>That one word is the only edit.</b>',
+
+  // The per-app table, and the tester button beside each line.
+  '各个 App 对应的整条网址': 'The whole address for each app',
+  '<span class="off"> · 已停用</span>': '<span class="off"> · off</span>',
+  '试一下这条通不通': 'Check whether this line gets through',
+  '还没有配置 App。先去<a href="/settings">设置</a>加一个，这里就会出现可以直接粘的整行。':
+    'No apps configured yet. Add one under <a href="/settings">Settings</a> and the whole pasteable line appears here.',
+  '整条复制，末尾的 <code>&amp;fmt=text</code> 少了就不工作。\n<b>粘完先点「试一下这条通不通」</b>——结果就显示在按钮旁边，不跳走。\n看到 <code>pass</code> 或一条 <code>https://…</code> 网址就说明这条地址是通的；\n要是显示连不上，那就是地址本身缺了一截或混进了奇怪字符，\n这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，看不出原因。':
+    'Copy the whole line — without the <code>&amp;fmt=text</code> on the end it does not work. <b>Once it is pasted, tap “Check whether this line gets through” first</b>: the answer appears beside the button, and nothing navigates away. A <code>pass</code>, or a <code>https://…</code> address, means the line is reachable. A failure to connect means the address itself is missing a piece or picked up a stray character, and in a shortcut that produces nothing but a <code>kCFErrorDomainCFNetwork</code> with no reason attached.',
+
+  '每个 App 都要来一遍，这是 iOS 的限制': 'Once per app, and that is iOS’s limit rather than ours',
+  '「打开 App 时」的自动化<b>必须一个 App 建一条</b>，不能批量、不能一条选多个。\n拦 5 个 App 就是 5 条。One Sec 和所有同类工具都这样，iOS 没给别的口子。':
+    'A “When App Is Opened” automation <b>has to be built one app at a time</b> — no batches, and no picking several apps in one. Five apps to stop means five automations. One Sec and every tool like it works the same way; iOS offers no other way in.',
+
+  // Step three: proving it on the phone.
+  '第三步 · 跑通一次': 'Step three · run it through once',
+  '从桌面点开你刚配的那个 App': 'Open the app you just set up, from the home screen',
+  '应该闪一下跳到 Safari，出现呼吸页': 'It should flicker over to Safari and show the breathing page',
+  '等倒计时走完': 'Wait for the countdown to finish',
+  '点「算了」→ 给你一句话，你自己退出去': 'Tap “Never mind” → it gives you one line, and you leave by yourself',
+  '点「继续」→ 应该跳回那个 App': 'Tap “Open it anyway” → it should jump back into the app',
+  '第 5 步跳不回去，说明这个 App 的 scheme 不对。去<a href="/settings">设置</a>展开这个 App，scheme 格子右边有个<b>试跳</b>按钮，下面还能按 App 名字找候选。':
+    'If step 5 does not jump back, this app’s scheme is wrong. Open the app’s row under <a href="/settings">Settings</a>: there is a <b>test it</b> button beside the scheme box, and below it you can search candidates by app name.',
+  '跳回去的一瞬间自动化<b>会被再次触发，这是正常的</b>。服务端有一分半的免打扰窗口，\n这次直接放行，也不会被算成一次冲动。放下手机超过一分半再拿起来才会重新拦你——这是刻意的。':
+    'The moment it jumps back, the automation <b>fires a second time, which is normal</b>. The server keeps a quiet window of a minute and a half: that trigger is let straight through and counts as no impulse at all. Only putting the phone down for longer than that and picking it up again gets you stopped afresh, which is deliberate.',
+
+  // The zzztest line, and what each answer means.
+  '验一下配对没': 'Checking that it is wired up',
+  '别在快捷指令编辑页里直接点运行——那样没有输入，<code>app=</code> 是空的，会报一个和你配置无关的错。':
+    'Do not tap Run inside the shortcut editor — there is no input there, <code>app=</code> comes out empty, and the error you get has nothing to do with your setup.',
+  '要验地址和 token，在 Safari 里打开这个（<code>zzztest</code> 是个故意没配过的键，服务端一律放行且什么都不记）：':
+    'To check the address and the token, open this in Safari (<code>zzztest</code> is a key left unconfigured on purpose: the server always lets it through and records nothing):',
+  // Square brackets again, for the same reason as the 「显示」 stand-in above.
+  '<你的token>': '[your-token]',
+  // The {name} in the copy button's 「复制{name}」, so no article — 「Copy the
+  // test address」 is not a thing a screen reader should have to read out.
+  测试网址: 'test address',
+  '都对，往下走': 'All correct — carry on',
+  'token 不对，多半复制时带了空格': 'The token is wrong, most likely a space picked up while copying',
+  '网址里 <code>app=</code> 后面空了': 'Nothing after <code>app=</code> in the address',
+  '连不上 / 404': 'Cannot connect / 404',
+  '地址写错，或 Worker 没部署成功': 'The address is wrong, or the Worker never deployed',
+
+  // Why the condition is the shape it is. The one section that stays unfolded.
+  '坏掉的时候必须放你进去': 'When it breaks, it has to let you in',
+  '第一步第 2 个动作的条件写的是「<b>包含 <code>https</code></b>」。这不是随手写的，\n<b>永远不要改成「不包含 <code>pass</code>」</b>。':
+    'The condition on step one’s second action reads “<b>contains <code>https</code></b>”. That was not written off the cuff, and <b>it must never become “does not contain <code>pass</code>”</b>.',
+  '差别在服务出问题的时候。<code>/gate</code> 有一堆理由给不出正常答复：token 被换了、Worker 挂了、\n网络超时、DNS 被污染、返回了一片空白。':
+    'The difference shows when the service is in trouble. <code>/gate</code> has any number of reasons to give no proper answer: the token was swapped, the Worker is down, the network timed out, DNS was poisoned, a blank came back.',
+  '<b>写「包含 https 才打开」</b>：上面每种异常的返回里都没有 <code>https</code>，「如果」不成立，\n快捷指令什么都不做直接结束，<b>你的 App 正常打开</b>。最坏结果是「今天没拦住你」。':
+    '<b>Written as “open only if it contains https”</b>: not one of those answers contains <code>https</code>, the If is false, the shortcut ends without doing anything, and <b>your app opens as usual</b>. The worst outcome is that it failed to stop you today.',
+  '<b>写「不包含 pass 就打开」</b>：服务一挂，每次开 App 都跳去一个打不开的网页。\n你被自己写的工具<b>锁在自己手机外面</b>，而且当时多半正急着用。':
+    '<b>Written as “open if it does not contain pass”</b>: the service goes down and every launch jumps to a page that will not load. The tool you built has <b>locked you out of your own phone</b>, most likely at the moment you were in a hurry to use it.',
+  '这两种坏法完全不对等：一边少拦一次，一边几个 App 全废。所以默认行为必须是拿不准就放行。':
+    'The two ways of breaking are nowhere near equal: one misses a single interception, the other leaves several apps unusable. So the default has to be to let you through whenever it cannot tell.',
+  '还有两处照这个道理该省掉的东西': 'Two more things the same reasoning says to leave out',
+  '同理还有两条：<b>别给「获取 URL 的内容」加出错处理</b>（网络失败时整条快捷指令中止，\n  后面的「打开 URL」就不会执行，App 照常打开，这正是要的）；\n  <b>别在「如果」后面加「否则」去打开任何东西</b>（「否则」就是「服务没说要拦」，那就该什么都不做）。':
+    'Two corollaries. <b>Do not add error handling to “Get Contents of URL”</b> (a network failure aborts the whole shortcut, the “Open URL” after it never runs, the app opens as usual, and that is exactly what is wanted); and <b>do not put an “Otherwise” after the If to open anything</b> (“Otherwise” means the server did not ask for a stop, and the answer to that is to do nothing).',
+
+  // Six symptoms, none of which anyone reads until one of them is theirs.
+  出问题了: 'When something is wrong',
+  '六种症状，点开看对应的那一条。': 'Six symptoms. Open the one that is yours.',
+  'App 打不开了 / 每次开 App 都跳到打不开的网页':
+    'The app will not open / every launch goes to a page that will not load',
+  '<b>先止血</b>：「快捷指令」→「自动化」，把那条的开关关掉，App 立刻恢复。\n  一息挂了不该影响你用手机。然后回上一节检查「如果」的条件是不是写反了。':
+    '<b>Stop the bleeding first</b>: Shortcuts → Automation, switch that one off, and the app works again at once. 一息 being down should never cost you the use of your phone. Then go back to the section above and check whether the If condition was written backwards.',
+  '点「继续」跳不回 App': '“Open it anyway” does not jump back into the app',
+  '大概率 scheme 不对。去<a href="/settings">设置</a>展开这个 App，scheme 格子右边点<b>试跳</b>：\n  跳走了说明 scheme 对，问题在别处；没反应就在下面「不知道填什么？」里按 App 名字找候选，\n  一条条试，跳通了点「用这个」写回格子再保存。\n  有些 App 已经彻底没有 scheme，怎么点都不动——那就只能对它放弃拦截。':
+    'Most likely the scheme is wrong. Open the app’s row under <a href="/settings">Settings</a> and tap <b>test it</b> beside the scheme box: if it jumps away the scheme is right and the trouble is elsewhere; if nothing happens, search candidates by app name under “Not sure what goes here?” below, try them one at a time, and when one jumps, tap “Use this” to write it back into the box and save. Some apps have no scheme left at all and will not move however often you tap — for those, stopping you is simply off the table.',
+  '打开 App，自动化压根没触发': 'The app opens and the automation never fires at all',
+  '「运行前询问」没关干净，回自动化详情页再确认一次':
+    '“Ask Before Running” is not fully off — go back into the automation and check once more',
+  '触发条件选错了，必须是「已打开」': 'The trigger is the wrong one; it has to be “Is Opened”',
+  '从后台切回前台在部分 iOS 版本上不触发，先把 App 从后台划掉再从桌面点':
+    'Coming back from the background does not fire it on some iOS versions — swipe the app away first, then open it from the home screen',
+  '自动化被关了，列表里每条右侧有开关': 'The automation is switched off; every row in the list has a switch on its right',
+  '重启 iPhone。「打开 App 时」偶发失灵是 iOS 的老毛病':
+    'Restart the iPhone. “When App Is Opened” failing now and then is an old iOS complaint',
+  '每次都直接进 App，从来没被拦过': 'Every launch goes straight into the app and nothing ever stops you',
+  '自动化跑了，但服务端判定「不管这个 App」：app 键对不上（大小写敏感，<code>XHS</code> ≠ <code>xhs</code>）、\n  在<a href="/settings">设置</a>里被停用了、或者你一直在一分半的免打扰窗口里。':
+    'The automation runs, but the server decides this app is none of its business: the app key does not match (case matters, <code>XHS</code> is not <code>xhs</code>), it is switched off under <a href="/settings">Settings</a>, or you have been inside the minute-and-a-half quiet window the whole time.',
+  '刚点「继续」跳回去，马上又被拦': 'It stops you again the instant “Open it anyway” jumps back',
+  '免打扰窗口没生效。要么 <code>/resolve</code> 没打成功（网络断了），\n  要么这个 App 的 grace 秒数设得太短，去<a href="/settings">设置</a>调大。':
+    'The quiet window did not take effect. Either <code>/resolve</code> never got through because the network dropped, or this app’s grace seconds are set too short — raise them under <a href="/settings">Settings</a>.',
+  '开 App 明显变慢': 'Opening the app got noticeably slower',
+  '每次开 App 都要等一次到 Cloudflare 的网络往返，信号差时会有感知。没有客户端缓存。\n  慢到不可接受的话，这是要改方案的信号，不是配置问题。':
+    'Every launch waits on one network round trip to Cloudflare, and on a poor signal that is noticeable. There is no client-side cache. If it is slow enough to be unacceptable, that is a sign the design needs changing rather than a configuration problem.',
+
+  // What the tester prints beside the button it was tapped on. 「{body}」 is
+  // whatever the server actually returned, trimmed to 120 characters.
+  '试着连…': 'Connecting…',
+  '服务器拒绝了：{body}': 'The server refused it: {body}',
+  '通了 · 这条会拦你，返回了呼吸页地址':
+    'Through · this line will stop you; it returned the breathing page address',
+  '通了 · 返回「{body}」，现在不拦（免打扰窗口里或者这个 App 没启用）':
+    'Through · it returned “{body}”, so no stop right now — either inside the quiet window, or this app is not switched on',
+  '连不上 —— 地址大概缺了一截或者混进了奇怪字符':
+    'Cannot connect — the address is probably missing a piece, or picked up a stray character',
 }
