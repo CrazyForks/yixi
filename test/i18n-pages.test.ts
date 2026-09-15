@@ -28,7 +28,7 @@ import { renderTodaySetup } from '../src/ui/todaysetup'
 import { handleAccount, handleClaim, handleLogin, handleRecover, handleRegister } from '../src/ui/account'
 import { handleSettings } from '../src/ui/settings'
 import { renderReview } from '../src/ui/review'
-import { renderSetup } from '../src/ui/setup'
+import { fillBody, renderSetup } from '../src/ui/setup'
 import { createGoal, createTask, shanghaiDate, toggleCheckin, updateTaskTarget, upsertUserApp } from '../src/db'
 import { register } from '../src/account'
 import type { User } from '../src/types'
@@ -600,7 +600,13 @@ describe('/setup in English', () => {
     const html = await setupHtmlEn(user, `?k=${token}`)
 
     expect(html).toContain('<html lang="en">')
-    expect(html).toContain('<title>Guide · 一息</title>')
+    // The Chinese pair differs by word order alone, and so does the English:
+    // /today/setup is 「怎么配 · 一息」 / 'Guide · 一息', this page is the other
+    // way round. Two tabs open at once have to be tellable apart in English as
+    // much as in Chinese, and no guard can see across two dictionary values.
+    expect(html).toContain('<title>一息 · Guide</title>')
+    const other = await renderTodaySetup(new Request(`${BASE}/today/setup`, { headers: EN }), env, user)
+    expect(await other.text()).toContain('<title>Guide · 一息</title>')
 
     const main = inside(html, '<main class="wrap doc">')
     expect(main).toContain('<h1>Guide</h1>')
@@ -680,6 +686,46 @@ describe('/setup in English', () => {
     expect(main).toContain('<a href="/claim">Attach them once</a>')
     expect(main).not.toContain('data-test=')
     expect(main.split('一息').join('')).not.toMatch(/[一-鿿]/)
+  })
+
+  /**
+   * The one assertion in this block that runs code rather than reading it.
+   *
+   * `fill`'s `{body}` is emitted into the page as a literal, and the
+   * placeholder it has to match lives in two `t()` sources and their two
+   * translations. Guard ③ keeps source and translation in step with each
+   * other, and the substring checks above see the translated sentence reach
+   * the script — but rename the placeholder on *both* those sides at once and
+   * every one of them stays green while the tester prints a raw `{body}` at
+   * the reader. So this calls the shipped function against the real
+   * translation and demands the placeholder was actually consumed.
+   *
+   * `fillBody` is the same function object the page emits through
+   * `Function.prototype.toString()`, so there is no second copy to drift.
+   */
+  it('fills {body} with the server’s answer, in the sentence the reader gets', async () => {
+    const en = translator('en')
+    const zh = translator('zh')
+
+    for (const source of ['服务器拒绝了：{body}', '通了 · 返回「{body}」，现在不拦（免打扰窗口里或者这个 App 没启用）']) {
+      for (const t of [en, zh]) {
+        const filled = fillBody(t(source), 'kCFErrorDomainCFNetwork')
+        expect(filled, source).toContain('kCFErrorDomainCFNetwork')
+        expect(filled, source).not.toContain('{body}')
+      }
+    }
+
+    expect(fillBody(en('服务器拒绝了：{body}'), 'nope')).toBe('The server refused it: nope')
+
+    // Whatever the server echoed is data: a replacement *string* would read
+    // `$&` as a substitution pattern, a replacer function does not.
+    expect(fillBody(en('服务器拒绝了：{body}'), '$& $` $1')).toBe('The server refused it: $& $` $1')
+
+    // And the page only ever assigns the result to textContent, never to HTML.
+    const { user, token } = await setupUserWithApps()
+    const js = scriptOf(await setupHtmlEn(user, `?k=${token}`))
+    expect(js).toContain('out.textContent = fill(')
+    expect(js).not.toMatch(/innerHTML|insertAdjacentHTML|outerHTML|document\.write/)
   })
 
   it('translates the empty state and the Breathe face nav', async () => {

@@ -326,6 +326,27 @@ ${fold(
 }
 
 /**
+ * Puts the server's answer where the sentence about it has a `{body}`.
+ *
+ * Exported, and emitted into the page through `Function.prototype.toString()`
+ * rather than written out a second time as a string: the code the browser runs
+ * IS this function, so a test that calls it is exercising what ships instead of
+ * a copy that can drift from it. `testScript` assigns it to `fill` as a
+ * function expression, so whatever name a bundler gives it does not matter.
+ *
+ * A replacer function, not a replacement string. `body` is whatever the server
+ * echoed back, and `String.prototype.replace` reads `$&`/`$1` in a replacement
+ * *string* as a substitution pattern — the same reason `fillParams` in
+ * src/i18n/index.ts takes a function. The result is only ever assigned to
+ * `textContent`; nothing here reaches an HTML sink.
+ */
+export function fillBody(sentence: string, body: string): string {
+  return sentence.replace('{body}', function () {
+    return body
+  })
+}
+
+/**
  * Tests a gate URL without navigating to it.
  *
  * This used to be an `<a href>` containing the token. Tapping it was a real
@@ -351,14 +372,13 @@ ${fold(
  * and a tail fixes Chinese word order into every language that follows; a
  * placeholder lets the response sit wherever the sentence needs it, and
  * test/i18n.test.ts's placeholder-parity clause then checks the English kept
- * it. `fill` uses a replacer function on purpose: a `$&` in whatever the
- * server returned would otherwise be read as a substitution pattern.
+ * it. The substitution itself is `fillBody` below.
  */
 function testScript(t: T): string {
   return `
 (function () {
   var buttons = document.querySelectorAll('button[data-test]');
-  function fill(s, v) { return s.replace('{body}', function () { return v; }); }
+  var fill = ${fillBody.toString()};
   for (var i = 0; i < buttons.length; i++) {
     buttons[i].addEventListener('click', function () {
       var btn = this;
@@ -433,7 +453,7 @@ function shortcutDiagram(t: T): string {
 ${fold(
     t('为什么不能只用一个「打开 URL」'),
     `<p>${t('因为 <code>/gate</code> 回的是<b>文本</b>，不是跳转。该拦你时回一条\n    <code>https://…</code>（呼吸页的地址），不该拦时回 <code>pass</code> 这个词。')}</p>
-    <p>${t('所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，\n    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），\n    不该拦时是 <code>pass</code> 三个字母。<b>每次开 App 都会被丢到这个页面上</b>，\n    包括本该放你过去的那些次。')}</p>
+    <p>${t('所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，\n    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），\n    不该拦时是 <code>pass</code> 四个字母。<b>每次开 App 都会被丢到这个页面上</b>，\n    包括本该放你过去的那些次。')}</p>
     <p>${t('三个动作的结构是：先把答案<b>取回来</b>，答案本身就是「要打开的地址」，\n    「如果 包含 https」是在问「这次取回来的是个地址，还是 <code>pass</code>」。')}</p>
     <p>${t('<b>「不拦」必须能表达成「什么都不做」，而一个「打开 URL」永远会打开点什么。</b>\n    这也是它同时成为 fail-open 开关的原因：服务挂了、超时、返回一整页错误 HTML，\n    结果里都没有 <code>https</code>，条件不成立，快捷指令静默结束，你的 App 正常打开。')}</p>`,
   )}`

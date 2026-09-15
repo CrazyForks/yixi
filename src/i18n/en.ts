@@ -581,7 +581,12 @@ export const EN: Record<string, string> = {
   // a suggestion and not a contract. 「一息 小红书」, the suggested name for the
   // shortcut itself, becomes 「一息 Instagram」: the product's name stays, the
   // example app follows.
-  '一息 · 怎么配': 'Guide · 一息',
+  // The two 「怎么配」 pages differ in Chinese by word order alone — this one is
+  // 「一息 · 怎么配」, /today/setup's is 「怎么配 · 一息」 — so the English differs
+  // the same way rather than inventing a second name for one of them. Both
+  // still read 「Guide」 in the nav and as <h1>, exactly as both read 「怎么配」
+  // in Chinese.
+  '一息 · 怎么配': '一息 · Guide',
   '全部在 iPhone 自带的「快捷指令」App 里完成，不用越狱，不用装别的东西。\n第一次约 5 分钟，之后每多拦一个 App 再花 1 分钟。':
     'All of it happens in the Shortcuts app the iPhone already has — no jailbreak, nothing else to install. The first one takes about 5 minutes, and each app after that about 1 more.',
 
@@ -595,7 +600,7 @@ export const EN: Record<string, string> = {
   '没有「共用」那一说。<b>每个要拦的 App 都要单独建一条快捷指令</b>，各自的网址里\n<code>app=</code> 后面写各自的 App 键——拦小红书就写 <code>xhs</code>，拦起点读书就写\n<code>qidian</code>。写错了不会报错，只会用错那个 App 的配置：按别人的秒数呼吸、\n跳回别人的 App、记录也记在别人名下。':
     'There is no such thing as a shared one. <b>Every app you want stopped needs a shortcut of its own</b>, and each address carries that app’s own key after <code>app=</code> — for Instagram write <code>instagram</code>, for Reddit write <code>reddit</code>. Getting it wrong raises no error; it quietly uses another app’s settings: another app’s seconds to breathe through, another app’s scheme to jump back to, and the count filed under another app’s name.',
   '曾经想过让所有 App 共用一条、把 App 键当输入传进去。做不到：\n「获取 URL 的内容」的网址栏里挑不到「快捷指令输入」那个变量（真机上验过两次），\n所以只能整条粘。代价就是 token 在每条快捷指令里各出现一次，<b>将来换 token\n要每一条都改</b>。':
-    'One shortcut for every app, with the app key passed in as its input, was considered and cannot be done: the URL field of “Get Contents of URL” does not offer the “Shortcut Input” variable at all (checked twice on a real phone), so the whole line has to be pasted. The price is that the token appears once in every shortcut, and <b>swapping the token later means editing every one of them</b>.',
+    'A single shortcut shared by every app, with the app key passed in as its input, was considered and cannot be done: the URL field of “Get Contents of URL” does not offer the “Shortcut Input” variable at all (checked twice on a real phone), so the whole line has to be pasted. The price is that the token appears once in every shortcut, and <b>swapping the token later means editing every one of them</b>.',
 
   // The token section. 「你的 token」 is the account page's heading, reused.
   '下面第一步那串网址里已经带上它了，正常配置不用单独复制。放在这里是为了你换设备、\n或者想核对时能拿到：':
@@ -613,7 +618,7 @@ export const EN: Record<string, string> = {
   '快捷指令的三个动作：获取 URL 的内容、如果内容包含 https、在如果里面打开 URL 的内容':
     'The shortcut’s three actions: Get Contents of URL, If the contents contain https, and Open URL nested inside the If',
   '获取 <code class="sc-u">…/gate?app=<b class="sc-ph">这个 App 的键</b>&amp;k=…&amp;fmt=text</code> 内容':
-    'Get contents of <code class="sc-u">…/gate?app=<b class="sc-ph">this app’s key</b>&amp;k=…&amp;fmt=text</code>',
+    'Get Contents of <code class="sc-u">…/gate?app=<b class="sc-ph">this app’s key</b>&amp;k=…&amp;fmt=text</code>',
   '如果 <b class="sc-v">URL 的内容</b> 包含 <b class="sc-k">https</b>':
     'If <b class="sc-v">Contents of URL</b> contains <b class="sc-k">https</b>',
   '打开 <b class="sc-v">URL 的内容</b>': 'Open <b class="sc-v">Contents of URL</b>',
@@ -624,8 +629,8 @@ export const EN: Record<string, string> = {
   '为什么不能只用一个「打开 URL」': 'Why one Open URL on its own will not do',
   '因为 <code>/gate</code> 回的是<b>文本</b>，不是跳转。该拦你时回一条\n    <code>https://…</code>（呼吸页的地址），不该拦时回 <code>pass</code> 这个词。':
     'Because <code>/gate</code> answers with <b>text</b> rather than a redirect. When it should stop you it returns a <code>https://…</code> address, the breathing page; when it should not, the single word <code>pass</code>.',
-  '所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，\n    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），\n    不该拦时是 <code>pass</code> 三个字母。<b>每次开 App 都会被丢到这个页面上</b>，\n    包括本该放你过去的那些次。':
-    'So pointing Open URL straight at <code>…/gate?…</code> opens the gate itself in Safari, and what you get is <b>a white page with one line of text on it</b> — the address when it should stop you, which you then have to tap yourself, and just the word <code>pass</code> when it should not. <b>Every launch drops you on that page</b>, including the ones meant to let you through.',
+  '所以直接「打开 URL <code>…/gate?…</code>」的话，Safari 打开的是 gate 本身，\n    你会看到<b>一个只有一行字的白页面</b>——该拦时是那行地址（还得自己再点一下），\n    不该拦时是 <code>pass</code> 四个字母。<b>每次开 App 都会被丢到这个页面上</b>，\n    包括本该放你过去的那些次。':
+    'So pointing Open URL straight at <code>…/gate?…</code> opens the gate itself in Safari, and what you get is <b>a white page with one line of text on it</b> — the address when it should stop you, which you then have to tap yourself, and the four letters <code>pass</code> when it should not. <b>Every launch drops you on that page</b>, including the ones meant to let you through.',
   '三个动作的结构是：先把答案<b>取回来</b>，答案本身就是「要打开的地址」，\n    「如果 包含 https」是在问「这次取回来的是个地址，还是 <code>pass</code>」。':
     'The shape of the three actions is this: <b>fetch</b> the answer first, where the answer is itself the address to open, and “If contains https” asks whether what came back this time is an address or <code>pass</code>.',
   '<b>「不拦」必须能表达成「什么都不做」，而一个「打开 URL」永远会打开点什么。</b>\n    这也是它同时成为 fail-open 开关的原因：服务挂了、超时、返回一整页错误 HTML，\n    结果里都没有 <code>https</code>，条件不成立，快捷指令静默结束，你的 App 正常打开。':
@@ -657,7 +662,7 @@ export const EN: Record<string, string> = {
   '如果   「URL 的内容」   包含   https': 'If   “Contents of URL”   contains   https',
   '左栏 自动接上一步': 'Left filled by the step above',
   '中间 包含': 'Middle contains',
-  '右栏 手打 https': 'Right typed by hand https',
+  '右栏 手打 https': 'Right typed by hand — https',
   '<b>这个条件只能这么写。</b>它是整套配置里唯一一处写反了会把你锁在手机外面的地方。':
     '<b>This condition can only be written this way.</b> It is the one place in the whole setup where writing it backwards locks you out of your own phone.',
   '服务器只回两种东西：该拦你时回一条 <code>https://…</code> 开头的网址，不该拦时回 <code>pass</code> 这个词。':
@@ -668,12 +673,12 @@ export const EN: Record<string, string> = {
     'So <b>never turn it around into “does not contain pass”</b>. Written that way, the moment the service goes down every launch jumps to a page that will not load, and the tool you built locks you out of your own phone.',
 
   '「打开 URL」，拖到「如果」<b>里面</b>': '“Open URL”, dragged <b>inside</b> the If',
-  'URL 栏 自动接「URL 的内容」': 'URL field filled with Contents of URL',
+  'URL 栏 自动接「URL 的内容」': 'URL field filled with “Contents of URL”',
 
   '建完是这三行': 'Built, it reads as these three lines',
   '获取 URL 的内容    （粘好的整条网址）        GET\n如果   「URL 的内容」   包含   https\n    打开 URL   「URL 的内容」\n结束如果':
     'Get Contents of URL    (the whole pasted line)        GET\nIf   “Contents of URL”   contains   https\n    Open URL   “Contents of URL”\nEnd If',
-  '起个名字，比如 <b>一息 小红书</b>，存好。': 'Give it a name — <b>一息 Instagram</b>, say — and save it.',
+  '起个名字，比如 <b>一息 小红书</b>，存好。': 'Give it a name — <b>yixi Instagram</b>, say — and save it.',
 
   // Step two: the automation that runs it.
   '第二步 · 让它在打开 App 时自动跑': 'Step two · make it run by itself when the app opens',
@@ -683,7 +688,7 @@ export const EN: Record<string, string> = {
     'Pick <b>App</b> as the trigger, go in and tick <b>the one you want stopped</b>',
   '选 <b>已打开</b>（不是「已关闭」），下一步': 'Choose <b>Is Opened</b> (not “Is Closed”), then Next',
   '让你选运行什么时，直接选刚建的 <b>「一息 小红书」</b>——不用加动作、不用传输入':
-    'When it asks what to run, pick the <b>“一息 Instagram”</b> you just built — no action to add, no input to pass',
+    'When it asks what to run, pick the <b>“yixi Instagram”</b> you just built — no action to add, no input to pass',
   '<b>关掉「运行前询问」</b>，弹出确认时选「不询问」':
     '<b>Turn off “Ask Before Running”</b>, and choose “Don’t Ask” at the confirmation',
   '把「运行时通知我」也关掉，不然每次开 App 都弹横幅':
@@ -691,7 +696,7 @@ export const EN: Record<string, string> = {
 
   '再加一个 App': 'Adding another app',
   '不用重头来。快捷指令列表里<b>长按「一息 小红书」→ 拷贝</b>，\n在副本里把网址中的 <code>app=</code> 后面那个词换成新 App 的键，改个名字，\n再照第二步建一条自动化。<b>只有那一个词要改。</b>':
-    'No need to start over. In the shortcuts list, <b>press and hold “一息 Instagram” → Duplicate</b>; in the copy, replace the word after <code>app=</code> in the address with the new app’s key, rename it, and build it an automation the way step two says. <b>That one word is the only edit.</b>',
+    'No need to start over. In the shortcuts list, <b>press and hold “yixi Instagram” → Duplicate</b>; in the copy, replace the word after <code>app=</code> in the address with the new app’s key, rename it, and build it an automation the way step two says. <b>That one word is the only edit.</b>',
 
   // The per-app table, and the tester button beside each line.
   '各个 App 对应的整条网址': 'The whole address for each app',
@@ -702,7 +707,7 @@ export const EN: Record<string, string> = {
   '整条复制，末尾的 <code>&amp;fmt=text</code> 少了就不工作。\n<b>粘完先点「试一下这条通不通」</b>——结果就显示在按钮旁边，不跳走。\n看到 <code>pass</code> 或一条 <code>https://…</code> 网址就说明这条地址是通的；\n要是显示连不上，那就是地址本身缺了一截或混进了奇怪字符，\n这时候放进快捷指令里只会得到一句 <code>kCFErrorDomainCFNetwork</code>，看不出原因。':
     'Copy the whole line — without the <code>&amp;fmt=text</code> on the end it does not work. <b>Once it is pasted, tap “Check whether this line gets through” first</b>: the answer appears beside the button, and nothing navigates away. A <code>pass</code>, or a <code>https://…</code> address, means the line is reachable. A failure to connect means the address itself is missing a piece or picked up a stray character, and in a shortcut that produces nothing but a <code>kCFErrorDomainCFNetwork</code> with no reason attached.',
 
-  '每个 App 都要来一遍，这是 iOS 的限制': 'Once per app, and that is iOS’s limit rather than ours',
+  '每个 App 都要来一遍，这是 iOS 的限制': 'Once per app, and that is an iOS limit',
   '「打开 App 时」的自动化<b>必须一个 App 建一条</b>，不能批量、不能一条选多个。\n拦 5 个 App 就是 5 条。One Sec 和所有同类工具都这样，iOS 没给别的口子。':
     'A “When App Is Opened” automation <b>has to be built one app at a time</b> — no batches, and no picking several apps in one. Five apps to stop means five automations. One Sec and every tool like it works the same way; iOS offers no other way in.',
 
@@ -711,7 +716,7 @@ export const EN: Record<string, string> = {
   '从桌面点开你刚配的那个 App': 'Open the app you just set up, from the home screen',
   '应该闪一下跳到 Safari，出现呼吸页': 'It should flicker over to Safari and show the breathing page',
   '等倒计时走完': 'Wait for the countdown to finish',
-  '点「算了」→ 给你一句话，你自己退出去': 'Tap “Never mind” → it gives you one line, and you leave by yourself',
+  '点「算了」→ 给你一句话，你自己退出去': 'Tap “Never mind” → it gives you one line, and you back out on your own',
   '点「继续」→ 应该跳回那个 App': 'Tap “Open it anyway” → it should jump back into the app',
   '第 5 步跳不回去，说明这个 App 的 scheme 不对。去<a href="/settings">设置</a>展开这个 App，scheme 格子右边有个<b>试跳</b>按钮，下面还能按 App 名字找候选。':
     'If step 5 does not jump back, this app’s scheme is wrong. Open the app’s row under <a href="/settings">Settings</a>: there is a <b>test it</b> button beside the scheme box, and below it you can search candidates by app name.',
@@ -772,7 +777,7 @@ export const EN: Record<string, string> = {
     'Restart the iPhone. “When App Is Opened” failing now and then is an old iOS complaint',
   '每次都直接进 App，从来没被拦过': 'Every launch goes straight into the app and nothing ever stops you',
   '自动化跑了，但服务端判定「不管这个 App」：app 键对不上（大小写敏感，<code>XHS</code> ≠ <code>xhs</code>）、\n  在<a href="/settings">设置</a>里被停用了、或者你一直在一分半的免打扰窗口里。':
-    'The automation runs, but the server decides this app is none of its business: the app key does not match (case matters, <code>XHS</code> is not <code>xhs</code>), it is switched off under <a href="/settings">Settings</a>, or you have been inside the minute-and-a-half quiet window the whole time.',
+    'The automation runs, but the server decides this app is none of its business: the app key does not match (case matters, <code>Instagram</code> is not <code>instagram</code>), it is switched off under <a href="/settings">Settings</a>, or you have been inside the minute-and-a-half quiet window the whole time.',
   '刚点「继续」跳回去，马上又被拦': 'It stops you again the instant “Open it anyway” jumps back',
   '免打扰窗口没生效。要么 <code>/resolve</code> 没打成功（网络断了），\n  要么这个 App 的 grace 秒数设得太短，去<a href="/settings">设置</a>调大。':
     'The quiet window did not take effect. Either <code>/resolve</code> never got through because the network dropped, or this app’s grace seconds are set too short — raise them under <a href="/settings">Settings</a>.',
