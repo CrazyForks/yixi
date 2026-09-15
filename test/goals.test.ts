@@ -456,4 +456,22 @@ describe('44pt tap-target floor (design §9)', () => {
       if (selector.includes('.linky')) expect(body, selector).not.toMatch(/min-height:\s*0\b/)
     }
   })
+
+  /**
+   * 套件跑在 workerd 里，没有 DOM，所以这里只能守住写下来的那几条声明；23px 那个
+   * 盒子是在 iPhone 14 的 WebKit 上量出来的：默认外观的 select 根本不认作者写的
+   * padding 与 min-height（计算值 padding 0px、min-height 18px），连 !important 都
+   * 压不动。appearance:none 之后 Chromium 与 WebKit 都是 44px，代价是原生那枚小
+   * 箭头没了——所以 .limitrow 自己画一枚，并且必须让点击穿过去落回 select。
+   */
+  it('keeps the 1…9 picker at 44px by turning the native select appearance off', async () => {
+    const h = await html()
+    const css = h.match(/<style>([\s\S]*?)<\/style>/)![1]!
+    const rule = css.match(/\nselect\{[^}]*\}/)?.[0]
+    expect(rule, 'bare select rule missing').toBeTruthy()
+    expect(rule!).toContain('min-height:44px')
+    expect(rule!).toContain('-webkit-appearance:none')
+    expect(rule!).toMatch(/[;{]appearance:none/)
+    expect(css, 'no hand-drawn chevron').toMatch(/\.limitrow::after\{[^}]*pointer-events:none/)
+  })
 })

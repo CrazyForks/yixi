@@ -473,11 +473,23 @@ details.tapp > form > .banner{margin:10px 0 14px}
 .taskadd{display:flex;gap:8px;align-items:center}
 .taskadd input{flex:1;min-width:0}
 .card.limit label{margin:0 0 8px}
-.limitrow{display:flex;gap:14px;align-items:center}
+/* 那枚箭头是自己画的，挂在这一行上：替换元素没有 ::after，画不进 select 里去。
+   定位靠 --sel-w——select 的宽度写死一次，箭头按同一个数往回退，两个数不会各自漂。
+   pointer-events:none 让点在箭头上的那一下照样落进 select。 */
+.limitrow{--sel-w:72px;position:relative;display:flex;gap:14px;align-items:center}
+.limitrow select{width:var(--sel-w);flex:none}
+.limitrow::after{content:"";position:absolute;left:calc(var(--sel-w) - 22px);top:50%;margin-top:-2px;
+  width:7px;height:7px;border-right:1.4px solid var(--dim);border-bottom:1.4px solid var(--dim);
+  transform:translateY(-50%) rotate(45deg);pointer-events:none}
 /* 页面作用域的裸 select，和下面那条 input[type=date] 一个道理：console.ts 的通用
-   输入框规则按类型列举，这两种它都没列到。min-height 跟着 44px 的触达底线。 */
+   输入框规则按类型列举，这两种它都没列到。min-height 跟着 44px 的触达底线。
+   appearance:none 不是为了好看：WebKit 对一个默认外观的 select 压根不认作者写的
+   padding 和 min-height（iPhone 14 实测，计算值是 padding 0px、min-height 18px，
+   盒子 23px 高，写 !important 也压不动），关掉原生外观才回到 44px。代价是原生那
+   枚小箭头跟着没了，所以上面那条自己画一个。 */
 select{font:inherit;font-size:16px;line-height:1.4;padding:10px 12px;color:var(--fg);
-  background:transparent;border:1px solid var(--rule);border-radius:10px;min-height:44px}
+  background:transparent;border:1px solid var(--rule);border-radius:10px;min-height:44px;
+  -webkit-appearance:none;appearance:none}
 details.archived{margin:24px 0 0}
 .arow{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--rule)}
 .arow .sname{flex:1;color:var(--dim)}
