@@ -25,14 +25,14 @@ async function reset(): Promise<void> {
 }
 beforeEach(reset)
 
-function get(u: User = user): Promise<Response> {
-  return handleGoals(new Request('https://yixi.test/goals'), env, u)
+function get(u: User = user, query = ''): Promise<Response> {
+  return handleGoals(new Request(`https://yixi.test/goals${query}`), env, u)
 }
 function post(fields: Record<string, string>, u: User = user): Promise<Response> {
   return handleGoals(new Request('https://yixi.test/goals', { method: 'POST', body: new URLSearchParams(fields) }), env, u)
 }
-async function html(u: User = user): Promise<string> {
-  return await (await get(u)).text()
+async function html(u: User = user, query = ''): Promise<string> {
+  return await (await get(u, query)).text()
 }
 function seed(title: string, extra: Partial<{ until: string | null; target: string }> = {}): Promise<number> {
   return createGoal(env.DB, { userId: 1, title, cue: '', target: extra.target ?? '', targetLabel: '', until: extra.until ?? null, now: NOW })
@@ -178,7 +178,7 @@ describe('POST /goals', () => {
     expect(res.status).toBe(303)
     const rows = await listGoals(env.DB, 1)
     expect(rows).toHaveLength(1)
-    expect(res.headers.get('location')).toBe(`/today/goals#goal-${rows[0]!.id}`)
+    expect(res.headers.get('location')).toBe(`/today/goals?goal=${rows[0]!.id}#goal-${rows[0]!.id}`)
     expect(rows[0]).toMatchObject({ title: '健身', cue: '早饭后', target: 'bilibili://', target_label: 'B 站' })
   })
 
@@ -205,23 +205,36 @@ describe('POST /goals', () => {
   it('saves, archives, restores, moves, extends — for the owner only', async () => {
     const a = await seed('健身')
     const b = await seed('英语')
-    expect((await post({ op: 'save', goal: String(a), title: '健身 20 分钟', cue: '', target: '', target_label: '', until: '' })).status).toBe(303)
+    const saveRes = await post({ op: 'save', goal: String(a), title: '健身 20 分钟', cue: '', target: '', target_label: '', until: '' })
+    expect(saveRes.status).toBe(303)
+    // 保存之后这个目标的行留着张开，query 带 goal，和 add 一个道理。
+    expect(saveRes.headers.get('location')).toBe(`/today/goals?goal=${a}#goal-${a}`)
     expect((await listGoals(env.DB, 1))[0]!.title).toBe('健身 20 分钟')
 
     expect((await post({ op: 'save', goal: String(a), title: '劫持', cue: '', target: '', target_label: '', until: '' }, other)).status).toBe(404)
     expect((await listGoals(env.DB, 1))[0]!.title).toBe('健身 20 分钟')
 
-    expect((await post({ op: 'down', goal: String(a) })).status).toBe(303)
+    const downRes = await post({ op: 'down', goal: String(a) })
+    expect(downRes.status).toBe(303)
+    expect(downRes.headers.get('location')).toBe(`/today/goals?goal=${a}#goal-${a}`)
     expect((await listGoals(env.DB, 1)).map((g) => g.id)).toEqual([b, a])
     // at the edge: still a redirect, never an error page
     expect((await post({ op: 'down', goal: String(a) })).status).toBe(303)
 
-    expect((await post({ op: 'archive', goal: String(b) })).status).toBe(303)
+    const archiveRes = await post({ op: 'archive', goal: String(b) })
+    expect(archiveRes.status).toBe(303)
+    // archive/restore keep their old target: the row just left the live list,
+    // there is nothing there for `?goal=` to open.
+    expect(archiveRes.headers.get('location')).toBe(`/today/goals#goal-${b}`)
     expect((await listGoals(env.DB, 1)).find((g) => g.id === b)!.archived_at).not.toBeNull()
-    expect((await post({ op: 'restore', goal: String(b) })).status).toBe(303)
+    const restoreRes = await post({ op: 'restore', goal: String(b) })
+    expect(restoreRes.status).toBe(303)
+    expect(restoreRes.headers.get('location')).toBe(`/today/goals#goal-${b}`)
     expect((await listGoals(env.DB, 1)).find((g) => g.id === b)!.archived_at).toBeNull()
 
-    expect((await post({ op: 'extend', goal: String(a) })).status).toBe(303)
+    const extendRes = await post({ op: 'extend', goal: String(a) })
+    expect(extendRes.status).toBe(303)
+    expect(extendRes.headers.get('location')).toBe(`/today/goals?goal=${a}#goal-${a}`)
     expect((await listGoals(env.DB, 1)).find((g) => g.id === a)!.until).toBe(addDays(TODAY, 28))
   })
 
@@ -244,7 +257,10 @@ describe('POST /goals', () => {
     const tasks = await listTasks(env.DB, 1)
     expect(tasks).toHaveLength(1)
     expect((await post({ op: 'task_delete', task: String(tasks[0]!.id) }, other)).status).toBe(404)
-    expect((await post({ op: 'task_delete', task: String(tasks[0]!.id) })).status).toBe(303)
+    const delRes = await post({ op: 'task_delete', task: String(tasks[0]!.id) })
+    expect(delRes.status).toBe(303)
+    // task_add's own redirect shape is pinned separately, in the query-driven-open-state block below.
+    expect(delRes.headers.get('location')).toBe(`/today/goals?goal=${a}#goal-${a}`)
     expect(await listTasks(env.DB, 1)).toEqual([])
   })
 
@@ -260,7 +276,7 @@ describe('POST /goals', () => {
     expect(await getTask(env.DB, 1, t)).toMatchObject({ target: '' })
     const res = await post({ op: 'task_save', task: String(t), target: 'bilibili://', target_label: 'B 站' })
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe(`/today/goals#goal-${a}`)
+    expect(res.headers.get('location')).toBe(`/today/goals?goal=${a}#goal-${a}`)
     expect(await getTask(env.DB, 1, t)).toMatchObject({ target: 'bilibili://', target_label: 'B 站' })
     expect((await post({ op: 'task_save', task: 'x', target: '', target_label: '' })).status).toBe(400)
   })
@@ -330,6 +346,72 @@ describe('POST /goals', () => {
   it('answers an unknown op with 400, and a non-numeric id with 400', async () => {
     expect((await post({ op: 'explode' })).status).toBe(400)
     expect((await post({ op: 'archive', goal: 'abc' })).status).toBe(400)
+  })
+})
+
+describe('query-driven open state on GET /today/goals', () => {
+  /** The `<li id="task-…">` slice for one task, up to the next `<li` or the closing `</ul>`. */
+  function taskSlice(h: string, id: number): string {
+    const start = h.indexOf(`<li id="task-${id}">`)
+    expect(start, `no <li id="task-${id}"> in the page`).toBeGreaterThanOrEqual(0)
+    const rest = h.slice(start + 1)
+    const next = rest.indexOf('<li id="task-')
+    return next === -1 ? rest.slice(0, rest.indexOf('</ul>')) : rest.slice(0, next)
+  }
+
+  it('opens ?goal=<id> as that goal’s details.app, shut without the param', async () => {
+    const a = await seed('健身')
+    expect(await html()).toContain(`<details class="app" id="goal-${a}">`)
+    expect(await html(user, `?goal=${a}`)).toContain(`<details class="app" id="goal-${a}" open>`)
+  })
+
+  it('opens ?goal=<gid>&task=<tid> as that task’s own fold with autofocus, leaves every other fold shut, and prints autofocus exactly once', async () => {
+    const a = await seed('健身')
+    const t1 = (await createTask(env.DB, { userId: 1, goalId: a, title: '一', now: NOW }))!
+    const t2 = (await createTask(env.DB, { userId: 1, goalId: a, title: '二', now: NOW }))!
+    const h = await html(user, `?goal=${a}&task=${t1}`)
+    expect(h).toContain(`<details class="app" id="goal-${a}" open>`)
+    const seg1 = taskSlice(h, t1)
+    expect(seg1).toContain('<details class="tapp" open>')
+    expect(seg1).toMatch(new RegExp(`id="f-t${t1}-target"[^>]*\\bautofocus\\b`))
+    const seg2 = taskSlice(h, t2)
+    expect(seg2).not.toContain('<details class="tapp" open>')
+    expect(seg2).not.toContain('autofocus')
+    expect((h.match(/\bautofocus\b/g) ?? []).length).toBe(1)
+  })
+
+  it('ignores an id that is not the user’s own, a non-numeric task id, and a task id nobody has — 200, nothing opens, no error banner', async () => {
+    const a = await seed('健身')
+    const foreign = await createGoal(env.DB, { userId: 2, title: '李四的', cue: '', target: '', targetLabel: '', until: null, now: NOW })
+
+    const rForeign = await get(user, `?goal=${foreign}`)
+    expect(rForeign.status).toBe(200)
+    const hForeign = await rForeign.text()
+    // 张三自己的目标没被这个查不到的编号带开：还是收着的。
+    expect(hForeign).toContain(`<details class="app" id="goal-${a}">`)
+    expect(hForeign).not.toContain(`id="goal-${a}" open`)
+    expect(hForeign).not.toContain('class="banner bad"')
+
+    const rBadTask = await get(user, `?goal=${a}&task=abc`)
+    expect(rBadTask.status).toBe(200)
+    const hBadTask = await rBadTask.text()
+    expect(hBadTask).not.toContain('autofocus')
+    expect(hBadTask).not.toContain('class="banner bad"')
+
+    const rMissingTask = await get(user, `?goal=${a}&task=999999`)
+    expect(rMissingTask.status).toBe(200)
+    const hMissingTask = await rMissingTask.text()
+    expect(hMissingTask).not.toContain('autofocus')
+    expect(hMissingTask).not.toContain('class="banner bad"')
+  })
+
+  it('redirects task_add to the new task’s own query and fragment', async () => {
+    const a = await seed('健身')
+    const res = await post({ op: 'task_add', goal: String(a), title: '买垫子' })
+    expect(res.status).toBe(303)
+    const tasks = await listTasks(env.DB, 1)
+    expect(tasks).toHaveLength(1)
+    expect(res.headers.get('location')).toBe(`/today/goals?goal=${a}&task=${tasks[0]!.id}#task-${tasks[0]!.id}`)
   })
 })
 

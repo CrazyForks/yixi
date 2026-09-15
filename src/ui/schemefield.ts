@@ -36,6 +36,12 @@ export interface SchemeFieldOptions {
   labelFor: string
   /** 这一次请求的翻译器，由页面建好传进来。 */
   t: T
+  /**
+   * 页面从 URL 上认出这正是读者要接着填的那一格，就给它 autofocus——目前只有
+   * /today/goals 的 `task=<id>` 会传 true。调用方自己保证同一份文档里最多一个
+   * 输入框拿到它；这里不做全局去重。
+   */
+  autofocus?: boolean
 }
 
 const DEFAULT_HINT = msg(
@@ -74,11 +80,12 @@ export function fieldId(ns: string, name: string): string {
 export function schemeField(o: SchemeFieldOptions): string {
   const id = fieldId(o.ns, o.name)
   const required = o.required === false ? '' : ' required'
+  const autofocus = o.autofocus ? ' autofocus' : ''
   const t = o.t
   return `<div class="field scheme" data-label-for="${escapeHtml(o.labelFor)}">
     <label for="${id}">${o.label}</label>
     <div class="withtry">
-      <input id="${id}" type="text" name="${escapeHtml(o.name)}" value="${escapeHtml(o.value)}" placeholder="${escapeHtml(o.placeholder ?? 'someapp://')}"${required}
+      <input id="${id}" type="text" name="${escapeHtml(o.name)}" value="${escapeHtml(o.value)}" placeholder="${escapeHtml(o.placeholder ?? 'someapp://')}"${required}${autofocus}
         inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" class="mono sc">
       <button class="try" type="button" data-try>${icon('jump')}${t('试跳')}</button>
     </div>

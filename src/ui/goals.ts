@@ -29,7 +29,10 @@ export async function handleGoals(request: Request, env: Env, user: User): Promi
   // a module variable: a single isolate serves many requests at once.
   const loc = localeOf(request, user)
   const t = translator(loc)
-  if (request.method === 'GET') return await render(env, user, {}, loc, t)
+  if (request.method === 'GET') {
+    const url = new URL(request.url)
+    return await render(env, user, { openGoal: queryId(url, 'goal'), openTask: queryId(url, 'task') }, loc, t)
+  }
   if (request.method === 'POST') return await handlePost(request, env, user, loc, t)
   return new Response('method not allowed', { status: 405, headers: { allow: 'GET, POST' } })
 }
@@ -48,6 +51,17 @@ function field(form: FormData, key: string): string {
 
 function intId(raw: string): number | null {
   return /^\d{1,12}$/.test(raw) ? Number(raw) : null
+}
+
+/**
+ * `?goal=` / `?task=` on the GET — reader-supplied, so the same "digits-only
+ * or ignore it" rule as `intId` applies: never a 400, never an error page.
+ * Whether the id is actually this user's own is decided later, the same way
+ * a stale `#goal-<id>` fragment already was — by simply matching nothing.
+ */
+function queryId(url: URL, key: string): number | undefined {
+  const raw = url.searchParams.get(key)
+  return raw === null ? undefined : (intId(raw) ?? undefined)
 }
 
 function validDate(s: string): boolean {
@@ -102,12 +116,12 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     }
     if (op === 'add') {
       const id = await createGoal(env.DB, { userId: user.id, ...parsed, now })
-      return seeOther(`/today/goals#goal-${id}`)
+      return seeOther(`/today/goals?goal=${id}#goal-${id}`)
     }
     const id = intId(field(form, 'goal'))
     if (id === null) return await render(env, user, { error: t('目标编号不对。'), status: 400 }, loc, t)
     if (!(await updateGoal(env.DB, user.id, id, parsed))) return notFound()
-    return seeOther(`/today/goals#goal-${id}`)
+    return seeOther(`/today/goals?goal=${id}#goal-${id}`)
   }
 
   if (op === 'task_add') {
@@ -122,7 +136,9 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     // A goal that was complete for today has just grown an unchecked row, so
     // today's derived check-in has to come back off.
     await syncGoalCheckin(env.DB, user.id, goalId, today, now)
-    return seeOther(`/today/goals#goal-${goalId}`)
+    // 目标和这条新子任务的折叠都张开，输入框还带 autofocus——加完接着填，不用
+    // 自己再把行和折叠一层层打开一遍。
+    return seeOther(`/today/goals?goal=${goalId}&task=${id}#task-${id}`)
   }
 
   if (op === 'task_save') {
@@ -137,7 +153,7 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     }
     const mine = await getTask(env.DB, user.id, taskId)
     if (!mine || !(await updateTaskTarget(env.DB, user.id, taskId, target, targetLabel))) return notFound()
-    return seeOther(`/today/goals#goal-${mine.goal_id}`)
+    return seeOther(`/today/goals?goal=${mine.goal_id}#goal-${mine.goal_id}`)
   }
 
   if (op === 'task_delete') {
@@ -148,7 +164,7 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
     // Deleting the last unchecked row completes today's set, so the derived
     // check-in has to appear.
     await syncGoalCheckin(env.DB, user.id, mine.goal_id, today, now)
-    return seeOther(`/today/goals#goal-${mine.goal_id}`)
+    return seeOther(`/today/goals?goal=${mine.goal_id}#goal-${mine.goal_id}`)
   }
 
   if (op === 'limit') {
@@ -173,8 +189,15 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
   if (!goal) return notFound()
 
   switch (op) {
-    case 'archive': await setGoalArchived(env.DB, user.id, id, now); break
-    case 'restore': await setGoalArchived(env.DB, user.id, id, null); break
+    // archive/restore move the row out of (or into) the live list this same
+    // response renders, so there is no live goalRow left for `?goal=` to open
+    // — same as before this change, target left alone on purpose.
+    case 'archive':
+      await setGoalArchived(env.DB, user.id, id, now)
+      return seeOther(`/today/goals#goal-${id}`)
+    case 'restore':
+      await setGoalArchived(env.DB, user.id, id, null)
+      return seeOther(`/today/goals#goal-${id}`)
     case 'delete':
       // Two steps from the list on purpose: delete only exists in the archive fold.
       if (goal.archived_at === null) return await render(env, user, { error: t('先归档，再删除。'), status: 400 }, loc, t)
@@ -189,7 +212,9 @@ async function handlePost(request: Request, env: Env, user: User, loc: Locale, t
       })
       break
   }
-  return seeOther(`/today/goals#goal-${id}`)
+  // up/down/extend all fall through here: the goal the reader acted on stays
+  // open, same reasoning as save above.
+  return seeOther(`/today/goals?goal=${id}#goal-${id}`)
 }
 
 function notFound(): Response {
@@ -201,7 +226,12 @@ function notFound(): Response {
 /** 一条子任务被退回来时，用户刚敲的那两格——和 Draft 之于目标是一回事。 */
 interface TaskDraft { task: number; target: string; target_label: string }
 
-interface RenderOptions { error?: string; draft?: Draft; draftGoal?: number | null; taskDraft?: TaskDraft; status?: number }
+interface RenderOptions {
+  error?: string; draft?: Draft; draftGoal?: number | null; taskDraft?: TaskDraft; status?: number
+  /** `?goal=`／`?task=` off the GET — see `queryId`. Additive to the existing draft-driven opening below. */
+  openGoal?: number
+  openTask?: number
+}
 
 async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T): Promise<Response> {
   const today = shanghaiDate(Date.now())
@@ -239,6 +269,8 @@ async function render(env: Env, user: User, o: RenderOptions, loc: Locale, t: T)
     draft: o.draftGoal === g.id ? o.draft : undefined,
     taskDraft: tdGoal === g.id ? td : undefined,
     taskError: tdGoal === g.id ? o.error : undefined,
+    openGoal: o.openGoal === g.id,
+    openTask: o.openTask,
   }, t)).join('\n')}
   ${limitBlock(todayGoalLimit(user), t)}
   ${archived.length ? archivedBlock(archived, t) : ''}
@@ -330,14 +362,15 @@ function goalRow(
   g: Goal,
   tasks: GoalTask[],
   doneToday: Set<number>,
-  o: { first: boolean; last: boolean; draft?: Draft; taskDraft?: TaskDraft; taskError?: string },
+  o: { first: boolean; last: boolean; draft?: Draft; taskDraft?: TaskDraft; taskError?: string; openGoal?: boolean; openTask?: number },
   t: T,
 ): string {
   const d: Draft = o.draft ?? { title: g.title, cue: g.cue, target: g.target, target_label: g.target_label, until: g.until ?? '' }
   const ns = `g${g.id}`
   const done = tasks.filter((task) => doneToday.has(task.id)).length
   // 子任务被退回来时这一行也得张开：那条报错在折叠里，行收着就等于没说。
-  return `<details class="app" id="goal-${g.id}"${o.draft || o.taskDraft ? ' open' : ''}>
+  // `?goal=<id>` 说的是同一件事——读者刚在这一行里做完一件事，回来时它不该收着。
+  return `<details class="app" id="goal-${g.id}"${o.draft || o.taskDraft || o.openGoal ? ' open' : ''}>
   <summary>
     <span class="sname">${escapeHtml(g.title)}</span>
     ${g.target_label ? `<span class="skey">${escapeHtml(g.target_label)}</span>` : ''}
@@ -356,7 +389,7 @@ function goalRow(
   </form>
   <div class="card tasks">
     <h2>${t('子任务 · 每天都做')}${tasks.length ? `<span class="n num">${t('今天 {x}/{n}', { x: done, n: tasks.length })}</span>` : ''}</h2>
-    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, { draft: o.taskDraft, error: o.taskError }, t)).join('')}</ul>`}
+    ${tasks.length === 0 ? `<p class="note flat">${t('还没有。')}</p>` : `<ul class="tl">${tasks.map((task) => taskRow(task, { draft: o.taskDraft, error: o.taskError, openTask: o.openTask }, t)).join('')}</ul>`}
     <form method="post" action="/today/goals" class="taskadd">
       <input type="hidden" name="goal" value="${g.id}">
       <input type="text" name="title" placeholder="${t('加一条子任务')}" maxlength="${TITLE_MAX}" required aria-label="${t('子任务')}">
@@ -376,17 +409,22 @@ function goalRow(
  * 被退回来的那一条（`o.draft` 指着它）张着、填着用户刚敲的字、报错就摆在字上面；
  * 其余各条照常用库里的值。折叠上的那句话两种状态一模一样：绑没绑得看标题旁那枚
  * App 名（.skey），摘要只负责说清这里面装的是什么。
+ *
+ * `o.openTask` 是 `?task=<id>` 直接点名的那一条——多半是刚 task_add 完的新行，
+ * 折叠张开还不够，输入框得带 autofocus，读者不用自己再点一下。一份文档里只有
+ * 一条任务的 id 能等于它，所以这条 autofocus 全文只会出现这一处。
  */
-function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T): string {
+function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string; openTask?: number }, t: T): string {
   const ns = `t${task.id}`
   const d = o.draft && o.draft.task === task.id ? o.draft : undefined
-  return `<li>
+  const focus = task.id === o.openTask
+  return `<li id="task-${task.id}">
     <div class="trow">
       <span class="tname">${escapeHtml(task.title)}</span>
       ${task.target_label ? `<span class="skey">${escapeHtml(task.target_label)}</span>` : ''}
       <form method="post" action="/today/goals"><input type="hidden" name="task" value="${task.id}"><button class="linky" type="submit" name="op" value="task_delete">${t('删')}</button></form>
     </div>
-    <details class="tapp"${d ? ' open' : ''}>
+    <details class="tapp"${d || focus ? ' open' : ''}>
       <summary>${icon('chev', { cls: 'ic chev' })}${t('跳去哪')}</summary>
       <form method="post" action="/today/goals" data-ns="${ns}">
         <input type="hidden" name="task" value="${task.id}">
@@ -396,6 +434,7 @@ function taskRow(task: GoalTask, o: { draft?: TaskDraft; error?: string }, t: T)
           label: t('这条子任务跳去哪 · 可不填'),
           placeholder: t('bilibili:// 或 https://…'),
           hint: t('不填就跟着目标走。自定义 scheme 填完点<b>试跳</b>，App 真打开了才算数；https 链接不用试。'),
+          autofocus: focus,
         })}
         <div class="field">
           <label for="${fieldId(ns, 'target_label')}">${t('按钮上叫它什么')}</label>
